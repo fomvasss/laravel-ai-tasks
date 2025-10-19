@@ -1,0 +1,48 @@
+{
+  "name": "fomvasss/laravel-ai-tasks",
+  "description": "Orchestrator AI-tasks for Laravel: drivers, routing, queue, ai_runs, post-processing",
+  "authors": [
+    {
+        "name": "fomvasss",
+        "email": "fomvasss@gmail.com",
+        "role": "Developer"
+    }
+  ],
+  "type": "library",
+  "license": "MIT",
+  "keywords": ["laravel", "ai", "llm", "queue", "openai", "gemini", "orchestrator"],
+  "require": {
+    "php": "^8.1",
+    "illuminate/support": "^10.0|^11.0|^12.0",
+    "illuminate/contracts": "^10.0|^11.0|^12.0",
+    "illuminate/queue": "^10.0|^11.0|^12.0",
+    "illuminate/database": "^10.0|^11.0|^12.0",
+    "illuminate/events": "^10.0|^11.0|^12.0",
+    "illuminate/pipeline": "^10.0|^11.0|^12.0",
+    "illuminate/http": "^10.0|^11.0|^12.0",
+    "guzzlehttp/guzzle": "^7.8"
+  },
+  "autoload": {
+    "psr-4": {
+      "Fomvasss\\AiTasks\\": "src/"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "Fomvasss\\AiTasks\\Tests\\": "tests/"
+    }
+  },
+  "extra": {
+    "laravel": {
+      "providers": [
+        "Fomvasss\\AiTasks\\AiServiceProvider"
+      ],
+      "aliases": {
+        "AI": "Fomvasss\\AiTasks\\Facades\\AI"
+      }
+    }
+  },
+  "minimum-stability": "stable",
+  "prefer-stable": true
+}
+

@@ -1,0 +1,35 @@
+<?php
+
+namespace Fomvasss\AiTasks\Tasks;
+
+use Fomvasss\AiTasks\DTO\AiContext;
+use Fomvasss\AiTasks\DTO\AiPayload;
+use Fomvasss\AiTasks\DTO\AiResponse;
+
+abstract class AiTask
+{
+    abstract public function name(): string;
+    abstract public function modality(): string;
+    abstract public function toPayload(): AiPayload;
+
+    public function context(): AiContext
+    {
+        return new AiContext(
+            tenantId: app('tenant.id') ?? 'default',
+            taskName: $this->name(),
+            subjectType: null,
+            subjectId: null,
+            meta: ['locale' => app()->getLocale()]
+        );
+    }
+
+    public function postprocess(AiResponse $resp): AiResponse|array
+    {
+        return $resp;
+    }
+
+    public function idempotencyKey(): string
+    {
+        return hash('xxh3', json_encode([$this->name(), $this->modality(), $this->toPayload(), $this->context()->meta]));
+    }
+}
