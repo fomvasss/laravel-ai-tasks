@@ -84,7 +84,7 @@ return [
     | Value — ordered list of driver names to try.
     */
     'routing' => [
-        'product.description' => ['gemini','openai'],
+        'product.description' => ['gemini', 'openai'],
         'chat.assist'         => ['openai'],
         // 'image.product'     => ['stability', 'openai'],
         // default fallback is 'default' above
@@ -125,4 +125,45 @@ return [
     | Middleware for webhook routes. Routes are defined in ServiceProvider::boot().
     */
     'webhook_middleware' => ['api'],
+
+    
+    'prompts' => [
+        // files|database|inline // TODO: files|database
+        'driver' => env('AI_PROMPTS_DRIVER', 'inline'),
+        
+        // для inline (мінімально; або залишай порожнім)
+        'inline' => [
+            'product.description.v3' => "Language: {{locale}}\nName: {{title}}\nFeatures: {{features | json}}\nGenerate a structured description product in JSON: {\"short\":\"...\",\"html\":\"...\"}",
+        ],
+        
+        // для files
+        'path'   => resource_path('ai/prompts'),
+        'extensions' => ['blade.php','md','txt','prompt'], // порядок пошуку
+
+        // кеш (для files/database)
+        'cache' => [
+            'enabled' => true,
+            'ttl' => 300, // сек
+        ],
+    ],
+
+    'schemas' => [
+        'driver' => 'files', // inline|files
+        'path'   => base_path('vendor/fomvasss/laravel-ai-tasks/resources/ai/schemas'), // replace to local: base_path('resources/ai/schemas'),
+
+        'inline' => [
+            
+            // For exaple
+            'product_description_v1' => [
+                '$schema' => 'https://json-schema.org/draft/2020-12/schema',
+                'type' => 'object',
+                'required' => ['short','html'],
+                'properties' => [
+                    'short' => ['type'=>'string','minLength'=>2,'maxLength'=>300],
+                    'html'  => ['type'=>'string','minLength'=>10],
+                ],
+                'additionalProperties' => false,
+            ],
+        ],
+    ],
 ];

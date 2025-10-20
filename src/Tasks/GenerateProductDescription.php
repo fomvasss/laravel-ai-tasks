@@ -10,7 +10,7 @@ use Fomvasss\AiTasks\Support\Schema;
 use Fomvasss\AiTasks\Traits\QueueableAi;
 
 /**
- *  Examplle.
+ *  This examplle task.
  */ 
 class GenerateProductDescription extends AiTask implements ShouldQueueAi
 {
@@ -25,12 +25,20 @@ class GenerateProductDescription extends AiTask implements ShouldQueueAi
 
     public function modality(): string { return 'text'; }
 
+    /**
+     * @return array
+     */
     public function viaQueues(): array
     {
-        return ['request' => config('ai.task_queues.product.description.request', 'ai:low'),
-                'postprocess' => config('ai.task_queues.product.description.postprocess', 'ai:post')];
+        return [
+            'request' => config('ai.task_queues.product.description.request', 'ai:low'),
+            'postprocess' => config('ai.task_queues.product.description.postprocess', 'ai:post')
+        ];
     }
 
+    /**
+     * @return AiPayload
+     */
     public function toPayload(): AiPayload
     {
         $tpl = Prompt::get('product.description.v3')->render([
@@ -48,6 +56,10 @@ class GenerateProductDescription extends AiTask implements ShouldQueueAi
         );
     }
 
+    /**
+     * @param AiResponse $resp
+     * @return array|AiResponse
+     */
     public function postprocess(AiResponse $resp): array|AiResponse
     {
         $data = Schema::parse($resp->content ?? '', 'product_description_v1');

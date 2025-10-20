@@ -37,6 +37,19 @@ class PostprocessAiResult implements ShouldQueue
             QualityScore::class,  // скоринг
         ])->thenReturn();
 
+        // TODO тут чи ничже?
+        $schemaKey = $run->request['schema'] ?? null;
+        if ($schemaKey) {
+            try {
+                $parsed = \Fomvasss\AiTasks\Support\Schema::parse($resp->content ?? '', $schemaKey, strict: true);
+                $resp->content = json_encode($parsed, JSON_UNESCAPED_UNICODE);
+            } catch (\Throwable $e) {
+                // маркуй як помилку схеми або залиш як є — залежить від політики
+                $run->update(['status'=>'error','error'=>"schema_error: ".$e->getMessage()]);
+                return;
+            }
+        }
+
         if ($this->taskClass && class_exists($this->taskClass)) {
             /** @var AiTask $task */
             $task = app($this->taskClass);
