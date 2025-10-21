@@ -78,7 +78,8 @@ class AI
             'duration_ms'   => null,
         ]);
 
-        
+        // Auto-get of constructor arguments
+        $ctorArgs = \Fomvasss\AiTasks\Support\QueueSerializer::serializeTask($task);
 
         $job = new \Fomvasss\AiTasks\Jobs\ProcessAiPayload(
             driverName: $driver,
@@ -88,7 +89,8 @@ class AI
             taskName: $task->name(),
             runId: $run->id,
             taskClass: $task::class,
-            taskCtorArgs: $task->serializeForQueue(),
+            taskCtorArgs: $ctorArgs,
+            taskInstance: $task,
         );
 
         if ($task instanceof \Fomvasss\AiTasks\Contracts\ShouldQueueAi) {
@@ -98,6 +100,11 @@ class AI
             $job->onQueue(config('ai.queues.default'));
         }
 
+        \Log::debug('AI::queue ctorArgs', [
+            'task' => get_class($task),
+            'args' => \Fomvasss\AiTasks\Support\QueueSerializer::serializeTask($task),
+        ]);
+        
         dispatch($job);
 
         return $run->id;

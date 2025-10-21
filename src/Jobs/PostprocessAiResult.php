@@ -21,7 +21,8 @@ class PostprocessAiResult implements ShouldQueue
     public function __construct(
         public string $aiRunId,
         public ?string $taskClass,
-        public array $taskCtorArgs = []
+        public array $taskCtorArgs = [],
+        public ?AiTask $taskInstance = null,
     ) {}
 
     public function handle(): void
@@ -36,7 +37,7 @@ class PostprocessAiResult implements ShouldQueue
             SanitizeHtml::class,  // очистка HTML
             QualityScore::class,  // скоринг
         ])->thenReturn();
-        
+
         $schemaKey = $run->request['schema'] ?? null;
         if ($schemaKey) {
             try {
@@ -51,7 +52,9 @@ class PostprocessAiResult implements ShouldQueue
 
         if ($this->taskClass && class_exists($this->taskClass)) {
             /** @var AiTask $task */
-            $task = new ($this->taskClass)(...$this->taskCtorArgs);
+            $task = $this->taskInstance ?:
+                \Fomvasss\AiTasks\Support\QueueSerializer::instantiate($this->taskClass, $this->taskCtorArgs);
+            
             $task->postprocess($resp);
         }
     }

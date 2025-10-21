@@ -6,6 +6,7 @@ use Fomvasss\AiTasks\Core\AiManager;
 use Fomvasss\AiTasks\DTO\AiContext;
 use Fomvasss\AiTasks\DTO\AiPayload;
 use Fomvasss\AiTasks\Models\AiRun;
+use Fomvasss\AiTasks\Tasks\AiTask;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -31,6 +32,7 @@ class ProcessAiPayload implements ShouldQueue
         public ?string $runId = null,              // ← нове
         public ?string $taskClass = null,
         public array $taskCtorArgs = [],
+        public ?AiTask $taskInstance = null,
     ) {}
 
     public function middleware(): array
@@ -90,7 +92,7 @@ class ProcessAiPayload implements ShouldQueue
                 $this->taskClass,
                 $this->taskCtorArgs
             ))->onQueue(config('ai.queues.post'));
-            
+
         } catch (\Throwable $e) {
             $ms = $run->started_at ? max(0, (int) now()->diffInMilliseconds($run->started_at, true)) : null;
             $run->update([
