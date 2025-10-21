@@ -21,7 +21,7 @@ abstract class AiTask
             taskName: $this->name(),
             subjectType: null,
             subjectId: null,
-            meta: ['locale' => app()->getLocale()]
+            meta: ['locale' => app()->getLocale()] // TODO
         );
     }
 
@@ -34,4 +34,6 @@ abstract class AiTask
     {
         return hash('xxh3', json_encode([$this->name(), $this->modality(), $this->toPayload(), $this->context()->meta]));
     }
+
+    public function serializeForQueue(): array { return []; }
 }

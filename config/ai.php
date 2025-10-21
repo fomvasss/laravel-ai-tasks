@@ -32,7 +32,7 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Drivers (providers)
+    | Drivers (providers): openai, gemini, anthropic, openai, replicate, ollama, etc.
     |--------------------------------------------------------------------------
     |
     | Key = driver name. Must match AiManager factory method:
@@ -48,22 +48,32 @@ return [
 
         'openai' => [
             'type' => 'openai',
-            'model' => env('OPENAI_MODEL','gpt-4.1-mini'),
             'api_key' => env('OPENAI_API_KEY'),
+            'model' => env('OPENAI_MODEL','gpt-4.1-mini'),
+            'image_model' => env('OPENAI_IMAGE_MODEL','dall-e-3'), //dall-e-2, gpt-image-1
+            'images' => ['allow_response_format' => false],
             'endpoint' => 'https://api.openai.com/v1',
             'mode' => 'chat',
             'price' => ['in' => 0.0, 'out' => 0.0],
             'limits' => ['rpm' => 200, 'tpm' => 1000000],
+            
+            'webhook' => [
+                'secret' => env('OPENAI_WEBHOOK_SECRET'),
+                'signature_header' => 'X-OpenAI-Signature',
+                // other options
+            ],
         ],
 
         'gemini' => [
             'type' => 'gemini',
             'model' => env('GEMINI_MODEL','gemini-1.5-flash'),
+            'imagen_model' => env('GEMINI_IMAGEN_MODEL','imagen-4.0-generate-001'),
             'api_key' => env('GEMINI_API_KEY'),
             'endpoint' => 'https://generativelanguage.googleapis.com',
             'mode' => 'chat',
             'price' => ['in' => 0.0, 'out' => 0.0],
             'limits' => ['rpm' => 240],
+
         ],
         
         // Stub/local driver (optional)
@@ -84,9 +94,9 @@ return [
     | Value — ordered list of driver names to try.
     */
     'routing' => [
-        'product.description' => ['gemini', 'openai'],
-        'chat.assist'         => ['openai'],
-        // 'image.product'     => ['stability', 'openai'],
+        'product_description' => ['openai', 'gemini'],
+        'chat_assist'         => ['openai'],
+
         // default fallback is 'default' above
     ],
 
@@ -99,8 +109,8 @@ return [
      | Stages: request, postprocess, webhook.
      */
     'task_queues' => [
-        'product.description' => ['request' => 'ai:low', 'postprocess' => 'ai:post'],
-        'chat.assist'         => [
+        'product_description' => ['request' => 'ai:low', 'postprocess' => 'ai:post'],
+        'chat_assist'         => [
             'request' => env('AI_QUEUE_CHAT', 'ai:high'),
         ],
     ],
@@ -133,23 +143,23 @@ return [
         
         // для inline (мінімально; або залишай порожнім)
         'inline' => [
-            'product.description.v3' => "Language: {{locale}}\nName: {{title}}\nFeatures: {{features | json}}\nGenerate a structured description product in JSON: {\"short\":\"...\",\"html\":\"...\"}",
+            'product_description_v3' => "Language: {{locale}}\nName: {{title}}\nFeatures: {{features | json}}\nGenerate a structured description product in JSON: {\"short\":\"...\",\"html\":\"...\"}",
         ],
         
         // для files
-        'path'   => resource_path('ai/prompts'),
-        'extensions' => ['blade.php','md','txt','prompt'], // порядок пошуку
+        'path'   => base_path('vendor/fomvasss/laravel-ai-tasks/resources/ai/prompts'), // replace to: resource_path('ai/prompts'),
+        'extensions' => ['blade.php', 'md', 'txt', 'prompt'], // order find
 
-        // кеш (для files/database)
+        // cache (for files/database)
         'cache' => [
             'enabled' => true,
-            'ttl' => 300, // сек
+            'ttl' => 0, // сек
         ],
     ],
 
     'schemas' => [
         'driver' => 'files', // inline|files
-        'path'   => base_path('vendor/fomvasss/laravel-ai-tasks/resources/ai/schemas'), // replace to local: base_path('resources/ai/schemas'),
+        'path'   => base_path('vendor/fomvasss/laravel-ai-tasks/resources/ai/schemas'), // replace to: resource_path('ai/schemas'),
 
         'inline' => [
             

@@ -20,7 +20,8 @@ class PostprocessAiResult implements ShouldQueue
 
     public function __construct(
         public string $aiRunId,
-        public ?string $taskClass
+        public ?string $taskClass,
+        public array $taskCtorArgs = []
     ) {}
 
     public function handle(): void
@@ -29,15 +30,13 @@ class PostprocessAiResult implements ShouldQueue
         if ($run->status !== 'ok') return;
 
         $resp = new AiResponse(true, $run->response['content'] ?? null, $run->usage ?? [], $run->response ?? []);
-
-        // простий пайплайн
+        
         $resp = app(Pipeline::class)->send($resp)->through([
             EnsureJson::class,    // якщо очікується JSON
             SanitizeHtml::class,  // очистка HTML
             QualityScore::class,  // скоринг
         ])->thenReturn();
-
-        // TODO тут чи ничже?
+        
         $schemaKey = $run->request['schema'] ?? null;
         if ($schemaKey) {
             try {
@@ -52,7 +51,7 @@ class PostprocessAiResult implements ShouldQueue
 
         if ($this->taskClass && class_exists($this->taskClass)) {
             /** @var AiTask $task */
-            $task = app($this->taskClass);
+            $task = new ($this->taskClass)(...$this->taskCtorArgs);
             $task->postprocess($resp);
         }
     }

@@ -19,7 +19,7 @@ class Schema
         }
 
         if (!is_array($data)) {
-            throw new RuntimeException("Schema parse error: not JSON for {$schemaKey}");
+            throw new \RuntimeException("Schema parse error: not JSON for {$schemaKey}");
         }
 
         $schema = self::load($schemaKey);
@@ -59,7 +59,7 @@ class Schema
         $required = $schema['required'] ?? [];
         foreach ($required as $field) {
             if (!array_key_exists($field, $data)) {
-                throw new RuntimeException("Schema '{$key}' violation: missing '{$field}'");
+                throw new \RuntimeException("Schema '{$key}' violation: missing '{$field}'");
             }
         }
         // Мінімальний контроль типів для string
@@ -67,7 +67,7 @@ class Schema
         foreach ($props as $name => $rule) {
             if (!array_key_exists($name, $data)) continue;
             if (($rule['type'] ?? null) === 'string' && !is_string($data[$name])) {
-                throw new RuntimeException("Schema '{$key}' violation: '{$name}' must be string");
+                throw new \RuntimeException("Schema '{$key}' violation: '{$name}' must be string");
             }
         }
         // можна розширити далі або підключити повний валідатор

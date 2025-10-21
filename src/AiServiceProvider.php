@@ -22,6 +22,10 @@ class AiServiceProvider extends ServiceProvider
             $app->make(\Fomvasss\AiTasks\Core\AiManager::class),
             $app->make(\Fomvasss\AiTasks\Core\Router::class),
         ));
+
+        $this->app->singleton(\Fomvasss\AiTasks\Support\WebhookRegistry::class, fn() => new \Fomvasss\AiTasks\Support\WebhookRegistry());
+        $this->registerWebhookHandlerOpenAi();
+        $this->registerWebhookHandlerGemini();
     }
 
     public function boot(): void
@@ -37,13 +41,10 @@ class AiServiceProvider extends ServiceProvider
             ], 'migrations');
         }
 
-        // Вебхук (опційно)
-        Route::middleware(config('ai.webhook_middleware', ['api']))
+        \Illuminate\Support\Facades\Route::middleware(config('ai.webhook_middleware', ['api']))
             ->prefix('ai-webhooks')
-            ->group(function () {
-                Route::post('/openai', [Http\Controllers\WebhooksController::class, 'openai'])->name('ai.webhook.openai');
-                Route::post('/gemini', [Http\Controllers\WebhooksController::class, 'gemini'])->name('ai.webhook.gemini');
-            });
+            ->post('{driver}', [\Fomvasss\AiTasks\Http\Controllers\DynamicWebhookController::class, 'handle'])
+            ->name('ai.webhooks.dynamic');
 
         if ($this->app->runningInConsole()) {
             $this->commands([
@@ -53,5 +54,70 @@ class AiServiceProvider extends ServiceProvider
                 \Fomvasss\AiTasks\Console\AiTestCommand::class,
             ]);
         }
+    }
+
+    protected function registerWebhookHandlerOpenAi()
+    {
+        $this->app->afterResolving(\Fomvasss\AiTasks\Support\WebhookRegistry::class, function ($registry) {
+            // OpenAI
+            if (config('ai.drivers.openai')) {
+                $registry->extend('openai', function (\Illuminate\Http\Request $r) {
+                    $secret = config('ai.drivers.openai.webhook.secret');
+                    $sigHdr = config('ai.drivers.openai.webhook.signature_header', 'X-OpenAI-Signature');
+
+                    if ($secret) {
+                        $sig = (string)$r->header($sigHdr);
+                        $calc = hash_hmac('sha256', $r->getContent(), $secret);
+                        abort_unless(hash_equals($calc, $sig), 401);
+                    }
+
+                    $event = $r->json()->all();
+                    $providerRunId = data_get($event, 'data.id') ?? data_get($event, 'id');
+                    $status = data_get($event, 'data.status', 'succeeded');
+                    $output = data_get($event, 'data.output');
+                    $usage = (array)data_get($event, 'data.usage', []);
+
+                    return new \Fomvasss\AiTasks\DTO\WebhookPayload(
+                        providerRunId: (string)$providerRunId,
+                        status: $status,
+                        content: $output,
+                        usage: $usage,
+                        error: data_get($event, 'data.error.message')
+                    );
+                });
+            }
+        });
+    }
+
+    protected function registerWebhookHandlerGemini()
+    {
+        $this->app->afterResolving(\Fomvasss\AiTasks\Support\WebhookRegistry::class, function ($registry) {
+            if (config('ai.drivers.gemini')) {
+                $registry->extend('gemini', function (\Illuminate\Http\Request $r) {
+                    $secret = config('ai.drivers.gemini.webhook.secret');
+                    $sigHdr = config('ai.drivers.gemini.webhook.signature_header', 'X-Gemini-Signature');
+
+                    if ($secret) {
+                        $sig = (string)$r->header($sigHdr);
+                        $calc = hash_hmac('sha256', $r->getContent(), $secret);
+                        abort_unless(hash_equals($calc, $sig), 401);
+                    }
+
+                    $event = $r->json()->all();
+                    $providerRunId = data_get($event, 'id') ?? data_get($event, 'run.id');
+                    $status = data_get($event, 'status', 'succeeded');
+                    $output = data_get($event, 'result');
+                    $usage = (array)data_get($event, 'usage', []);
+
+                    return new \Fomvasss\AiTasks\DTO\WebhookPayload(
+                        providerRunId: (string)$providerRunId,
+                        status: $status,
+                        content: $output,
+                        usage: $usage,
+                        error: data_get($event, 'error.message')
+                    );
+                });
+            }
+        });
     }
 }

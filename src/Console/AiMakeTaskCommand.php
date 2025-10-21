@@ -44,7 +44,7 @@ class AiMakeTaskCommand extends Command
         $stub = $this->buildStub($namespace, $className, $modality, $queued);
         $files->put($path, $stub);
 
-        $this->info("Створено: {$path}");
+        $this->info("Created: {$path}");
         return self::SUCCESS;
     }
 
@@ -55,6 +55,8 @@ class AiMakeTaskCommand extends Command
             : "";
         $queuedImpl  = $queued ? " implements ShouldQueueAi" : "";
         $queuedTrait = $queued ? "    use QueueableAi;\n\n" : "";
+        
+        $taskName = Str::snake(str_replace('Task','', $class));
 
         $viaQueues = $queued
             ? <<<PHP
@@ -83,8 +85,7 @@ class {$class} extends AiTask{$queuedImpl}
 {$queuedTrait}
     public function name(): string
     {
-        // example.: 'product.description', 'seo.generation'
-        return strtolower(str_replace('Task','', \\class_basename(static::class)));
+        return '{$taskName}';
     }
 
     // Modality of the task: text|chat|image|vision|embed
@@ -97,7 +98,7 @@ class {$class} extends AiTask{$queuedImpl}
     public function toPayload(): AiPayload
     {
         // Get the template (you can replace it with your own mechanism)
-        \$tpl = Prompt::get('product.description.v3')->render([
+        \$tpl = Prompt::get('product_description_v3')->render([
             'title'    => 'Sample title',
             'features' => ['A','B'],
             'locale'   => app()->getLocale(),
@@ -105,9 +106,9 @@ class {$class} extends AiTask{$queuedImpl}
 
         return new AiPayload(
             modality: \$this->modality(),
-            messages: [[ 'role' => 'user', 'content' => \$tpl ]],
+            messages: [[ 'role' => 'user', 'content' => \$tpl ]], // unified internal this package format!
             options:  ['temperature' => 0.3],
-            template: 'product.description.v3',
+            template: 'product_description_v3',
             schema:   'product_description_v1'
         );
     }

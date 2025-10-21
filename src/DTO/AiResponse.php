@@ -9,6 +9,7 @@ final class AiResponse
         public ?string $content = null,
         public array   $usage = [],
         public array   $raw = [],
-        public ?string $error = null
+        public ?string $error = null,
+        public array   $toolCalls = [],
     ) {}
 }

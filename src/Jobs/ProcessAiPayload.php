@@ -29,7 +29,8 @@ class ProcessAiPayload implements ShouldQueue
         public ?string $idempotencyKey = null,
         public ?string $taskName = null,
         public ?string $runId = null,              // ← нове
-        public ?string $taskClass = null
+        public ?string $taskClass = null,
+        public array $taskCtorArgs = [],
     ) {}
 
     public function middleware(): array
@@ -43,14 +44,27 @@ class ProcessAiPayload implements ShouldQueue
     public function handle(\Fomvasss\AiTasks\Core\AiManager $manager): void
     {
         $run = \Fomvasss\AiTasks\Models\AiRun::findOrFail($this->runId);
-        // позначаємо старт
+       
         $run->update(['status' => 'running', 'started_at' => now()]);
 
         try {
             $resp = $manager->driver($this->driverName)->send($this->payload, $this->context);
 
+            if (!empty($resp->usage['async'])) {
+                $run->update([
+                    'status' => 'waiting',
+                    'response' => array_merge($run->response ?? [], [
+                        'provider_run_id' => $resp->usage['provider_run_id'] ?? null,
+                        'webhook_token'   => $resp->usage['webhook_token'] ?? null,
+                    ]),
+                    'finished_at' => null,
+                    'duration_ms' => null,
+                ]);
+                return; // continue wait webhook
+            }
+
             if (! $resp->ok) {
-                $ms = $run->started_at ? max(0, (int) now()->diffInMilliseconds($run->started_at)) : null;
+                $ms = $run->started_at ? max(0, (int) now()->diffInMilliseconds($run->started_at, true)) : null;
                 $run->update([
                     'status' => 'error',
                     'error' => $resp->error,
@@ -62,7 +76,7 @@ class ProcessAiPayload implements ShouldQueue
                 return;
             }
 
-            $ms = $run->started_at ? max(0, (int) now()->diffInMilliseconds($run->started_at)) : null;
+            $ms = $run->started_at ? max(0, (int) now()->diffInMilliseconds($run->started_at, true)) : null;
             $run->update([
                 'status' => 'ok',
                 'response' => \Fomvasss\AiTasks\Models\AiRun::storeResponse($resp),
@@ -71,10 +85,14 @@ class ProcessAiPayload implements ShouldQueue
                 'duration_ms' => $ms,
             ]);
 
-            dispatch(new \Fomvasss\AiTasks\Jobs\PostprocessAiResult($run->id, $this->taskClass))
-                ->onQueue(config('ai.queues.post'));
+            dispatch(new \Fomvasss\AiTasks\Jobs\PostprocessAiResult(
+                $run->id,
+                $this->taskClass,
+                $this->taskCtorArgs
+            ))->onQueue(config('ai.queues.post'));
+            
         } catch (\Throwable $e) {
-            $ms = $run->started_at ? max(0, (int) now()->diffInMilliseconds($run->started_at)) : null;
+            $ms = $run->started_at ? max(0, (int) now()->diffInMilliseconds($run->started_at, true)) : null;
             $run->update([
                 'status' => 'error',
                 'error' => mb_substr($e->getMessage(), 0, 500),

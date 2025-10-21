@@ -27,7 +27,7 @@ class AiRunModelTest extends TestCase
             'id' => '00000000-0000-0000-0000-000000000001',
             'tenant_id' => 't1',
             'task' => 'demo',
-            'driver' => 'openai_gpt4o',
+            'driver' => 'openai',
             'modality' => 'text',
             'status' => 'running',
             'request' => ['x'=>1],

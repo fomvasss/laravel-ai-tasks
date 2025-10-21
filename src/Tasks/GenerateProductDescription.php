@@ -17,11 +17,11 @@ class GenerateProductDescription extends AiTask implements ShouldQueueAi
     use QueueableAi;
 
     public function __construct(
-        public object $product, // очікується модель з title/features
+        public object $product, // example model with title/features
         public string $locale = 'en'
     ) {}
 
-    public function name(): string { return 'product.description'; }
+    public function name(): string { return 'product_description'; }
 
     public function modality(): string { return 'text'; }
 
@@ -31,8 +31,8 @@ class GenerateProductDescription extends AiTask implements ShouldQueueAi
     public function viaQueues(): array
     {
         return [
-            'request' => config('ai.task_queues.product.description.request', 'ai:low'),
-            'postprocess' => config('ai.task_queues.product.description.postprocess', 'ai:post')
+            'request' => config('ai.task_queues.product_description.request', 'ai:low'),
+            'postprocess' => config('ai.task_queues.product_description.postprocess', 'ai:post')
         ];
     }
 
@@ -41,17 +41,17 @@ class GenerateProductDescription extends AiTask implements ShouldQueueAi
      */
     public function toPayload(): AiPayload
     {
-        $tpl = Prompt::get('product.description.v3')->render([
+        $tpl = Prompt::get('product_description_v3')->render([
             'title' => $this->product->title ?? '',
             'features' => $this->product->features ?? [],
-            'locale' => app()->getLocale() ?: $this->locale,
+            'locale' => $this->locale,
         ]);
 
         return new AiPayload(
             modality: 'text',
             messages: [['role' => 'user','content' => $tpl]],
             options: ['temperature' => 0.4],
-            template: 'product.description.v3',
+            template: 'product_description_v3',
             schema: 'product_description_v1'
         );
     }

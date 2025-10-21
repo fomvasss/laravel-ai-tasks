@@ -14,13 +14,18 @@ class AiManager extends Manager
         return config('ai.default');
     }
 
-    public function createOpenaiDriver(): \Fomvasss\AiTasks\Contracts\AiDriver
+    public function createOpenaiDriver(): AiDriver
     {
         return new \Fomvasss\AiTasks\Drivers\OpenAiDriver(config('ai.drivers.openai'));
     }
 
-    public function createGeminiDriver(): \Fomvasss\AiTasks\Contracts\AiDriver
+    public function createGeminiDriver():AiDriver
     {
         return new \Fomvasss\AiTasks\Drivers\GeminiDriver(config('ai.drivers.gemini'));
+    }
+
+    public function createNullDriver(): AiDriver 
+    {
+        return new \Fomvasss\AiTasks\Drivers\NullDriver([]);
     }
 }

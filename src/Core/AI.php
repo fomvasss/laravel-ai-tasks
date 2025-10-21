@@ -19,38 +19,51 @@ class AI
         $payload = $task->toPayload();
         $ctx     = $task->context();
 
+        $errors = [];
+     
         foreach ($this->router->choose($task) as $driverName) {
+            
             $run = AiRun::start($driverName, $payload, $ctx, $task);
-            try {
+    
+            //try {
                 $resp = $this->manager->driver($driverName)->send($payload, $ctx);
 
                 if (! $resp->ok) {
                     $run->fail($resp->error, $resp->usage);
+                    $errors[] = "$driverName: {$resp->error}";
                     continue;
                 }
 
                 $run->finish($resp);
-                $resp = $task->postprocess($resp);
+                try {
+                    $resp = $task->postprocess($resp);
 
-                return $resp instanceof AiResponse ? $resp : new AiResponse(true, json_encode($resp), usage: []);
-            } catch (\Throwable $e) {
-                $run->error($e);
-                continue;
-            }
+                    return $resp instanceof AiResponse ? $resp : new AiResponse(true, json_encode($resp), usage: []);
+
+                } catch (\Throwable $e) {
+                    $run->error($e);
+                    $errors[] = "$driverName postprocess: ".$e->getMessage();
+                    continue;
+                }
+                
+                throw new \RuntimeException('All providers failed: '.implode(' | ', $errors));
+
+//            } catch (\Throwable $e) {
+//                $run->error($e);
+//                continue;
+//            }
         }
 
         throw new \RuntimeException('All providers failed');
     }
 
-    public function queue(AiTask $task, string $stage = 'request'): string
+    public function queue(AiTask $task, ?AiContext $ctx = null, string $stage = 'request'): string
     {
         $payload = $task->toPayload();
-        $ctx     = $task->context();
+        $ctx     = $ctx ?? $task->context();
         $driver  = $this->router->first($task);
-
-        // створюємо запис у БД зі статусом "queued"
+        
         $run = \Fomvasss\AiTasks\Models\AiRun::create([
-            'id'            => (string) \Illuminate\Support\Str::uuid(),
             'tenant_id'     => $ctx->tenantId,
             'task'          => $ctx->taskName,
             'driver'        => $driver,
@@ -65,14 +78,17 @@ class AI
             'duration_ms'   => null,
         ]);
 
+        
+
         $job = new \Fomvasss\AiTasks\Jobs\ProcessAiPayload(
             driverName: $driver,
             payload: $payload,
             context: $ctx,
             idempotencyKey: $task->idempotencyKey(),
             taskName: $task->name(),
-            runId: $run->id,                 // ← передаємо наш run_id
-            taskClass: $task::class
+            runId: $run->id,
+            taskClass: $task::class,
+            taskCtorArgs: $task->serializeForQueue(),
         );
 
         if ($task instanceof \Fomvasss\AiTasks\Contracts\ShouldQueueAi) {
@@ -82,8 +98,35 @@ class AI
             $job->onQueue(config('ai.queues.default'));
         }
 
-        dispatch($job);                      // НЕ очікуємо id від PendingDispatch
+        dispatch($job);
 
-        return $run->id;                     // повертаємо свій стабільний ідентифікатор
+        return $run->id;
+    }
+
+    public function stream(AiTask $task, callable $onChunk): AiResponse
+    {
+        $payload = $task->toPayload();
+        $ctx     = $task->context();
+
+        $errors = [];
+        foreach ($this->router->choose($task) as $driverName) {
+            try {
+                $driver = $this->manager->driver($driverName);
+                $resp = $driver->stream($payload, $ctx, $onChunk);
+
+                // post-processing after the stream is complete (if necessary)
+                try {
+                    $out = $task->postprocess($resp);
+                    return $out instanceof AiResponse ? $out : new \Fomvasss\AiTasks\DTO\AiResponse(true, json_encode($out));
+                } catch (\Throwable $e) {
+                    $errors[] = "{$driverName} postprocess: " . $e->getMessage();
+                    continue;
+                }
+            } catch (\Throwable $e) {
+                $errors[] = "{$driverName}: ".$e->getMessage();
+                continue;
+            }
+        }
+        throw new \RuntimeException('All providers failed: '.implode(' | ', $errors));
     }
 }

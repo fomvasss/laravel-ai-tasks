@@ -70,7 +70,7 @@ class GenerateProductDescription extends AiTask implements ShouldQueueAi {
 
 ```php
 'routing' => [
-  'product.description' => ['gemini_flash','openai_gpt4o'],
+  'product_description' => ['gemini','openai'],
 ]
 ```
 
