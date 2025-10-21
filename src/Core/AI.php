@@ -5,6 +5,7 @@ namespace Fomvasss\AiTasks\Core;
 use Fomvasss\AiTasks\DTO\AiResponse;
 use Fomvasss\AiTasks\Models\AiRun;
 use Fomvasss\AiTasks\Tasks\AiTask;
+use Illuminate\Pipeline\Pipeline;
 use Illuminate\Support\Arr;
 
 class AI
@@ -28,23 +29,36 @@ class AI
             //try {
                 $resp = $this->manager->driver($driverName)->send($payload, $ctx);
 
+                if ($resp->error === 'async_pending') {
+                    $run->markWaiting(['provider_run_id' => $resp->raw['provider_run_id'] ?? null]);
+                }
+
                 if (! $resp->ok) {
                     $run->fail($resp->error, $resp->usage);
                     $errors[] = "$driverName: {$resp->error}";
                     continue;
                 }
-
+                
                 $run->finish($resp);
-                try {
-                    $resp = $task->postprocess($resp);
 
-                    return $resp instanceof AiResponse ? $resp : new AiResponse(true, json_encode($resp), usage: []);
-
-                } catch (\Throwable $e) {
-                    $run->error($e);
-                    $errors[] = "$driverName postprocess: ".$e->getMessage();
-                    continue;
+                if (config('ai.postprocess.enabled')) {
+                    $resp = app(Pipeline::class)
+                        ->send($resp)->through(config('ai.postprocess.pipes', []))
+                        ->thenReturn();
                 }
+
+//                try {
+                    $result = $task->postprocess($resp);
+                
+                    event(new \Fomvasss\AiTasks\Events\AiRunPostprocessed($run, $result));
+                
+                    return $result instanceof AiResponse ? $result : new AiResponse(true, json_encode($result), usage: []);
+
+//                } catch (\Throwable $e) {
+//                    $run->error($e);
+//                    $errors[] = "$driverName postprocess: ".$e->getMessage();
+//                    continue;
+//                }
                 
                 throw new \RuntimeException('All providers failed: '.implode(' | ', $errors));
 
@@ -63,24 +77,19 @@ class AI
         $ctx     = $ctx ?? $task->context();
         $driver  = $this->router->first($task);
         
-        $run = \Fomvasss\AiTasks\Models\AiRun::create([
-            'tenant_id'     => $ctx->tenantId,
-            'task'          => $ctx->taskName,
-            'driver'        => $driver,
-            'modality'      => $payload->modality,
-            'subject_type'  => $ctx->subjectType,
-            'subject_id'    => $ctx->subjectId,
-            'status'        => 'queued',
-            'idempotency_key'=> $task->idempotencyKey(),
-            'request'       => \Fomvasss\AiTasks\Models\AiRun::minifyRequest($payload),
-            'started_at'    => null,
-            'finished_at'   => null,
-            'duration_ms'   => null,
-        ]);
-
-        // Auto-get of constructor arguments
-        $ctorArgs = \Fomvasss\AiTasks\Support\QueueSerializer::serializeTask($task);
-
+        if ($task instanceof \Fomvasss\AiTasks\Contracts\QueueSerializableAi) {
+            $ctorArgs = $task->toQueueArgs();
+        } elseif (method_exists($task, 'serializeForQueue')) {
+            $ctorArgs = $task->serializeForQueue();
+        } else {
+            throw new \RuntimeException(
+                'Task '.get_class($task).' must implement QueueSerializableAi::toQueueArgs() '.
+                'or has method serializeForQueue().'
+            );
+        }
+        
+        $run = AiRun::startAsQueue($driver, $payload, $ctx, $task);
+        
         $job = new \Fomvasss\AiTasks\Jobs\ProcessAiPayload(
             driverName: $driver,
             payload: $payload,
@@ -90,20 +99,16 @@ class AI
             runId: $run->id,
             taskClass: $task::class,
             taskCtorArgs: $ctorArgs,
-            taskInstance: $task,
         );
 
         if ($task instanceof \Fomvasss\AiTasks\Contracts\ShouldQueueAi) {
-            if ($conn = $task->preferredConnection()) $job->onConnection($conn);
+            if ($conn = $task->preferredConnection()) {
+                $job->onConnection($conn);
+            }
             $job->onQueue($task->preferredQueueFor($stage, config('ai.queues.default')));
         } else {
             $job->onQueue(config('ai.queues.default'));
         }
-
-        \Log::debug('AI::queue ctorArgs', [
-            'task' => get_class($task),
-            'args' => \Fomvasss\AiTasks\Support\QueueSerializer::serializeTask($task),
-        ]);
         
         dispatch($job);
 

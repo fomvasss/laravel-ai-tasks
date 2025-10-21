@@ -62,8 +62,15 @@ class AiMakeTaskCommand extends Command
             ? <<<PHP
     public function viaQueues(): array
     {
-        // example: 'request' => 'ai:low', 'postprocess' => 'ai:post'
-        return ['request' => config('ai.queues.default')];
+        return [
+            'request' => config('ai.queues.default'), 
+            'postprocess' => config('ai.queues.post')
+        ];
+    }
+    
+    public function toQueueArgs(): array
+    {
+        return [/*Add your coustructor arguments: this->product, this->locale ...*/];
     }
 
 PHP
@@ -74,12 +81,14 @@ PHP
 
 namespace {$namespace};
 
+use Fomvasss\AiTasks\Contracts\QueueSerializableAi;
+use Fomvasss\AiTasks\Contracts\ShouldQueueAi;
 use Fomvasss\\AiTasks\\Tasks\\AiTask;
 use Fomvasss\\AiTasks\\DTO\\AiPayload;
 use Fomvasss\\AiTasks\\DTO\\AiResponse;
 use Fomvasss\\AiTasks\\Support\\Prompt;
 use Fomvasss\\AiTasks\\Support\\Schema;
-{$queuedUse}
+
 class {$class} extends AiTask{$queuedImpl} 
 {
 {$queuedTrait}
@@ -88,13 +97,11 @@ class {$class} extends AiTask{$queuedImpl}
         return '{$taskName}';
     }
 
-    // Modality of the task: text|chat|image|vision|embed
     public function modality(): string
     {
-        return '{$modality}';
+        return '{$modality}'; // text|chat|image|vision|embed
     }
 
-{$viaQueues}
     public function toPayload(): AiPayload
     {
         // Get the template (you can replace it with your own mechanism)
@@ -113,18 +120,21 @@ class {$class} extends AiTask{$queuedImpl}
         );
     }
 
-    // Post-processing of responses (can be stored in a database/storage)
     public function postprocess(AiResponse \$resp): array|AiResponse
     {
+        // Post-processing of responses (can be stored in a database/storage or other your own mechanism)
         // If you expect JSON — parse it and return an array
         try {
             \$data = Schema::parse(\$resp->content ?? '', 'product_description_v1');
+            
             return \$data;
+            
         } catch (\\Throwable \$e) {
             // If it's not JSON, return the raw response
             return \$resp;
         }
     }
+    {$viaQueues}
 }
 
 PHP;

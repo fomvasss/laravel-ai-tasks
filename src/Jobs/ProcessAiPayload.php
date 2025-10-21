@@ -29,10 +29,9 @@ class ProcessAiPayload implements ShouldQueue
         public \Fomvasss\AiTasks\DTO\AiContext $context,
         public ?string $idempotencyKey = null,
         public ?string $taskName = null,
-        public ?string $runId = null,              // ← нове
+        public ?string $runId = null,
         public ?string $taskClass = null,
         public array $taskCtorArgs = [],
-        public ?AiTask $taskInstance = null,
     ) {}
 
     public function middleware(): array
@@ -45,47 +44,34 @@ class ProcessAiPayload implements ShouldQueue
 
     public function handle(\Fomvasss\AiTasks\Core\AiManager $manager): void
     {
+        /** @var AiRun $run */
         $run = \Fomvasss\AiTasks\Models\AiRun::findOrFail($this->runId);
-       
-        $run->update(['status' => 'running', 'started_at' => now()]);
+
+        if ($run->status !== 'running') {
+            $run->markRunning(); // -> AiRunStarted
+        }
 
         try {
             $resp = $manager->driver($this->driverName)->send($this->payload, $this->context);
 
-            if (!empty($resp->usage['async'])) {
-                $run->update([
-                    'status' => 'waiting',
-                    'response' => array_merge($run->response ?? [], [
-                        'provider_run_id' => $resp->usage['provider_run_id'] ?? null,
-                        'webhook_token'   => $resp->usage['webhook_token'] ?? null,
-                    ]),
-                    'finished_at' => null,
-                    'duration_ms' => null,
+            if (!empty($resp->usage['async_pending'])) {
+                
+                $run->markWaiting([
+                    'provider_run_id' => $resp->usage['provider_run_id'] ?? null,
+                    'webhook_token'   => $resp->usage['webhook_token'] ?? null,
                 ]);
+                
                 return; // continue wait webhook
             }
 
             if (! $resp->ok) {
-                $ms = $run->started_at ? max(0, (int) now()->diffInMilliseconds($run->started_at, true)) : null;
-                $run->update([
-                    'status' => 'error',
-                    'error' => $resp->error,
-                    'usage' => $resp->usage,
-                    'finished_at' => now(),
-                    'duration_ms' => $ms,
-                ]);
+                
+                $run->fail($resp->error, $resp->usage);
                 $this->release($this->backoff[min($this->attempts()-1, count($this->backoff)-1)]);
                 return;
             }
-
-            $ms = $run->started_at ? max(0, (int) now()->diffInMilliseconds($run->started_at, true)) : null;
-            $run->update([
-                'status' => 'ok',
-                'response' => \Fomvasss\AiTasks\Models\AiRun::storeResponse($resp),
-                'usage' => $resp->usage,
-                'finished_at' => now(),
-                'duration_ms' => $ms,
-            ]);
+            
+            $run->finish($resp);
 
             dispatch(new \Fomvasss\AiTasks\Jobs\PostprocessAiResult(
                 $run->id,
@@ -94,13 +80,9 @@ class ProcessAiPayload implements ShouldQueue
             ))->onQueue(config('ai.queues.post'));
 
         } catch (\Throwable $e) {
+            
             $ms = $run->started_at ? max(0, (int) now()->diffInMilliseconds($run->started_at, true)) : null;
-            $run->update([
-                'status' => 'error',
-                'error' => mb_substr($e->getMessage(), 0, 500),
-                'finished_at' => now(),
-                'duration_ms' => $ms,
-            ]);
+            $run->error($e);
             throw $e;
         }
     }

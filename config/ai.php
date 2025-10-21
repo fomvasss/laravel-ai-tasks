@@ -1,5 +1,9 @@
 <?php
 
+use Fomvasss\AiTasks\Support\Pipes\EnsureJson;
+use Fomvasss\AiTasks\Support\Pipes\QualityScore;
+use Fomvasss\AiTasks\Support\Pipes\SanitizeHtml;
+
 return [
 
     /*
@@ -51,7 +55,7 @@ return [
             'api_key' => env('OPENAI_API_KEY'),
             'model' => env('OPENAI_MODEL','gpt-4.1-mini'),
             'image_model' => env('OPENAI_IMAGE_MODEL','dall-e-3'), //dall-e-2, gpt-image-1
-            'images' => ['allow_response_format' => false],
+            //'images' => ['allow_response_format' => false],
             'endpoint' => 'https://api.openai.com/v1',
             'mode' => 'chat',
             'price' => ['in' => 0.0, 'out' => 0.0],
@@ -73,7 +77,6 @@ return [
             'mode' => 'chat',
             'price' => ['in' => 0.0, 'out' => 0.0],
             'limits' => ['rpm' => 240],
-
         ],
         
         // Stub/local driver (optional)
@@ -114,6 +117,23 @@ return [
             'request' => env('AI_QUEUE_CHAT', 'ai:high'),
         ],
     ],
+    
+    /*
+    |--------------------------------------------------------------------------
+    | Postprocess Pipeline (enable & class list)
+    |--------------------------------------------------------------------------
+    |
+    | Classes are run in PostprocessAiResult (queue 'post').
+    | Replace with your own if needed.
+    */
+    'postprocess' => [
+        'enabled' => true,
+        'pipes' => [
+            EnsureJson::class,    // якщо очікується JSON
+            SanitizeHtml::class,  // очистка HTML
+            QualityScore::class,  // скоринг            
+        ],
+    ],
 
     /*
     |--------------------------------------------------------------------------
@@ -136,7 +156,13 @@ return [
     */
     'webhook_middleware' => ['api'],
 
-    
+    /*
+       |--------------------------------------------------------------------------
+       | Prompt/Schema sources (simplified switches)
+       |--------------------------------------------------------------------------
+       |
+       | You can store prompts in files/DB. Here we only toggle the source.
+       */    
     'prompts' => [
         // files|database|inline // TODO: files|database
         'driver' => env('AI_PROMPTS_DRIVER', 'inline'),

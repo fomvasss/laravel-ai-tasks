@@ -35,5 +35,10 @@ abstract class AiTask
         return hash('xxh3', json_encode([$this->name(), $this->modality(), $this->toPayload(), $this->context()->meta]));
     }
 
+    public static function fromQueueArgs(array $args): AiTask
+    {
+        return new static(...$args);
+    }
+    
     public function serializeForQueue(): array { return []; }
 }

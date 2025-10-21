@@ -10,6 +10,7 @@ class QualityScore
     {
         // демо: додати "оцінку" у usage
         $resp->usage['quality'] = 0.9;
+        
         return $next($resp);
     }
 }

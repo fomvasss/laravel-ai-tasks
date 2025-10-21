@@ -34,13 +34,14 @@ class DynamicWebhookController extends Controller
 
         if ($payload->status === 'succeeded') {
             $resp = new AiResponse(true, is_string($payload->content) ? $payload->content : json_encode($payload->content), $payload->usage, []);
-            $run->update([
-                'status'      => 'ok',
-                'response'    => array_merge($run->response ?? [], ['content' => $resp->content]),
-                'usage'       => array_merge($run->usage ?? [], $payload->usage),
-                'finished_at' => now(),
-                'duration_ms' => $ms,
-            ]);
+            $run->finish(new AiResponse(true, $content, $usage));
+//            $run->update([
+//                'status'      => 'ok',
+//                'response'    => array_merge($run->response ?? [], ['content' => $resp->content]),
+//                'usage'       => array_merge($run->usage ?? [], $payload->usage),
+//                'finished_at' => now(),
+//                'duration_ms' => $ms,
+//            ]);
 
             dispatch(new \Fomvasss\AiTasks\Jobs\PostprocessAiResult($run->id, null))
                 ->onQueue(config('ai.queues.post'));
@@ -49,13 +50,15 @@ class DynamicWebhookController extends Controller
         }
 
         // failed/canceled
-        $run->update([
-            'status'      => 'error',
-            'error'       => $payload->error ?: 'webhook_failed',
-            'usage'       => array_merge($run->usage ?? [], $payload->usage),
-            'finished_at' => now(),
-            'duration_ms' => $ms,
-        ]);
+        $run->fail($payload->error ?: 'webhook_failed', $payload->usage);
+//        $run->update([
+//            'status'      => 'error',
+//            'error'       => $payload->error ?: 'webhook_failed',
+//            'usage'       => array_merge($run->usage ?? [], $payload->usage),
+//            'finished_at' => now(),
+//            'duration_ms' => $ms,
+//        ]);
+
 
         return response()->json(['ok' => true]);
     }

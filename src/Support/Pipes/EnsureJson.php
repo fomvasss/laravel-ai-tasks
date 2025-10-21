@@ -12,6 +12,7 @@ class EnsureJson
         if (json_last_error() !== JSON_ERROR_NONE) {
             // не кидаємо — просто пропускаємо
         }
+        
         return $next($resp);
     }
 }

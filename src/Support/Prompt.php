@@ -6,9 +6,6 @@ use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 
-/**
- * Спрощена бібліотека шаблонів. У проді — з БД або файлів.
- */
 class Prompt
 {
     public function __construct(

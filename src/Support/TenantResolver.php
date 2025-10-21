@@ -16,7 +16,7 @@ class TenantResolver
         // 2) з авторизованого користувача
         if ($u = auth()->user()) {
             // підлаштуй назву поля під свій проєкт
-            return (string) ($u->tenant_id ?? $u->company_id ?? 'default');
+            return (string) ($u->tenant_id ?? $u->company_id ?? $u->id ?? 'default');
         }
 
         // 3) із конфіга
