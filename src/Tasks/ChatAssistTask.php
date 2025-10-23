@@ -15,9 +15,19 @@ class ChatAssistTask extends AiTask
         public string $locale = 'en',
     ) {}
 
-    public function name(): string { return 'chat.assist'; }
+    /**
+     * @return string
+     */
+    public function name(): string { return 'chat_assist'; }
+
+    /**
+     * @return string
+     */
     public function modality(): string { return 'chat'; }
 
+    /**
+     * @return AiPayload
+     */
     public function toPayload(): AiPayload
     {
         $system = [
@@ -43,6 +53,7 @@ class ChatAssistTask extends AiTask
     public function context(): \Fomvasss\AiTasks\DTO\AiContext
     {
         $ctx = parent::context();
+        
         $ctx->subjectType = 'conversation';
         //$ctx->subjectId   = (string) $this->conv->id;
 

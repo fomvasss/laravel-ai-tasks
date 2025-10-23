@@ -11,6 +11,7 @@ class Schema
     public static function parse(string $content, string $schemaKey, bool $strict = true): array
     {
         $data = json_decode($content, true);
+        
         if (!is_array($data)) {
             // наївний витяг JSON з тексту
             if (preg_match('/\{.*\}/s', $content, $m)) {

@@ -21,15 +21,42 @@ class GenerateProductDescription extends AiTask implements ShouldQueueAi, QueueS
         public object $product, // example model with title/features
         public string $locale = 'en'
     ) {}
+
+    /**
+     * @return array
+     */
+    public function toQueueArgs(): array
+    {
+        return [$this->product, $this->locale];
+    }
     
+    /**
+     * @return array
+     */
+    public function viaQueues(): array
+    {
+        return [
+            'request' => config('ai.task_queues.product_description.request', 'ai:low'),
+            'postprocess' => config('ai.task_queues.product_description.postprocess', 'ai:post')
+        ];
+    }
+
+    /**
+     * @return string
+     */
     public function name(): string { return 'product_description'; }
 
+    /**
+     * @return string
+     */
     public function modality(): string { return 'text'; }
+    
     /**
      * @return AiPayload
      */
     public function toPayload(): AiPayload
     {
+        // see: vendor/fomvasss/laravel-ai-tasks/resources/ai/prompts/product_description_v3.md
         $tpl = Prompt::get('product_description_v3')->render([
             'title' => $this->product->title ?? '',
             'features' => $this->product->features ?? [],
@@ -51,24 +78,9 @@ class GenerateProductDescription extends AiTask implements ShouldQueueAi, QueueS
      */
     public function postprocess(AiResponse $resp): array|AiResponse
     {
+        // see: vendor/fomvasss/laravel-ai-tasks/resources/ai/schemas/product_description_v1.json
         $data = Schema::parse($resp->content ?? '', 'product_description_v1');
         
         return $data;
-    }
-    
-    /**
-     * @return array
-     */
-    public function viaQueues(): array
-    {
-        return [
-            'request' => config('ai.task_queues.product_description.request', 'ai:low'),
-            'postprocess' => config('ai.task_queues.product_description.postprocess', 'ai:post')
-        ];
-    }
-
-    public function toQueueArgs(): array
-    {
-        return [$this->product, $this->locale];
     }
 }
