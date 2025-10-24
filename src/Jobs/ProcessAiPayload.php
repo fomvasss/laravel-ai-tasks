@@ -76,12 +76,10 @@ class ProcessAiPayload implements ShouldQueue
             dispatch(new \Fomvasss\AiTasks\Jobs\PostprocessAiResult(
                 $run->id,
                 $this->taskClass,
-                $this->taskCtorArgs
+                $this->taskCtorArgs,
             ))->onQueue(config('ai.queues.post'));
 
         } catch (\Throwable $e) {
-            
-            $ms = $run->started_at ? max(0, (int) now()->diffInMilliseconds($run->started_at, true)) : null;
             $run->error($e);
             throw $e;
         }

@@ -8,6 +8,6 @@ class AiRunPostprocessed
 {
     public function __construct(
         public AiRun $run,
-        public mixed $result // те, що повернув postprocess: масив/рядок/DTO
+        public mixed $result,
     ) {}
 }

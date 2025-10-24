@@ -36,7 +36,7 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Drivers (providers): openai, gemini, anthropic, openai, replicate, ollama, etc.
+    | Drivers (providers): openai, gemini, anthropic, openai, replicate, ollama, stability, etc.
     |--------------------------------------------------------------------------
     |
     | Key = driver name. Must match AiManager factory method:
@@ -55,6 +55,7 @@ return [
             'api_key' => env('OPENAI_API_KEY'),
             'model' => env('OPENAI_MODEL','gpt-4.1-mini'),
             'image_model' => env('OPENAI_IMAGE_MODEL','dall-e-3'), //dall-e-2, gpt-image-1
+            'embed_model' => env('OPENAI_EMBED_MODEL','text-embedding-3-small'),
             //'images' => ['allow_response_format' => false],
             'endpoint' => 'https://api.openai.com/v1',
             'mode' => 'chat',
@@ -71,7 +72,8 @@ return [
         'gemini' => [
             'type' => 'gemini',
             'model' => env('GEMINI_MODEL','gemini-1.5-flash'),
-            'imagen_model' => env('GEMINI_IMAGEN_MODEL','imagen-4.0-generate-001'),
+            'image_model' => env('GEMINI_IMAGEN_MODEL','imagen-4.0-generate-001'),
+            'embed_model' => env('GEMINI_EMBED_MODEL','text-embedding-004'),
             'api_key' => env('GEMINI_API_KEY'),
             'endpoint' => 'https://generativelanguage.googleapis.com',
             'mode' => 'chat',

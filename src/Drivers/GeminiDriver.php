@@ -26,7 +26,34 @@ final class GeminiDriver implements AiDriver
         if ($p->modality === 'image') {
             return $this->sendImage($p, $c);
         }
+
+        if ($p->modality === 'embed') {
+            return $this->sendEmbed($p, $c);
+        }
+
+        if ($p->modality === 'vision') {
+            return $this->sendVision($p, $c);
+        }
         
+        return $this->sendTextAndChat($p, $c);
+    }
+
+    public function stream(AiPayload $p, AiContext $c, callable $onChunk): AiResponse
+    {
+        // TODO
+        return $this->send($p, $c);
+    }
+
+    public function queue(AiPayload $p, AiContext $c, ?string $queue = null): string
+    {
+        return dispatch(
+            (new \Fomvasss\AiTasks\Jobs\ProcessAiPayload('gemini_flash', $p, $c))
+                ->onQueue($queue ?? config('ai.queues.default'))
+        )->id;
+    }
+
+    protected function sendTextAndChat(AiPayload $p, AiContext $c): AiResponse
+    {
         // Узагальнений варіант: content = messages[..].content
         $prompt = $p->messages[0]['content'] ?? '';
 
@@ -47,20 +74,6 @@ final class GeminiDriver implements AiDriver
         ];
 
         return new AiResponse(true, $msg, $usage, $res);
-    }
-
-    public function stream(AiPayload $p, AiContext $c, callable $onChunk): AiResponse
-    {
-        // TODO
-        return $this->send($p, $c);
-    }
-
-    public function queue(AiPayload $p, AiContext $c, ?string $queue = null): string
-    {
-        return dispatch(
-            (new \Fomvasss\AiTasks\Jobs\ProcessAiPayload('gemini_flash', $p, $c))
-                ->onQueue($queue ?? config('ai.queues.default'))
-        )->id;
     }
 
     protected function sendImage(AiPayload $p, AiContext $c): AiResponse
@@ -135,5 +148,99 @@ final class GeminiDriver implements AiDriver
             raw: $res,
             error: $firstB64 ? null : ($res['error']['message'] ?? 'empty_image_response')
         );
+    }
+
+    protected function sendEmbed(AiPayload $p, AiContext $c):AiResponse
+    {
+        $model = $this->cfg['embed_model'] ?? 'text-embedding-004';
+
+        // Gemini embeddings: POST /v1beta/models/{model}:embedContent
+        // input: рядок або масив рядків — якщо масив, зробимо простий батч (по одному запиту), щоб не ускладнювати
+        $input = $p->messages[0]['content'] ?? ($p->options['input'] ?? null);
+        if ($input === null) {
+            return new AiResponse(false, null, [], [], 'embed_input_missing');
+        }
+
+        $doEmbed = function(string $text) use ($model) {
+            $url = rtrim($this->cfg['endpoint'],'/') . "/v1beta/models/{$model}:embedContent";
+            $payload = [
+                'model' => $model,
+                'content' => ['parts' => [['text' => $text]]],
+            ];
+            $res = Http::withHeaders(['x-goog-api-key' => $this->cfg['api_key']])
+                ->acceptJson()
+                ->post($url, $payload)
+                ->throw()
+                ->json();
+
+            // очікувано: embedding.values (масив чисел)
+            return $res['embedding']['values'] ?? [];
+        };
+
+        if (is_array($input)) {
+            $vectors = [];
+            foreach ($input as $txt) $vectors[] = $doEmbed((string)$txt);
+            $content = $vectors;
+        } else {
+            $content = $doEmbed((string)$input);
+        }
+
+        return new AiResponse(true, json_encode($content), ['driver'=>'gemini','model'=>$model], []);
+    }
+
+    protected function sendVision(AiPayload $p, AiContext $c):AiResponse
+    {
+        $model = $this->cfg['model'] ?? 'gemini-1.5-flash';
+
+        // Збираємо parts:
+        // - text → {text:'...'}
+        // - image (url або base64) → або fileData/inline_data
+        $parts = [];
+        $contentParts = $p->messages[0]['content'] ?? [];
+
+        foreach ($contentParts as $part) {
+            if (($part['type'] ?? null) === 'text') {
+                $parts[] = ['text' => (string)($part['text'] ?? '')];
+            } elseif (($part['type'] ?? null) === 'image_url') {
+                // Gemini не приймає чужі URL напряму як image_url; треба fileData або inline_data.
+                // Найпростіше для демо: стягнути вміст і покласти як inline_data (з обережністю у проді).
+                $url = $part['image_url']['url'] ?? null;
+                if ($url) {
+                    try {
+                        $bin = Http::get($url)->throw()->body();
+                        $b64 = base64_encode($bin);
+                        $mime = 'image/png'; // або вирахуй за Content-Type
+                        $parts[] = ['inline_data' => ['mime_type' => $mime, 'data' => $b64]];
+                    } catch (\Throwable $e) { /* ігноруємо цю частину */ }
+                }
+            } elseif (($part['type'] ?? null) === 'inline_base64') {
+                // наш умовний тип: {type:'inline_base64', mime:'image/png', data:'...'}
+                $mime = $part['mime'] ?? 'image/png';
+                $data = $part['data'] ?? '';
+                $parts[] = ['inline_data' => ['mime_type' => $mime, 'data' => $data]];
+            }
+        }
+
+        if (empty($parts)) {
+            return new AiResponse(false, null, [], [], 'vision_parts_missing');
+        }
+
+        $url = rtrim($this->cfg['endpoint'], '/') . "/v1beta/models/{$model}:generateContent";
+        $payload = [
+            'contents' => [['parts' => $parts]],
+            'generationConfig' => [
+                'temperature' => $p->options['temperature'] ?? 0.3,
+            ],
+        ];
+
+        $res = Http::withHeaders(['x-goog-api-key' => $this->cfg['api_key']])
+            ->acceptJson()
+            ->post($url, $payload)
+            ->throw()
+            ->json();
+
+        $msg = $res['candidates'][0]['content']['parts'][0]['text'] ?? null;
+
+        return new AiResponse((bool)$msg, $msg, ['driver'=>'gemini','model'=>$model], $res, $msg ? null : 'empty_vision_response');
     }
 }

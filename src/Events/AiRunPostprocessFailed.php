@@ -8,6 +8,6 @@ class AiRunPostprocessFailed
 {
     public function __construct(
         public AiRun $run,
-        public \Throwable $error
+        public \Throwable $error,
     ) {}
 }

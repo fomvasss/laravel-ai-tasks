@@ -70,7 +70,8 @@ class AiMakeTaskCommand extends Command
     
     public function toQueueArgs(): array
     {
-        return [/*Add your coustructor arguments: this->product, this->locale ...*/];
+        /*Add your coustructor arguments*/
+        return [ /*this->product, this->locale */];
     }
 
 PHP

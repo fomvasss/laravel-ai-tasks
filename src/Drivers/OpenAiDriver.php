@@ -27,51 +27,15 @@ final class OpenAiDriver implements AiDriver
             return $this->sendImage($p, $c);
         }
 
-        $body = [
-            'model' => $this->cfg['model'],
-            'messages' => $p->messages,
-            'temperature' => $p->options['temperature'] ?? 0.3,
-        ];
-
-        if ($p->schema) {
-            $body['response_format'] = ['type' => 'json_object'];
+        if ($p->modality === 'embed') {
+            return $this->sendEmbed($p, $c);
         }
 
-        if (!empty($p->options['tools'])) {
-            $body['tools'] = $p->options['tools'];          // format OpenAI!
-            if (isset($p->options['tool_choice'])) {
-                $body['tool_choice'] = $p->options['tool_choice']; // 'auto'|'none'|['type'=>'function','function'=>['name'=>'...']]
-            }
+        if ($p->modality === 'vision') {
+            return $this->sendVision($p, $c);
         }
 
-        // chat/text приклад
-        $res = Http::withToken($this->cfg['api_key'])
-            ->acceptJson()
-            ->post(rtrim($this->cfg['endpoint'],'/').'/chat/completions', $body)
-            ->throw()
-            ->json();
-
-        $choice = $res['choices'][0]['message'] ?? [];
-        $msg    = $choice['content'] ?? null;
-
-        $toolCalls = [];
-        if (!empty($choice['tool_calls'])) {
-            foreach ($choice['tool_calls'] as $tc) {
-                $toolCalls[] = [
-                    'id' => $tc['id'] ?? null,
-                    'name' => $tc['function']['name'] ?? null,
-                    'arguments' => $tc['function']['arguments'] ?? '{}', // JSON string
-                ];
-            }
-        }
-
-        $usage = $res['usage'] ?? [];
-        $usage['driver'] = 'openai';
-
-        $usage = $res['usage'] ?? [];
-        $usage['driver'] = 'openai';
-
-        return new AiResponse(true, $msg, $usage, $res, null, $toolCalls);
+        return $this->sendTextAndChat($p, $c);
     }
 
     public function queue(AiPayload $p, AiContext $c, ?string $queue = null): string
@@ -81,7 +45,6 @@ final class OpenAiDriver implements AiDriver
                 ->onQueue($queue ?? config('ai.queues.default'))
         )->id;
     }
-
 
     /**
      * TODO: check this
@@ -159,6 +122,56 @@ final class OpenAiDriver implements AiDriver
         return new AiResponse(true, $accum, ['driver'=>'openai'], raw: [], error: null, toolCalls: array_values($toolCalls));
     }
 
+    protected function sendTextAndChat(AiPayload $p, AiContext $c): AiResponse
+    {
+        $body = [
+            'model' => $this->cfg['model'],
+            'messages' => $p->messages,
+            'temperature' => $p->options['temperature'] ?? 0.3,
+        ];
+
+        if ($p->schema) {
+            $body['response_format'] = ['type' => 'json_object'];
+        }
+
+        if (!empty($p->options['tools'])) {
+            $body['tools'] = $p->options['tools'];          // format OpenAI!
+            if (isset($p->options['tool_choice'])) {
+                $body['tool_choice'] = $p->options['tool_choice']; // 'auto'|'none'|['type'=>'function','function'=>['name'=>'...']]
+            }
+        }
+
+        // chat/text приклад
+        $res = Http::withToken($this->cfg['api_key'])
+            ->acceptJson()
+            ->post(rtrim($this->cfg['endpoint'],'/').'/chat/completions', $body)
+            ->throw()
+            ->json();
+
+        $choice = $res['choices'][0]['message'] ?? [];
+        $msg    = $choice['content'] ?? null;
+
+        $toolCalls = [];
+        if (!empty($choice['tool_calls'])) {
+            foreach ($choice['tool_calls'] as $tc) {
+                $toolCalls[] = [
+                    'id' => $tc['id'] ?? null,
+                    'name' => $tc['function']['name'] ?? null,
+                    'arguments' => $tc['function']['arguments'] ?? '{}', // JSON string
+                ];
+            }
+        }
+
+        $usage = $res['usage'] ?? [];
+        $usage['driver'] = 'openai';
+
+        $usage = $res['usage'] ?? [];
+        $usage['driver'] = 'openai';
+
+        return new AiResponse(true, $msg, $usage, $res, null, $toolCalls);
+    }
+
+
     protected function sendImage(AiPayload $p, AiContext $c): AiResponse
     {
         $prompt = $p->messages[0]['content'] ?? '';
@@ -221,5 +234,51 @@ final class OpenAiDriver implements AiDriver
             raw: $res,
             error: $first ? null : ($res['error']['message'] ?? 'empty_image_response')
         );
+    }
+
+    protected function sendEmbed(AiPayload $p, AiContext $c):AiResponse
+    {
+        $model = $this->cfg['embed_model'] ?? 'text-embedding-3-small';
+        // input: рядок або масив рядків
+        $input = $p->messages[0]['content'] ?? ($p->options['input'] ?? null);
+        if ($input === null) {
+            return new AiResponse(false, null, [], [], 'embed_input_missing');
+        }
+
+        $res = Http::withToken($this->cfg['api_key'])
+            ->acceptJson()
+            ->post(rtrim($this->cfg['endpoint'],'/').'/embeddings', [
+                'model' => $model,
+                'input' => $input,
+            ])->throw()->json();
+
+        // Відповідь: data[*].embedding
+        $vectors = array_map(fn($d) => $d['embedding'] ?? [], $res['data'] ?? []);
+        // Якщо був один рядок — повернемо один вектор, інакше масив
+        $content = count($vectors) === 1 ? $vectors[0] : $vectors;
+
+        return new AiResponse(true, json_encode($content), ['driver'=>'openai','model'=>$model], $res);
+    }
+
+    protected function sendVision(AiPayload $p, AiContext $c):AiResponse
+    {
+        // OpenAI Vision працює через chat.completions, але content = масив parts
+        $model = $this->cfg['model'] ?? 'gpt-4.1-mini';
+        $messages = $p->messages;
+
+        // нормалізація контенту для OpenAI: parts типу text/image_url
+        // якщо в payload зайшло у "загальному" форматі — просто прокидуємо як є
+        $res = Http::withToken($this->cfg['api_key'])
+            ->acceptJson()
+            ->post(rtrim($this->cfg['endpoint'],'/').'/chat/completions', [
+                'model' => $model,
+                'messages' => $messages,
+                'temperature' => $p->options['temperature'] ?? 0.3,
+            ])->throw()->json();
+
+        $msg = $res['choices'][0]['message']['content'] ?? null;
+        $usage = ($res['usage'] ?? []) + ['driver'=>'openai','model'=>$model];
+
+        return new AiResponse((bool)$msg, $msg, $usage, $res, $msg ? null : 'empty_vision_response');
     }
 }
