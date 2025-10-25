@@ -56,7 +56,6 @@ return [
             'model' => env('OPENAI_MODEL','gpt-4.1-mini'),
             'image_model' => env('OPENAI_IMAGE_MODEL','dall-e-3'), //dall-e-2, gpt-image-1
             'embed_model' => env('OPENAI_EMBED_MODEL','text-embedding-3-small'),
-            //'images' => ['allow_response_format' => false],
             'endpoint' => 'https://api.openai.com/v1',
             'mode' => 'chat',
             'price' => ['in' => 0.0, 'out' => 0.0],
@@ -71,9 +70,9 @@ return [
 
         'gemini' => [
             'type' => 'gemini',
-            'model' => env('GEMINI_MODEL','gemini-1.5-flash'),
+            'model' => env('GEMINI_MODEL','gemini-2.5-flash'),
             'image_model' => env('GEMINI_IMAGEN_MODEL','imagen-4.0-generate-001'),
-            'embed_model' => env('GEMINI_EMBED_MODEL','text-embedding-004'),
+            'embed_model' => env('GEMINI_EMBED_MODEL','gemini-embedding-001'),
             'api_key' => env('GEMINI_API_KEY'),
             'endpoint' => 'https://generativelanguage.googleapis.com',
             'mode' => 'chat',
@@ -115,9 +114,7 @@ return [
      */
     'task_queues' => [
         'product_description' => ['request' => 'ai:low', 'postprocess' => 'ai:post'],
-        'chat_assist'         => [
-            'request' => env('AI_QUEUE_CHAT', 'ai:high'),
-        ],
+        'chat_assist'         => ['request' => env('AI_QUEUE_CHAT', 'ai:high')],
     ],
     
     /*

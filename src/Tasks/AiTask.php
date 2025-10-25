@@ -5,12 +5,38 @@ namespace Fomvasss\AiTasks\Tasks;
 use Fomvasss\AiTasks\DTO\AiContext;
 use Fomvasss\AiTasks\DTO\AiPayload;
 use Fomvasss\AiTasks\DTO\AiResponse;
+use Fomvasss\AiTasks\Traits\QueueableAi;
+use Fomvasss\AiTasks\Traits\RoutesDrivers;
 
 abstract class AiTask
 {
-    abstract public function name(): string;
+    use QueueableAi,
+        RoutesDrivers;
+
+    protected ?string $customName = null;
+
     abstract public function modality(): string;
     abstract public function toPayload(): AiPayload;
+
+    public function setName(string $name): static
+    {
+        $this->customName = $name;
+
+        return $this;
+    }
+
+    public function name(): string
+    {
+        if ($this->customName) {
+            return $this->customName;
+        }
+        $base = class_basename(static::class);
+        $base = preg_replace('/Task$/', '', $base) ?: $base;
+        
+        $parts = preg_split('/(?=[A-Z])/', $base, -1, PREG_SPLIT_NO_EMPTY);
+        
+        return strtolower(implode('_', $parts));
+    }
 
     public function context(): AiContext
     {

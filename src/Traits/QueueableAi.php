@@ -9,14 +9,27 @@ trait QueueableAi
 
     public function viaQueues(): array { return []; }
 
-    public function onQueue(?string $queue): static { $this->queue = $queue; return $this; }
+    public function onQueue(?string $queue): static
+    {
+        $this->queue = $queue;
 
-    public function onConnection(?string $connection): static { $this->connection = $connection; return $this; }
+        return $this;
+    }
+
+    public function onConnection(?string $connection): static 
+    {
+        $this->connection = $connection;
+
+        return $this;
+    }
 
     public function preferredQueueFor(string $stage, ?string $fallback = null): ?string
     {
         return $this->viaQueues()[$stage] ?? $this->queue ?? $fallback;
     }
 
-    public function preferredConnection(): ?string { return $this->connection; }
+    public function preferredConnection(): ?string
+    {
+        return $this->connection;
+    }
 }

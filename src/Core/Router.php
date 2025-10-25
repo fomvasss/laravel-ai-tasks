@@ -8,7 +8,15 @@ class Router
 {
     public function choose(AiTask $task): array
     {
-        return config("ai.routing.{$task->name()}", [app(AiManager::class)->getDefaultDriver()]);
+        if ($custom = $task->preferredDrivers()) {
+            return $custom;
+        }
+
+        if ($byTask = config("ai.routing.{$task->name()}")) {
+            return $byTask;
+        }
+
+        return [app(\Fomvasss\AiTasks\Core\AiManager::class)->getDefaultDriver()];
     }
 
     public function first(AiTask $task): string

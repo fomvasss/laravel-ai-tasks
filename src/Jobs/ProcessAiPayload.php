@@ -34,9 +34,15 @@ class ProcessAiPayload implements ShouldQueue
         public array $taskCtorArgs = [],
     ) {}
 
+//    public function retryUntil(): \DateTimeInterface
+//    {
+//        return now()->addMinutes(10);
+//    }
+
     public function middleware(): array
     {
         return [
+            //new \Illuminate\Queue\Middleware\RateLimitedWithRedis("ai:{$this->context->tenantId}:{$this->driverName}"),
             new \Illuminate\Queue\Middleware\RateLimited("ai:{$this->context->tenantId}:{$this->driverName}"),
             new \Illuminate\Queue\Middleware\WithoutOverlapping('ai:lock:'.$this->idempotencyKey),
         ];
@@ -82,6 +88,40 @@ class ProcessAiPayload implements ShouldQueue
         } catch (\Throwable $e) {
             $run->error($e);
             throw $e;
+
+//            if ($this->isTransient($e)) {
+//                $this->release($this->nextBackoff());
+//            }
+//            return;
         }
+
+//        if (!$resp->ok) {
+//            $run->fail($resp->error, $resp->usage);
+//
+//            if ($this->isTransientMessage($resp->error)) {
+//                $this->release($this->nextBackoff());
+//            }
+//            return; // не кидаємо
+//        }
+    }
+
+    protected function isTransient(\Throwable $e): bool
+    {
+        $m = strtolower($e->getMessage());
+        return str_contains($m,'timeout')
+            || str_contains($m,'connection')
+            || str_contains($m,'temporar')
+            || str_contains($m,'rate')
+            || str_contains($m,'429')
+            || str_contains($m,'5'); // грубо, за потреби покращ
+    }
+
+    protected function isTransientMessage(?string $err): bool
+    {
+        $m = strtolower($err ?? '');
+        return str_contains($m,'timeout')
+            || str_contains($m,'rate')
+            || str_contains($m,'429')
+            || str_contains($m,'5'); // 5xx
     }
 }

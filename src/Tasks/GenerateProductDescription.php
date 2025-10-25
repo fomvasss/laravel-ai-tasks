@@ -15,8 +15,6 @@ use Fomvasss\AiTasks\Traits\QueueableAi;
  */ 
 class GenerateProductDescription extends AiTask implements ShouldQueueAi, QueueSerializableAi
 {
-    use QueueableAi;
-
     public function __construct(
         public object $product, // example model with title/features
         public string $locale = 'en'

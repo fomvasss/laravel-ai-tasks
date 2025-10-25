@@ -10,11 +10,13 @@ use Illuminate\Support\Facades\Http;
 
 final class OpenAiDriver implements AiDriver
 {
-    public function __construct(private array $cfg) {}
+    public function __construct(private array $cfg)
+    {
+    }
 
     public function supports(string $modality): bool
     {
-        return in_array($modality, ['text','chat','image','vision','embed'], true);
+        return in_array($modality, ['text', 'chat', 'image', 'vision', 'embed'], true);
     }
 
     public function send(AiPayload $p, AiContext $c): AiResponse
@@ -41,7 +43,7 @@ final class OpenAiDriver implements AiDriver
     public function queue(AiPayload $p, AiContext $c, ?string $queue = null): string
     {
         return dispatch(
-            (new \Fomvasss\AiTasks\Jobs\ProcessAiPayload('openai_gpt4o', $p, $c))
+            (new \Fomvasss\AiTasks\Jobs\ProcessAiPayload('openai', $p, $c))
                 ->onQueue($queue ?? config('ai.queues.default'))
         )->id;
     }
@@ -80,7 +82,7 @@ final class OpenAiDriver implements AiDriver
 
         Http::withToken($this->cfg['api_key'])
             ->withOptions(['stream' => true])
-            ->post(rtrim($this->cfg['endpoint'],'/').'/chat/completions', $body)
+            ->post(rtrim($this->cfg['endpoint'], '/') . '/chat/completions', $body)
             ->throw()
             ->sink(function ($chunk) use (&$accum, &$toolCalls, $onChunk) {
                 // OpenAI stream = SSE with strings "data: {json}" і "data: [DONE]"
@@ -91,7 +93,7 @@ final class OpenAiDriver implements AiDriver
                     $data = trim($data);
 
                     if ($data === '[DONE]') {
-                        $onChunk(['type'=>'done']);
+                        $onChunk(['type' => 'done']);
                         continue;
                     }
 
@@ -102,7 +104,7 @@ final class OpenAiDriver implements AiDriver
                     // text chunks
                     if (isset($delta['content'])) {
                         $accum .= $delta['content'];
-                        $onChunk(['type'=>'text', 'delta' => $delta['content']]);
+                        $onChunk(['type' => 'text', 'delta' => $delta['content']]);
                     }
                     // tool_calls chunks
                     if (!empty($delta['tool_calls'])) {
@@ -113,13 +115,13 @@ final class OpenAiDriver implements AiDriver
                             // can be aggregated by index/ID
                             $toolCalls[$idx]['name'] = $name ?? ($toolCalls[$idx]['name'] ?? null);
                             $toolCalls[$idx]['arguments'] = ($toolCalls[$idx]['arguments'] ?? '') . $args;
-                            $onChunk(['type' => 'tool_call_delta','index' => $idx,'name' => $name, 'arguments_delta' => $args]);
+                            $onChunk(['type' => 'tool_call_delta', 'index' => $idx, 'name' => $name, 'arguments_delta' => $args]);
                         }
                     }
                 }
             });
 
-        return new AiResponse(true, $accum, ['driver'=>'openai'], raw: [], error: null, toolCalls: array_values($toolCalls));
+        return new AiResponse(true, $accum, ['driver' => 'openai'], raw: [], error: null, toolCalls: array_values($toolCalls));
     }
 
     protected function sendTextAndChat(AiPayload $p, AiContext $c): AiResponse
@@ -144,12 +146,12 @@ final class OpenAiDriver implements AiDriver
         // chat/text приклад
         $res = Http::withToken($this->cfg['api_key'])
             ->acceptJson()
-            ->post(rtrim($this->cfg['endpoint'],'/').'/chat/completions', $body)
+            ->post(rtrim($this->cfg['endpoint'], '/') . '/chat/completions', $body)
             ->throw()
             ->json();
 
         $choice = $res['choices'][0]['message'] ?? [];
-        $msg    = $choice['content'] ?? null;
+        $msg = $choice['content'] ?? null;
 
         $toolCalls = [];
         if (!empty($choice['tool_calls'])) {
@@ -175,32 +177,32 @@ final class OpenAiDriver implements AiDriver
     protected function sendImage(AiPayload $p, AiContext $c): AiResponse
     {
         $prompt = $p->messages[0]['content'] ?? '';
-        $size   = $p->options['size'] ?? '1024x1024';
-        $n      = (int)($p->options['n'] ?? 1);
-        $model  = $this->cfg['image_model'] ?? 'gpt-image-1';
+        $size = $p->options['size'] ?? '1024x1024';
+        $n = (int)($p->options['n'] ?? 1);
+        $model = $this->cfg['image_model'] ?? 'gpt-image-1';
 
         // те, що хоче користувач (url|b64_json), за замовч. b64_json
         $wantedFormat = $p->options['response_format'] ?? 'b64_json';
 
         // allowlist для response_format (у gpt-image-1 воно часто не підтримується)
-        $modelSupportsRespFormat = in_array(strtolower($model), ['dall-e-3','dall-e-2'], true);
+        $modelSupportsRespFormat = in_array(strtolower($model), ['dall-e-3', 'dall-e-2'], true);
 
         // конструюємо тіло запиту
         $body = [
-            'model'  => $model,
+            'model' => $model,
             'prompt' => $prompt,
-            'size'   => $size,
-            'n'      => $n,
+            'size' => $size,
+            'n' => $n,
         ];
-        if ($modelSupportsRespFormat && in_array($wantedFormat, ['b64_json','url'], true)) {
+        if ($modelSupportsRespFormat && in_array($wantedFormat, ['b64_json', 'url'], true)) {
             $body['response_format'] = $wantedFormat;
         }
 
         // функція-виконавець (для ретраю без response_format)
-        $doRequest = function(array $payload) {
+        $doRequest = function (array $payload) {
             return Http::withToken($this->cfg['api_key'])
                 ->acceptJson()
-                ->post(rtrim($this->cfg['endpoint'],'/').'/images/generations', $payload)
+                ->post(rtrim($this->cfg['endpoint'], '/') . '/images/generations', $payload)
                 ->throw(function ($resp, $e) {
                     // Don't throw it away right away — let's give the retry a chance above
                 })
@@ -230,13 +232,13 @@ final class OpenAiDriver implements AiDriver
         return new AiResponse(
             ok: (bool)$first,
             content: $first,
-            usage: ['driver'=>'openai','images'=>$n,'response_format'=>$effectiveFormat,'model'=>$model],
+            usage: ['driver' => 'openai', 'images' => $n, 'response_format' => $effectiveFormat, 'model' => $model],
             raw: $res,
             error: $first ? null : ($res['error']['message'] ?? 'empty_image_response')
         );
     }
 
-    protected function sendEmbed(AiPayload $p, AiContext $c):AiResponse
+    protected function sendEmbed(AiPayload $p, AiContext $c): AiResponse
     {
         $model = $this->cfg['embed_model'] ?? 'text-embedding-3-small';
         // input: рядок або масив рядків
@@ -247,7 +249,7 @@ final class OpenAiDriver implements AiDriver
 
         $res = Http::withToken($this->cfg['api_key'])
             ->acceptJson()
-            ->post(rtrim($this->cfg['endpoint'],'/').'/embeddings', [
+            ->post(rtrim($this->cfg['endpoint'], '/') . '/embeddings', [
                 'model' => $model,
                 'input' => $input,
             ])->throw()->json();
@@ -257,28 +259,58 @@ final class OpenAiDriver implements AiDriver
         // Якщо був один рядок — повернемо один вектор, інакше масив
         $content = count($vectors) === 1 ? $vectors[0] : $vectors;
 
-        return new AiResponse(true, json_encode($content), ['driver'=>'openai','model'=>$model], $res);
+        return new AiResponse(true, json_encode($content), ['driver' => 'openai', 'model' => $model], $res);
     }
 
-    protected function sendVision(AiPayload $p, AiContext $c):AiResponse
+    protected function sendVision(AiPayload $p, AiContext $c): AiResponse
     {
-        // OpenAI Vision працює через chat.completions, але content = масив parts
         $model = $this->cfg['model'] ?? 'gpt-4.1-mini';
-        $messages = $p->messages;
 
-        // нормалізація контенту для OpenAI: parts типу text/image_url
-        // якщо в payload зайшло у "загальному" форматі — просто прокидуємо як є
+        // беремо перше повідомлення
+        $msg = $p->messages[0] ?? ['role' => 'user', 'content' => []];
+        $parts = $msg['content'] ?? [];
+
+        $normalized = [];
+        foreach ($parts as $part) {
+            $type = $part['type'] ?? null;
+
+            if ($type === 'text') {
+                $txt = (string)($part['text'] ?? '');
+                if ($txt !== '') $normalized[] = ['type' => 'text', 'text' => $txt];
+            } elseif ($type === 'image_url') {
+                // підтримуємо як ['image_url'=>['url'=>...]] так і кастомні 'url'/'data'
+                $url = $part['image_url']['url'] ?? $part['url'] ?? $part['data'] ?? null;
+                if ($url) {
+                    $image = ['url' => $url];
+                    if (!empty($part['detail'])) $image['detail'] = $part['detail']; // optional: 'auto'|'low'|'high'
+                    $normalized[] = ['type' => 'image_url', 'image_url' => $image];
+                }
+            } elseif ($type === 'inline_base64') {
+                // наш загальний тип → перетворюємо у data-uri
+                $mime = $part['mime'] ?? 'image/png';
+                $b64 = $part['data'] ?? '';
+                if ($b64 !== '') {
+                    $normalized[] = ['type' => 'image_url', 'image_url' => ['url' => "data:{$mime};base64,{$b64}"]];
+                }
+            }
+            // інші типи ігноруємо
+        }
+
+        if (empty($normalized)) {
+            return new AiResponse(false, null, [], [], 'vision_parts_missing');
+        }
+
         $res = Http::withToken($this->cfg['api_key'])
             ->acceptJson()
-            ->post(rtrim($this->cfg['endpoint'],'/').'/chat/completions', [
+            ->post(rtrim($this->cfg['endpoint'], '/') . '/chat/completions', [
                 'model' => $model,
-                'messages' => $messages,
+                'messages' => [['role' => $msg['role'] ?? 'user', 'content' => $normalized]],
                 'temperature' => $p->options['temperature'] ?? 0.3,
             ])->throw()->json();
 
-        $msg = $res['choices'][0]['message']['content'] ?? null;
-        $usage = ($res['usage'] ?? []) + ['driver'=>'openai','model'=>$model];
+        $msgTxt = $res['choices'][0]['message']['content'] ?? null;
+        $usage = ($res['usage'] ?? []) + ['driver' => 'openai', 'model' => $model];
 
-        return new AiResponse((bool)$msg, $msg, $usage, $res, $msg ? null : 'empty_vision_response');
+        return new AiResponse((bool)$msgTxt, $msgTxt, $usage, $res, $msgTxt ? null : 'empty_vision_response');
     }
 }

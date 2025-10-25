@@ -92,7 +92,6 @@ use Fomvasss\\AiTasks\\Support\\Schema;
 
 class {$class} extends AiTask{$queuedImpl} 
 {
-{$queuedTrait}
     public function name(): string
     {
         return '{$taskName}';

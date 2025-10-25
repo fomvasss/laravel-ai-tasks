@@ -14,5 +14,5 @@ interface AiDriver
 
     public function stream(AiPayload $payload, AiContext $ctx, callable $onChunk): AiResponse;
 
-    public function queue(AiPayload $payload, AiContext $ctx, ?string $queue = null): string;
+    //public function queue(AiPayload $payload, AiContext $ctx, ?string $queue = null): string;
 }

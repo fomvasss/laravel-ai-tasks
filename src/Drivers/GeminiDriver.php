@@ -8,6 +8,10 @@ use Fomvasss\AiTasks\DTO\AiPayload;
 use Fomvasss\AiTasks\DTO\AiResponse;
 use Illuminate\Support\Facades\Http;
 
+/**
+ * Driver for Google Gemini API
+ * Docs: https://developers.generativeai.google/products/gemini/, https://ai.google.dev/gemini-api/docs
+ */
 final class GeminiDriver implements AiDriver
 {
     public function __construct(private array $cfg) {}
@@ -47,7 +51,7 @@ final class GeminiDriver implements AiDriver
     public function queue(AiPayload $p, AiContext $c, ?string $queue = null): string
     {
         return dispatch(
-            (new \Fomvasss\AiTasks\Jobs\ProcessAiPayload('gemini_flash', $p, $c))
+            (new \Fomvasss\AiTasks\Jobs\ProcessAiPayload('gemini', $p, $c))
                 ->onQueue($queue ?? config('ai.queues.default'))
         )->id;
     }
@@ -152,7 +156,7 @@ final class GeminiDriver implements AiDriver
 
     protected function sendEmbed(AiPayload $p, AiContext $c):AiResponse
     {
-        $model = $this->cfg['embed_model'] ?? 'text-embedding-004';
+        $model = $this->cfg['embed_model'] ?? 'gemini-embedding-001';
 
         // Gemini embeddings: POST /v1beta/models/{model}:embedContent
         // input: рядок або масив рядків — якщо масив, зробимо простий батч (по одному запиту), щоб не ускладнювати
@@ -190,7 +194,7 @@ final class GeminiDriver implements AiDriver
 
     protected function sendVision(AiPayload $p, AiContext $c):AiResponse
     {
-        $model = $this->cfg['model'] ?? 'gemini-1.5-flash';
+        $model = $this->cfg['model'] ?? 'gemini-2.5-flash';
 
         // Збираємо parts:
         // - text → {text:'...'}
@@ -199,33 +203,64 @@ final class GeminiDriver implements AiDriver
         $contentParts = $p->messages[0]['content'] ?? [];
 
         foreach ($contentParts as $part) {
-            if (($part['type'] ?? null) === 'text') {
-                $parts[] = ['text' => (string)($part['text'] ?? '')];
-            } elseif (($part['type'] ?? null) === 'image_url') {
-                // Gemini не приймає чужі URL напряму як image_url; треба fileData або inline_data.
-                // Найпростіше для демо: стягнути вміст і покласти як inline_data (з обережністю у проді).
-                $url = $part['image_url']['url'] ?? null;
+            $type = $part['type'] ?? null;
+
+            if ($type === 'text') {
+                $txt = (string)($part['text'] ?? '');
+                if ($txt !== '') $parts[] = ['text' => $txt];
+                continue;
+            }
+
+            if ($type === 'image_url') {
+                // Стягуємо байти, кодуємо у base64 → inlineData
+                $url = $part['image_url']['url'] ?? $part['url'] ?? null;
                 if ($url) {
                     try {
-                        $bin = Http::get($url)->throw()->body();
-                        $b64 = base64_encode($bin);
-                        $mime = 'image/png'; // або вирахуй за Content-Type
-                        $parts[] = ['inline_data' => ['mime_type' => $mime, 'data' => $b64]];
-                    } catch (\Throwable $e) { /* ігноруємо цю частину */ }
+                        $resp = \Illuminate\Support\Facades\Http::get($url)->throw();
+                        $bin  = $resp->body();
+                        // визнач декілька типів або задай дефолт
+                        $mime = $resp->header('Content-Type') ?: ($part['mime'] ?? 'image/png');
+                        $b64  = base64_encode($bin);
+                        $parts[] = ['inlineData' => ['mimeType' => $mime, 'data' => $b64]];
+                    } catch (\Throwable $e) {
+                        // ігноруємо цю картинку
+                    }
                 }
-            } elseif (($part['type'] ?? null) === 'inline_base64') {
-                // наш умовний тип: {type:'inline_base64', mime:'image/png', data:'...'}
+                continue;
+            }
+
+            if ($type === 'inline_base64') {
+                // наш узагальнений тип → нормалізуємо
                 $mime = $part['mime'] ?? 'image/png';
-                $data = $part['data'] ?? '';
-                $parts[] = ['inline_data' => ['mime_type' => $mime, 'data' => $data]];
+                $raw  = (string)($part['data'] ?? '');
+
+                // зняти data:-префікс (якщо є)
+                if (str_starts_with($raw, 'data:')) {
+                    $raw = preg_replace('#^data:[^;]+;base64,#i', '', $raw);
+                }
+
+                // strict decode → перевірка валідності
+                $bin = base64_decode($raw, true);
+                if ($bin === false) {
+                    // невалідний base64 — пропускаємо
+                    continue;
+                }
+
+                // re-encode у стандартний base64 (без переносу)
+                $b64 = base64_encode($bin);
+
+                // додаємо у потрібному для Gemini форматі (camelCase)
+                $parts[] = ['inlineData' => ['mimeType' => $mime, 'data' => $b64]];
+                continue;
             }
         }
 
+// Захист від порожніх parts
         if (empty($parts)) {
             return new AiResponse(false, null, [], [], 'vision_parts_missing');
         }
 
-        $url = rtrim($this->cfg['endpoint'], '/') . "/v1beta/models/{$model}:generateContent";
+        $url = rtrim($this->cfg['endpoint'], '/') . "/v1beta/models/".($this->cfg['model'] ?? 'gemini-1.5-flash').":generateContent";
         $payload = [
             'contents' => [['parts' => $parts]],
             'generationConfig' => [
@@ -233,7 +268,7 @@ final class GeminiDriver implements AiDriver
             ],
         ];
 
-        $res = Http::withHeaders(['x-goog-api-key' => $this->cfg['api_key']])
+        $res = \Illuminate\Support\Facades\Http::withHeaders(['x-goog-api-key' => $this->cfg['api_key']])
             ->acceptJson()
             ->post($url, $payload)
             ->throw()
@@ -241,6 +276,6 @@ final class GeminiDriver implements AiDriver
 
         $msg = $res['candidates'][0]['content']['parts'][0]['text'] ?? null;
 
-        return new AiResponse((bool)$msg, $msg, ['driver'=>'gemini','model'=>$model], $res, $msg ? null : 'empty_vision_response');
+        return new AiResponse((bool)$msg, $msg, ['driver'=>'gemini','model'=>$this->cfg['model'] ?? 'gemini-1.5-flash'], $res, $msg ? null : 'empty_vision_response');
     }
 }

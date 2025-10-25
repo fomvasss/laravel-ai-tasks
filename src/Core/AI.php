@@ -15,14 +15,20 @@ class AI
         private readonly Router $router
     ) {}
 
-    public function send(AiTask $task): AiResponse
+    public function send(AiTask $task, array|string $drivers = []): AiResponse
     {
         $payload = $task->toPayload();
         $ctx     = $task->context();
 
+        if ($drivers) {
+            $drivers = is_string($drivers) ? [$drivers] : $drivers;
+            $list = $drivers;
+        } else {
+            $list = $this->router->choose($task);
+        }
+
         $errors = [];
-     
-        foreach ($this->router->choose($task) as $driverName) {
+        foreach ($list as $driverName) {
             
             $run = AiRun::start($driverName, $payload, $ctx, $task);
     
@@ -71,11 +77,12 @@ class AI
         throw new \RuntimeException('All providers failed');
     }
 
-    public function queue(AiTask $task, ?AiContext $ctx = null, string $stage = 'request'): string
+    public function queue(AiTask $task, ?AiContext $ctx = null, string $stage = 'request', array|string $drivers=[]): string
     {
         $payload = $task->toPayload();
         $ctx     = $ctx ?? $task->context();
-        $driver  = $this->router->first($task);
+        $list    = $drivers ? (is_string($drivers)?[$drivers]:$drivers) : $this->router->choose($task);
+        $driver  = $list[0];
         
         if ($task instanceof \Fomvasss\AiTasks\Contracts\QueueSerializableAi) {
             $ctorArgs = $task->toQueueArgs();
@@ -87,7 +94,7 @@ class AI
                 'or has method serializeForQueue().'
             );
         }
-        
+
         $run = AiRun::startAsQueue($driver, $payload, $ctx, $task);
         
         $job = new \Fomvasss\AiTasks\Jobs\ProcessAiPayload(
@@ -115,13 +122,20 @@ class AI
         return $run->id;
     }
 
-    public function stream(AiTask $task, callable $onChunk): AiResponse
+    public function stream(AiTask $task, callable $onChunk, array|string $drivers = []): AiResponse
     {
         $payload = $task->toPayload();
         $ctx     = $task->context();
 
+        if ($drivers) {
+            $drivers = is_string($drivers) ? [$drivers] : $drivers;
+            $list = $drivers;
+        } else {
+            $list = $this->router->choose($task);
+        }
+
         $errors = [];
-        foreach ($this->router->choose($task) as $driverName) {
+        foreach ($list as $driverName) {
             try {
                 $driver = $this->manager->driver($driverName);
                 $resp = $driver->stream($payload, $ctx, $onChunk);
@@ -139,6 +153,7 @@ class AI
                 continue;
             }
         }
+        
         throw new \RuntimeException('All providers failed: '.implode(' | ', $errors));
     }
 }
