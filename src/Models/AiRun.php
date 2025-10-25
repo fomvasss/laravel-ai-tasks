@@ -110,6 +110,16 @@ class AiRun extends Model
         event(new AiRunFinished($this));
     }
 
+    public function skip(string $reason): void
+    {
+        $this->update([
+            'status' => 'skipped',
+            'error' => $reason,
+            'finished_at' => now(),
+            'duration_ms' => $this->started_at ? max(0, (int) now()->diffInMilliseconds($this->started_at, true)) : null,
+        ]);
+    }
+
     public function fail(?string $err, ?array $usage = null): void
     {
         $ms = $this->started_at ? max(0, (int) now()->diffInMilliseconds($this->started_at, true)) : null;

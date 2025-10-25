@@ -24,6 +24,7 @@ final class GeminiDriver implements AiDriver
     public function send(AiPayload $p, AiContext $c): AiResponse
     {
         if (empty($this->cfg['api_key'])) {
+            \Log::warning(__METHOD__, [$this->cfg]);
             return new AiResponse(false, null, [], [], 'driver_not_configured: gemini');
         }
 

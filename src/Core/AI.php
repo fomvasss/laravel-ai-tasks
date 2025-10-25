@@ -31,7 +31,14 @@ class AI
         foreach ($list as $driverName) {
             
             $run = AiRun::start($driverName, $payload, $ctx, $task);
-    
+
+            $cfg = config("ai.drivers.$driverName");
+            $api = $cfg['api_key'] ?? null;
+            if (! $api || trim($api) === '') {
+                $run->skip('driver_not_configured: ' . $driverName);
+                continue;
+            }
+
             //try {
                 $resp = $this->manager->driver($driverName)->send($payload, $ctx);
 
@@ -81,7 +88,7 @@ class AI
     {
         $payload = $task->toPayload();
         $ctx     = $ctx ?? $task->context();
-        $list    = $drivers ? (is_string($drivers)?[$drivers]:$drivers) : $this->router->choose($task);
+        $list    = $drivers ? (is_string($drivers) ? [$drivers] : $drivers) : $this->router->choose($task);
         $driver  = $list[0];
         
         if ($task instanceof \Fomvasss\AiTasks\Contracts\QueueSerializableAi) {
