@@ -12,13 +12,15 @@ class AI
 {
     public function __construct(
         private readonly AiManager $manager,
-        private readonly Router $router
-    ) {}
+        private readonly Router    $router
+    )
+    {
+    }
 
     public function send(AiTask $task, array|string $drivers = []): AiResponse
     {
         $payload = $task->toPayload();
-        $ctx     = $task->context();
+        $ctx = $task->context();
 
         if ($drivers) {
             $drivers = is_string($drivers) ? [$drivers] : $drivers;
@@ -29,51 +31,51 @@ class AI
 
         $errors = [];
         foreach ($list as $driverName) {
-            
+
             $run = AiRun::start($driverName, $payload, $ctx, $task);
 
             $cfg = config("ai.drivers.$driverName");
             $api = $cfg['api_key'] ?? null;
-            if (! $api || trim($api) === '') {
+            if (!$api || trim($api) === '') {
                 $run->skip('driver_not_configured: ' . $driverName);
                 continue;
             }
 
             //try {
-                $resp = $this->manager->driver($driverName)->send($payload, $ctx);
+            $resp = $this->manager->driver($driverName)->send($payload, $ctx);
 
-                if ($resp->error === 'async_pending') {
-                    $run->markWaiting(['provider_run_id' => $resp->raw['provider_run_id'] ?? null]);
-                }
+            if ($resp->error === 'async_pending') {
+                $run->markWaiting(['provider_run_id' => $resp->raw['provider_run_id'] ?? null]);
+            }
 
-                if (! $resp->ok) {
-                    $run->fail($resp->error, $resp->usage);
-                    $errors[] = "$driverName: {$resp->error}";
-                    continue;
-                }
-                
-                $run->finish($resp);
+            if (!$resp->ok) {
+                $run->fail($resp->error, $resp->usage);
+                $errors[] = "$driverName: {$resp->error}";
+                continue;
+            }
 
-                if (config('ai.postprocess.enabled')) {
-                    $resp = app(Pipeline::class)
-                        ->send($resp)->through(config('ai.postprocess.pipes', []))
-                        ->thenReturn();
-                }
+            $run->finish($resp);
+
+            if (config('ai.postprocess.enabled')) {
+                $resp = app(Pipeline::class)
+                    ->send($resp)->through(config('ai.postprocess.pipes', []))
+                    ->thenReturn();
+            }
 
 //                try {
-                    $result = $task->postprocess($resp);
-                
-                    event(new \Fomvasss\AiTasks\Events\AiRunPostprocessed($run, $result));
-                
-                    return $result instanceof AiResponse ? $result : new AiResponse(true, json_encode($result), usage: []);
+            $result = $task->postprocess($resp);
+
+            event(new \Fomvasss\AiTasks\Events\AiRunPostprocessed($run, $result));
+
+            return $result instanceof AiResponse ? $result : new AiResponse(true, json_encode($result), usage: []);
 
 //                } catch (\Throwable $e) {
 //                    $run->error($e);
 //                    $errors[] = "$driverName postprocess: ".$e->getMessage();
 //                    continue;
 //                }
-                
-                throw new \RuntimeException('All providers failed: '.implode(' | ', $errors));
+
+            throw new \RuntimeException('All providers failed: ' . implode(' | ', $errors));
 
 //            } catch (\Throwable $e) {
 //                $run->error($e);
@@ -84,26 +86,31 @@ class AI
         throw new \RuntimeException('All providers failed');
     }
 
-    public function queue(AiTask $task, ?AiContext $ctx = null, string $stage = 'request', array|string $drivers=[]): string
+    public function queue(AiTask $task, ?AiContext $ctx = null, string $stage = 'request', array|string $drivers = []): string
     {
         $payload = $task->toPayload();
-        $ctx     = $ctx ?? $task->context();
-        $list    = $drivers ? (is_string($drivers) ? [$drivers] : $drivers) : $this->router->choose($task);
-        $driver  = $list[0];
-        
+        $ctx = $ctx ?? $task->context();
+
+        if ($drivers) {
+            $drivers = is_string($drivers) ? [$drivers] : $drivers;
+            $driver = $drivers[0];
+        } else {
+            $driver = $this->firstConfiguredDriver($task);
+        }
+
         if ($task instanceof \Fomvasss\AiTasks\Contracts\QueueSerializableAi) {
             $ctorArgs = $task->toQueueArgs();
         } elseif (method_exists($task, 'serializeForQueue')) {
             $ctorArgs = $task->serializeForQueue();
         } else {
             throw new \RuntimeException(
-                'Task '.get_class($task).' must implement QueueSerializableAi::toQueueArgs() '.
+                'Task ' . get_class($task) . ' must implement QueueSerializableAi::toQueueArgs() ' .
                 'or has method serializeForQueue().'
             );
         }
 
         $run = AiRun::startAsQueue($driver, $payload, $ctx, $task);
-        
+
         $job = new \Fomvasss\AiTasks\Jobs\ProcessAiPayload(
             driverName: $driver,
             payload: $payload,
@@ -123,16 +130,28 @@ class AI
         } else {
             $job->onQueue(config('ai.queues.default'));
         }
-        
+
         dispatch($job);
 
         return $run->id;
     }
 
+    private function firstConfiguredDriver(AiTask $task): string
+    {
+        foreach ($this->router->choose($task) as $key) {
+            $api = config("ai.drivers.$key.api_key");
+            if ($api && trim($api) !== '') {
+                return $key;
+            };
+        }
+
+        throw new \RuntimeException("No configured driver for {$task->name()}");
+    }
+
     public function stream(AiTask $task, callable $onChunk, array|string $drivers = []): AiResponse
     {
         $payload = $task->toPayload();
-        $ctx     = $task->context();
+        $ctx = $task->context();
 
         if ($drivers) {
             $drivers = is_string($drivers) ? [$drivers] : $drivers;
@@ -156,11 +175,11 @@ class AI
                     continue;
                 }
             } catch (\Throwable $e) {
-                $errors[] = "{$driverName}: ".$e->getMessage();
+                $errors[] = "{$driverName}: " . $e->getMessage();
                 continue;
             }
         }
-        
-        throw new \RuntimeException('All providers failed: '.implode(' | ', $errors));
+
+        throw new \RuntimeException('All providers failed: ' . implode(' | ', $errors));
     }
 }

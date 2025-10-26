@@ -24,6 +24,7 @@ final class GeminiDriver implements AiDriver
     public function send(AiPayload $p, AiContext $c): AiResponse
     {
         if (empty($this->cfg['api_key'])) {
+            \Log::info('GeminiDriver: API key not configured', [$this->cfg]);
             return new AiResponse(false, null, [], [], 'driver_not_configured: gemini');
         }
 
@@ -44,17 +45,231 @@ final class GeminiDriver implements AiDriver
 
     public function stream(AiPayload $p, AiContext $c, callable $onChunk): AiResponse
     {
-        // TODO
-        return $this->send($p, $c);
-    }
+        if (empty($this->cfg['api_key'])) {
+            return new AiResponse(false, null, [], [], 'driver_not_configured: openai');
+        }
 
-//    public function queue(AiPayload $p, AiContext $c, ?string $queue = null): string
-//    {
-//        return dispatch(
-//            (new \Fomvasss\AiTasks\Jobs\ProcessAiPayload('gemini', $p, $c))
-//                ->onQueue($queue ?? config('ai.queues.default'))
-//        )->id;
-//    }
+//        $body = [
+//            'model' => $this->cfg['model'],
+//            'messages' => $p->messages,
+//            'temperature' => $p->options['temperature'] ?? 0.3,
+//            'stream' => true,
+//        ];
+//
+//        if ($p->schema) {
+//            $body['response_format'] = ['type' => 'json_object'];
+//        }
+//
+//        if (!empty($p->options['tools'])) {
+//            $body['tools'] = $p->options['tools'];
+//            if (isset($p->options['tool_choice'])) {
+//                $body['tool_choice'] = $p->options['tool_choice'];
+//            }
+//        }
+
+        //v1
+        // 1) Будуємо endpoint streamGenerateContent
+//        $base = rtrim($this->cfg['endpoint'], '/'); // напр. https://generativelanguage.googleapis.com
+//        $url  = "{$base}/v1beta/models/{$this->cfg['model']}:streamGenerateContent";
+//
+//        // messages -> contents
+//        $roleMap = ['user' => 'user', 'assistant' => 'model', 'system' => 'user'];
+//        $contents = [];
+//        foreach ($p->messages as $m) {
+//            $role = $roleMap[$m['role'] ?? 'user'] ?? 'user';
+//            $text = (string) ($m['content'] ?? '');
+//            if ($text !== '') $contents[] = ['role' => $role, 'parts' => [['text' => $text]]];
+//        }
+//        if (!$contents) {
+//            $prompt = $p->messages[0]['content'] ?? '';
+//            $contents = [['role' => 'user', 'parts' => [['text' => $prompt]]]];
+//        }
+//
+//        $response = \Illuminate\Support\Facades\Http::accept('text/event-stream')
+//            ->withQueryParameters([
+//                'key' => $this->cfg['api_key'],
+//                'alt' => 'sse', // важливо для коректного SSE
+//            ])
+//            ->withOptions([
+//                'stream'       => true,
+//                'read_timeout' => 0,
+//            ])
+//            ->post($url, [
+//                'contents' => $contents,
+//                'generationConfig' => [
+//                    'temperature' => $p->options['temperature'] ?? 0.3,
+//                ],
+//            ]);
+//
+//        $body = $response->toPsrResponse()->getBody();
+//        $buf  = '';
+//        $full = '';
+//
+//        $emitDelta = function (string $delta) use (&$full, $onChunk) {
+//            if ($delta === '') return;
+//            $full .= $delta;
+//            $onChunk($delta);
+//        };
+//
+//        $parseLine = function (string $line) use ($emitDelta) {
+//            $line = trim($line);
+//            if ($line === '') return;
+//
+//            // Підтримати обидва формати: "data: {...}" та чистий JSON "{...}"
+//            if (str_starts_with($line, 'data:')) {
+//                $line = trim(substr($line, 5));
+//            }
+//
+//            if ($line === '[DONE]') {
+//                // кінець стріму
+//                return 'DONE';
+//            }
+//
+//            if ($line[0] !== '{' && $line[0] !== '[') {
+//                return; // службові рядки/порожні
+//            }
+//
+//            $event = json_decode($line, true);
+//            if (!is_array($event)) return;
+//
+//            // Витяг тексту (може прийти як content.parts[].text або delta.text)
+//            $delta =
+//                $event['candidates'][0]['content']['parts'][0]['text']
+//                ?? $event['candidates'][0]['delta']['text']
+//                ?? '';
+//
+//            $emitDelta($delta);
+//        };
+//
+//        while (! $body->eof()) {
+//            $chunk = $body->read(8192);
+//            if ($chunk === '') { usleep(10000); continue; }
+//
+//            $buf .= $chunk;
+//
+//            // ріжемо по \n (SSE/NDJSON)
+//            while (($pos = strpos($buf, "\n")) !== false) {
+//                $line = substr($buf, 0, $pos);
+//                $buf  = substr($buf, $pos + 1);
+//
+//                $res = $parseLine($line);
+//                if ($res === 'DONE') {
+//                    // очищення буфера від можливого \r після DONE
+//                    $buf = '';
+//                    break 2;
+//                }
+//            }
+//        }
+//
+//        return new \Fomvasss\AiTasks\DTO\AiResponse(true, $full, usage: [], raw: []);
+        
+        //v2
+        $base = rtrim($this->cfg['endpoint'], '/'); // напр. https://generativelanguage.googleapis.com
+        $url  = "{$base}/v1beta/models/{$this->cfg['model']}:streamGenerateContent";
+
+        // messages -> contents (Gemini: role user|model, parts[{text}])
+        $roleMap  = ['user' => 'user', 'assistant' => 'model', 'system' => 'user'];
+        $contents = [];
+        foreach ($p->messages as $m) {
+            $role = $roleMap[$m['role'] ?? 'user'] ?? 'user';
+            $text = (string) ($m['content'] ?? '');
+            if ($text !== '') $contents[] = ['role' => $role, 'parts' => [['text' => $text]]];
+        }
+        if (!$contents) {
+            $prompt   = (string)($p->messages[0]['content'] ?? '');
+            $contents = [['role' => 'user', 'parts' => [['text' => $prompt]]]];
+        }
+
+        $response = \Illuminate\Support\Facades\Http::accept('text/event-stream')
+            ->withQueryParameters([
+                'key' => $this->cfg['api_key'],
+                'alt' => 'sse', // деяким середовищам потрібно явно
+            ])
+            ->withOptions([
+                'stream'       => true,
+                'read_timeout' => 0,
+            ])
+            ->post($url, [
+                'contents' => $contents,
+                'generationConfig' => [
+                    'temperature' => $p->options['temperature'] ?? 0.3,
+                    // 'maxOutputTokens' => 1024, // опційно
+                ],
+                // systemInstruction/safetySettings — за потреби
+            ]);
+
+        $body = $response->toPsrResponse()->getBody();
+
+        $full = '';
+        $buf  = '';
+
+        // Симульоване дрібнення дельт (коли Gemini шле великими шматками)
+        $emitSplit = function (string $text) use (&$full, $onChunk, $p) {
+            if ($text === '') return;
+
+            $full .= $text;
+
+            $pack    = (int)($p->options['simulate_stream_pack'] ?? 6);        // “слів” за раз
+            $delayUs = (int)($p->options['simulate_stream_delay_us'] ?? 40_000); // 40 мс
+
+            $parts = preg_split('/(\s+)/u', $text, -1, PREG_SPLIT_DELIM_CAPTURE);
+            if (!$parts) { $onChunk($text); return; }
+
+            $acc = ''; $i = 0;
+            foreach ($parts as $piece) {
+                $acc .= $piece;
+                if (++$i >= $pack) {
+                    $onChunk($acc);
+                    usleep($delayUs);
+                    $acc = ''; $i = 0;
+                }
+            }
+            if ($acc !== '') $onChunk($acc);
+        };
+
+        $parseLine = function (string $line) use ($emitSplit) {
+            $line = trim($line);
+            if ($line === '') return null;
+
+            // Підтримка і "data: {...}", і чистого JSON рядка
+            if (str_starts_with($line, 'data:')) {
+                $line = trim(substr($line, 5));
+            }
+
+            if ($line === '[DONE]') return 'DONE';
+            if ($line === '' || ($line[0] !== '{' && $line[0] !== '[')) return null;
+
+            $event = json_decode($line, true);
+            if (!is_array($event)) return null;
+
+            // Дістаємо текст (може бути у content.parts[0].text або delta.text)
+            $delta =
+                $event['candidates'][0]['content']['parts'][0]['text']
+                ?? $event['candidates'][0]['delta']['text']
+                ?? '';
+
+            $emitSplit($delta);
+            return null;
+        };
+
+        while (! $body->eof()) {
+            $chunk = $body->read(8192);
+            if ($chunk === '') { usleep(10_000); continue; }
+
+            $buf .= $chunk;
+
+            // Розбір по \n (SSE/NDJSON)
+            while (($pos = strpos($buf, "\n")) !== false) {
+                $line = substr($buf, 0, $pos);
+                $buf  = substr($buf, $pos + 1);
+
+                $res = $parseLine($line);
+                if ($res === 'DONE') { $buf = ''; break 2; }
+            }
+        }
+
+        return new AiResponse(true, $full, usage: [], raw: []);
+    }
 
     protected function sendTextAndChat(AiPayload $p, AiContext $c): AiResponse
     {

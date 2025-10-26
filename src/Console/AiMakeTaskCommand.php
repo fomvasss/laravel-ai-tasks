@@ -9,28 +9,36 @@ use Illuminate\Support\Str;
 class AiMakeTaskCommand extends Command
 {
     protected $signature = 'ai:make-task
-        {name : Class name (without sufix Task, added automaticly)}
+        {name : Class name (GetImageTask, Products/GetInfoTask)}
         {--queued : Add ShouldQueueAi + QueueableAi}
         {--modality=text : text|chat|image|vision|embed}
-        {--namespace=App\\Ai\\Tasks : Namespace tasks file}
         {--force : rewrite the file if it exists}';
 
-    protected $description = 'Generate an AI task (class in a project that emulates Fomvasss\\AiTasks\\Tasks\\AiTask)';
+    protected $description = 'Generate an AI task (in a project App\AiTasks namespace by default)';
 
     public function handle(Filesystem $files): int
     {
-        $rawName   = trim($this->argument('name'));
-        $className = Str::studly($rawName);
-        if (! Str::endsWith($className, 'Task')) {
-            $className .= 'Task';
+        $input = trim($this->argument('name')); // напр.: "Orders/InfoOrderTask" або "InfoOrderTask"
+        $modality = $this->option('modality') ?: 'text';
+        $queued   = (bool) $this->option('queued');
+
+        // Розділяємо шлях по "/" або "\" незалежно від ОС
+        $parts = preg_split('#[\\\\/]+#', $input, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        if (empty($parts)) {
+            $this->error('Invalid class name.');
+            return self::FAILURE;
         }
 
-        $namespace = rtrim($this->option('namespace'), '\\');
-        $modality  = $this->option('modality') ?: 'text';
-        $queued    = (bool) $this->option('queued');
+        $className   = array_pop($parts);         // "InfoOrderTask"
+        $subPath     = implode(DIRECTORY_SEPARATOR, $parts); // "Orders"
+        $subNs       = implode('\\', $parts);     // "Orders" -> namespace хвіст
 
-        $targetDir = app_path(str_replace("App/", '', str_replace('\\', '/', $namespace)));
-        $path      = $targetDir . '/' . $className . '.php';
+        $baseNs      = 'App\\Ai\\Tasks';
+        $namespace   = $subNs ? $baseNs . '\\' . $subNs : $baseNs;
+
+        $baseDir     = app_path('Ai/Tasks');
+        $targetDir   = $subPath ? $baseDir . DIRECTORY_SEPARATOR . $subPath : $baseDir;
+        $path        = $targetDir . DIRECTORY_SEPARATOR . $className . '.php';
 
         if ($files->exists($path) && ! $this->option('force')) {
             $this->error("File already exists: {$path}. Use --force for rewrite.");
@@ -60,13 +68,6 @@ class AiMakeTaskCommand extends Command
 
         $viaQueues = $queued
             ? <<<PHP
-    public function viaQueues(): array
-    {
-        return [
-            'request' => config('ai.queues.default'), 
-            'postprocess' => config('ai.queues.post')
-        ];
-    }
     
     public function toQueueArgs(): array
     {
@@ -104,35 +105,20 @@ class {$class} extends AiTask{$queuedImpl}
 
     public function toPayload(): AiPayload
     {
-        // Get the template (you can replace it with your own mechanism)
-        \$tpl = Prompt::get('product_description_v3')->render([
-            'title'    => 'Sample title',
-            'features' => ['A','B'],
-            'locale'   => app()->getLocale(),
-        ]);
-
+        // TODO add your payload generation logic here
         return new AiPayload(
             modality: \$this->modality(),
-            messages: [[ 'role' => 'user', 'content' => \$tpl ]], // unified internal this package format!
+            messages: [[ 'role' => 'user', 'content' => 'Tell me something interesting']],
             options:  ['temperature' => 0.3],
-            template: 'product_description_v3',
-            schema:   'product_description_v1'
         );
     }
 
     public function postprocess(AiResponse \$resp): array|AiResponse
     {
+        // TODO add your post-processing logic here
         // Post-processing of responses (can be stored in a database/storage or other your own mechanism)
         // If you expect JSON — parse it and return an array
-        try {
-            \$data = Schema::parse(\$resp->content ?? '', 'product_description_v1');
-            
-            return \$data;
-            
-        } catch (\\Throwable \$e) {
-            // If it's not JSON, return the raw response
-            return \$resp;
-        }
+        return \$resp;
     }
     {$viaQueues}
 }

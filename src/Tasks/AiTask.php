@@ -16,6 +16,7 @@ abstract class AiTask
     protected ?string $customName = null;
 
     abstract public function modality(): string;
+
     abstract public function toPayload(): AiPayload;
 
     public function setName(string $name): static
@@ -32,9 +33,9 @@ abstract class AiTask
         }
         $base = class_basename(static::class);
         $base = preg_replace('/Task$/', '', $base) ?: $base;
-        
+
         $parts = preg_split('/(?=[A-Z])/', $base, -1, PREG_SPLIT_NO_EMPTY);
-        
+
         return strtolower(implode('_', $parts));
     }
 
@@ -47,7 +48,7 @@ abstract class AiTask
             taskName: $this->name(),
             subjectType: null,
             subjectId: null,
-            meta: ['locale' => app()->getLocale()] // TODO
+            meta: $this->defaultMeta(),
         );
     }
 
@@ -65,6 +66,14 @@ abstract class AiTask
     {
         return new static(...$args);
     }
-    
-    public function serializeForQueue(): array { return []; }
+
+    public function serializeForQueue(): array
+    {
+        return [];
+    }
+
+    protected function defaultMeta(): array
+    {
+        return [];
+    }
 }

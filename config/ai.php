@@ -84,6 +84,7 @@ return [
         'null' => [
             'type'   => 'null', // requires a NullDriver if you enable it
             'mode'   => 'text',
+            'api_key' => 'some-12345',
             'price'  => ['in' => 0.0, 'out' => 0.0],
             'limits' => ['rpm' => 10_000],
         ],
@@ -156,12 +157,12 @@ return [
     'webhook_middleware' => ['api'],
 
     /*
-       |--------------------------------------------------------------------------
-       | Prompt/Schema sources (simplified switches)
-       |--------------------------------------------------------------------------
-       |
-       | You can store prompts in files/DB. Here we only toggle the source.
-       */    
+    |--------------------------------------------------------------------------
+    | Prompt/Schema sources (simplified switches)
+    |--------------------------------------------------------------------------
+    |
+    | You can store prompts in files/DB. Here we only toggle the source.
+    */    
     'prompts' => [
         // files|database|inline // TODO: files|database
         'driver' => env('AI_PROMPTS_DRIVER', 'inline'),

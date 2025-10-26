@@ -54,7 +54,7 @@ class ProcessAiPayload implements ShouldQueue
         $run = \Fomvasss\AiTasks\Models\AiRun::findOrFail($this->runId);
 
         if ($run->status !== 'running') {
-            $run->markRunning(); // -> AiRunStarted
+            $run->markRunning();
         }
 
         try {

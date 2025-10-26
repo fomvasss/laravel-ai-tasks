@@ -40,14 +40,6 @@ final class OpenAiDriver implements AiDriver
         return $this->sendTextAndChat($p, $c);
     }
 
-//    public function queue(AiPayload $p, AiContext $c, ?string $queue = null): string
-//    {
-//        return dispatch(
-//            (new \Fomvasss\AiTasks\Jobs\ProcessAiPayload('openai', $p, $c))
-//                ->onQueue($queue ?? config('ai.queues.default'))
-//        )->id;
-//    }
-
     /**
      * TODO: check this
      *
@@ -71,57 +63,75 @@ final class OpenAiDriver implements AiDriver
             'stream' => true,
         ];
 
-        if ($p->schema) $body['response_format'] = ['type' => 'json_object'];
+        if ($p->schema) {
+            $body['response_format'] = ['type' => 'json_object'];
+        }
+
         if (!empty($p->options['tools'])) {
             $body['tools'] = $p->options['tools'];
             if (isset($p->options['tool_choice'])) $body['tool_choice'] = $p->options['tool_choice'];
         }
 
-        $accum = '';
-        $toolCalls = [];
+        $url = rtrim($this->cfg['endpoint'], '/').'/chat/completions';
 
-        Http::withToken($this->cfg['api_key'])
-            ->withOptions(['stream' => true])
-            ->post(rtrim($this->cfg['endpoint'], '/') . '/chat/completions', $body)
-            ->throw()
-            ->sink(function ($chunk) use (&$accum, &$toolCalls, $onChunk) {
-                // OpenAI stream = SSE with strings "data: {json}" і "data: [DONE]"
-                foreach (preg_split("/\r\n|\n|\r/", $chunk) as $line) {
-                    $line = trim($line);
-                    if ($line === '' || !str_starts_with($line, 'data:')) continue;
-                    $data = substr($line, 5);
-                    $data = trim($data);
+        // 1) робимо стрім-запит
+        $resp = \Illuminate\Support\Facades\Http::withToken($this->cfg['api_key'])
+            ->withHeaders([
+                'Accept' => 'text/event-stream',
+                'Content-Type' => 'application/json',
+            ])
+            ->withOptions([
+                'stream' => true,         // важливо
+                'read_timeout' => 0,      // не обривати
+            ])
+            ->post($url, [
+                'model' => $this->cfg['model'],
+                'messages' => $p->messages,
+                'temperature' => $p->options['temperature'] ?? 0.3,
+                'stream' => true,
+            ]);
 
-                    if ($data === '[DONE]') {
-                        $onChunk(['type' => 'done']);
-                        continue;
-                    }
+        // 2) беремо PSR-відповідь і читаємо тіло як потоковий стрім
+        $body = $resp->toPsrResponse()->getBody();
 
-                    $json = json_decode($data, true);
-                    if (!is_array($json)) continue;
+        $full = '';
+        $buf  = '';
 
-                    $delta = $json['choices'][0]['delta'] ?? [];
-                    // text chunks
-                    if (isset($delta['content'])) {
-                        $accum .= $delta['content'];
-                        $onChunk(['type' => 'text', 'delta' => $delta['content']]);
-                    }
-                    // tool_calls chunks
-                    if (!empty($delta['tool_calls'])) {
-                        foreach ($delta['tool_calls'] as $tc) {
-                            $idx = $tc['index'] ?? 0;
-                            $name = $tc['function']['name'] ?? null;
-                            $args = $tc['function']['arguments'] ?? '';
-                            // can be aggregated by index/ID
-                            $toolCalls[$idx]['name'] = $name ?? ($toolCalls[$idx]['name'] ?? null);
-                            $toolCalls[$idx]['arguments'] = ($toolCalls[$idx]['arguments'] ?? '') . $args;
-                            $onChunk(['type' => 'tool_call_delta', 'index' => $idx, 'name' => $name, 'arguments_delta' => $args]);
-                        }
-                    }
+        while (! $body->eof()) {
+            $chunk = $body->read(8192);
+            if ($chunk === '') { usleep(10000); continue; }
+
+            $buf .= $chunk;
+
+            // Розбираємо SSE: рядки виду "data: {json}"
+            while (($pos = strpos($buf, "\n")) !== false) {
+                $line = trim(substr($buf, 0, $pos));
+                $buf  = substr($buf, $pos + 1);
+
+                if ($line === '' || !str_starts_with($line, 'data:')) {
+                    continue;
                 }
-            });
 
-        return new AiResponse(true, $accum, ['driver' => 'openai'], raw: [], error: null, toolCalls: array_values($toolCalls));
+                $payload = trim(substr($line, 5)); // після "data:"
+                if ($payload === '[DONE]') {
+                    // кінець стріму
+                    break 2;
+                }
+
+                $event = json_decode($payload, true);
+                if (json_last_error() !== JSON_ERROR_NONE) {
+                    continue; // пропустити "серцебиття"/некоректні лінії
+                }
+
+                $delta = $event['choices'][0]['delta']['content'] ?? '';
+                if ($delta !== '') {
+                    $full .= $delta;
+                    $onChunk($delta); // віддай у SSE/WS
+                }
+            }
+        }
+
+        return new \Fomvasss\AiTasks\DTO\AiResponse(true, $full, usage: ['driver' => 'openai'], raw: []);
     }
 
     protected function sendTextAndChat(AiPayload $p, AiContext $c): AiResponse
@@ -172,8 +182,7 @@ final class OpenAiDriver implements AiDriver
 
         return new AiResponse(true, $msg, $usage, $res, null, $toolCalls);
     }
-
-
+    
     protected function sendImage(AiPayload $p, AiContext $c): AiResponse
     {
         $prompt = $p->messages[0]['content'] ?? '';
