@@ -24,7 +24,6 @@ final class GeminiDriver implements AiDriver
     public function send(AiPayload $p, AiContext $c): AiResponse
     {
         if (empty($this->cfg['api_key'])) {
-            \Log::warning(__METHOD__, [$this->cfg]);
             return new AiResponse(false, null, [], [], 'driver_not_configured: gemini');
         }
 
@@ -49,13 +48,13 @@ final class GeminiDriver implements AiDriver
         return $this->send($p, $c);
     }
 
-    public function queue(AiPayload $p, AiContext $c, ?string $queue = null): string
-    {
-        return dispatch(
-            (new \Fomvasss\AiTasks\Jobs\ProcessAiPayload('gemini', $p, $c))
-                ->onQueue($queue ?? config('ai.queues.default'))
-        )->id;
-    }
+//    public function queue(AiPayload $p, AiContext $c, ?string $queue = null): string
+//    {
+//        return dispatch(
+//            (new \Fomvasss\AiTasks\Jobs\ProcessAiPayload('gemini', $p, $c))
+//                ->onQueue($queue ?? config('ai.queues.default'))
+//        )->id;
+//    }
 
     protected function sendTextAndChat(AiPayload $p, AiContext $c): AiResponse
     {
@@ -87,7 +86,7 @@ final class GeminiDriver implements AiDriver
         $n      = (int)($p->options['n'] ?? 1);
 
         // Модель Imagen (див. конфіг/ENV)
-        $model  = $this->cfg['imagen_model'] ?? 'imagen-4.0-generate-001';
+        $model  = $this->cfg['image_model'] ?? 'imagen-4.0-generate-001';
 
         // Опційні параметри Imagen (мапимо з options)
         // imageSize: '1K' | '2K' (тільки для Standard/Ultra), aspectRatio: '1:1','3:4','4:3','9:16','16:9'

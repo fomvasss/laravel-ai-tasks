@@ -40,13 +40,13 @@ final class OpenAiDriver implements AiDriver
         return $this->sendTextAndChat($p, $c);
     }
 
-    public function queue(AiPayload $p, AiContext $c, ?string $queue = null): string
-    {
-        return dispatch(
-            (new \Fomvasss\AiTasks\Jobs\ProcessAiPayload('openai', $p, $c))
-                ->onQueue($queue ?? config('ai.queues.default'))
-        )->id;
-    }
+//    public function queue(AiPayload $p, AiContext $c, ?string $queue = null): string
+//    {
+//        return dispatch(
+//            (new \Fomvasss\AiTasks\Jobs\ProcessAiPayload('openai', $p, $c))
+//                ->onQueue($queue ?? config('ai.queues.default'))
+//        )->id;
+//    }
 
     /**
      * TODO: check this

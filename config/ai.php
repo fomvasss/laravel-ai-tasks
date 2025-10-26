@@ -71,7 +71,7 @@ return [
         'gemini' => [
             'type' => 'gemini',
             'model' => env('GEMINI_MODEL','gemini-2.5-flash'),
-            'image_model' => env('GEMINI_IMAGEN_MODEL','imagen-4.0-generate-001'),
+            'image_model' => env('GEMINI_IMAGE_MODEL','imagen-4.0-generate-001'),
             'embed_model' => env('GEMINI_EMBED_MODEL','gemini-embedding-001'),
             'api_key' => env('GEMINI_API_KEY'),
             'endpoint' => 'https://generativelanguage.googleapis.com',
