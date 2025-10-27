@@ -58,7 +58,7 @@ return [
             'embed_model' => env('OPENAI_EMBED_MODEL','text-embedding-3-small'),
             'endpoint' => 'https://api.openai.com/v1',
             'mode' => 'chat',
-            'price' => ['in' => 2, 'out' => 3, 'image' => 0.02], // approx per 1K tokens / image
+            'price' => ['in' => 0.00, 'out' => 0.00, 'image' => 0.00], // approx per 1K tokens / image
             'limits' => ['rpm' => 200, 'tpm' => 1000000],
             
             'webhook' => [
@@ -76,7 +76,7 @@ return [
             'api_key' => env('GEMINI_API_KEY'),
             'endpoint' => 'https://generativelanguage.googleapis.com',
             'mode' => 'chat',
-            'price' => ['in' => 0.0, 'out' => 0.0],
+            'price' => ['in' => 0.00, 'out' => 0.00, 'image' => 0.00], // approx per 1K tokens / image
             'limits' => ['rpm' => 240],
         ],
         

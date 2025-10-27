@@ -6,6 +6,8 @@ use Fomvasss\AiTasks\Core\AiManager;
 use Fomvasss\AiTasks\DTO\AiContext;
 use Fomvasss\AiTasks\DTO\AiPayload;
 use Fomvasss\AiTasks\Models\AiRun;
+use Fomvasss\AiTasks\Support\Budget;
+use Fomvasss\AiTasks\Support\Cost;
 use Fomvasss\AiTasks\Tasks\AiTask;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -24,15 +26,17 @@ class ProcessAiPayload implements ShouldQueue
     public array $backoff = [10, 30, 120];
 
     public function __construct(
-        public string $driverName,
+        public string                          $driverName,
         public \Fomvasss\AiTasks\DTO\AiPayload $payload,
         public \Fomvasss\AiTasks\DTO\AiContext $context,
-        public ?string $idempotencyKey = null,
-        public ?string $taskName = null,
-        public ?string $runId = null,
-        public ?string $taskClass = null,
-        public array $taskCtorArgs = [],
-    ) {}
+        public ?string                         $idempotencyKey = null,
+        public ?string                         $taskName = null,
+        public ?string                         $runId = null,
+        public ?string                         $taskClass = null,
+        public array                           $taskCtorArgs = [],
+    )
+    {
+    }
 
 //    public function retryUntil(): \DateTimeInterface
 //    {
@@ -44,7 +48,7 @@ class ProcessAiPayload implements ShouldQueue
         return [
             //new \Illuminate\Queue\Middleware\RateLimitedWithRedis("ai:{$this->context->tenantId}:{$this->driverName}"),
             new \Illuminate\Queue\Middleware\RateLimited("ai:{$this->context->tenantId}:{$this->driverName}"),
-            new \Illuminate\Queue\Middleware\WithoutOverlapping('ai:lock:'.$this->idempotencyKey),
+            new \Illuminate\Queue\Middleware\WithoutOverlapping('ai:lock:' . $this->idempotencyKey),
         ];
     }
 
@@ -58,25 +62,36 @@ class ProcessAiPayload implements ShouldQueue
         }
 
         try {
+            app(Budget::class)->ensureNotExceeded($this->context->tenantId, 0.0);
+
             $resp = $manager->driver($this->driverName)->send($this->payload, $this->context);
 
             if (!empty($resp->usage['async_pending'])) {
-                
+
                 $run->markWaiting([
                     'provider_run_id' => $resp->usage['provider_run_id'] ?? null,
-                    'webhook_token'   => $resp->usage['webhook_token'] ?? null,
+                    'webhook_token' => $resp->usage['webhook_token'] ?? null,
                 ]);
-                
+
                 return; // continue wait webhook
             }
 
-            if (! $resp->ok) {
-                
+            if (!$resp->ok) {
                 $run->fail($resp->error, $resp->usage);
-                $this->release($this->backoff[min($this->attempts()-1, count($this->backoff)-1)]);
+                $this->release($this->backoff[min($this->attempts() - 1, count($this->backoff) - 1)]);
                 return;
             }
-            
+
+            // Calculate the cost if it is not set by the driver
+            if (!isset($resp->usage['cost'])) {
+                $driverCfg = config("ai.drivers.{$this->driverName}", []);
+                $resp->usage['cost'] = Cost::calc($this->driverName, $resp->usage, $driverCfg);
+            }
+
+            // Перевірка бюджету з урахуванням фактичної вартості відповіді
+            app(Budget::class)->ensureNotExceeded($this->context->tenantId, (float)$resp->usage['cost']);
+
+
             $run->finish($resp);
 
             dispatch(new \Fomvasss\AiTasks\Jobs\PostprocessAiResult(
@@ -84,6 +99,12 @@ class ProcessAiPayload implements ShouldQueue
                 $this->taskClass,
                 $this->taskCtorArgs,
             ))->onQueue(config('ai.queues.post'));
+
+        } catch (BudgetExceededException $e) {
+            
+            $run->error($e);
+            // Don't retry — this is not a temporary error.
+            return;
 
         } catch (\Throwable $e) {
             $run->error($e);
@@ -108,20 +129,20 @@ class ProcessAiPayload implements ShouldQueue
     protected function isTransient(\Throwable $e): bool
     {
         $m = strtolower($e->getMessage());
-        return str_contains($m,'timeout')
-            || str_contains($m,'connection')
-            || str_contains($m,'temporar')
-            || str_contains($m,'rate')
-            || str_contains($m,'429')
-            || str_contains($m,'5'); // грубо, за потреби покращ
+        return str_contains($m, 'timeout')
+            || str_contains($m, 'connection')
+            || str_contains($m, 'temporar')
+            || str_contains($m, 'rate')
+            || str_contains($m, '429')
+            || str_contains($m, '5'); // грубо, за потреби покращ
     }
 
     protected function isTransientMessage(?string $err): bool
     {
         $m = strtolower($err ?? '');
-        return str_contains($m,'timeout')
-            || str_contains($m,'rate')
-            || str_contains($m,'429')
-            || str_contains($m,'5'); // 5xx
+        return str_contains($m, 'timeout')
+            || str_contains($m, 'rate')
+            || str_contains($m, '429')
+            || str_contains($m, '5'); // 5xx
     }
 }

@@ -4,6 +4,9 @@ namespace Fomvasss\AiTasks\Core;
 
 use Fomvasss\AiTasks\DTO\AiResponse;
 use Fomvasss\AiTasks\Models\AiRun;
+use Fomvasss\AiTasks\Support\Budget;
+use Fomvasss\AiTasks\Support\BudgetExceededException;
+use Fomvasss\AiTasks\Support\Cost;
 use Fomvasss\AiTasks\Tasks\AiTask;
 use Illuminate\Pipeline\Pipeline;
 use Illuminate\Support\Arr;
@@ -21,6 +24,12 @@ class AI
     {
         $payload = $task->toPayload();
         $ctx = $task->context();
+
+        try {
+            app(Budget::class)->ensureNotExceeded($ctx->tenantId, 0.0);
+        } catch (BudgetExceededException $e) {
+            throw $e;
+        }
 
         if ($drivers) {
             $drivers = is_string($drivers) ? [$drivers] : $drivers;
@@ -51,6 +60,22 @@ class AI
             if (!$resp->ok) {
                 $run->fail($resp->error, $resp->usage);
                 $errors[] = "$driverName: {$resp->error}";
+                continue;
+            }
+
+            // Calculate the cost if it is not set by the driver
+            if (!isset($resp->usage['cost'])) {
+                $driverCfg = config("ai.drivers.{$driverName}", []);
+                $resp->usage['cost'] = Cost::calc($driverName, $resp->usage, $driverCfg);
+            }
+
+            // Budget review taking into account the expected cost of this particular call
+            try {
+                app(Budget::class)->ensureNotExceeded($ctx->tenantId, (float)$resp->usage['cost']);
+            } catch (BudgetExceededException $e) {
+                // mark it as an error and move on to the next driver
+                $run->fail('budget_exceeded', $resp->usage);
+                $errors[] = "{$driverName}: budget_exceeded";
                 continue;
             }
 
