@@ -10,7 +10,8 @@ use Illuminate\Support\Facades\Http;
 
 /**
  * Driver for Google Gemini API
- * Docs: https://developers.generativeai.google/products/gemini/, https://ai.google.dev/gemini-api/docs
+ *
+ * @see https://ai.google.dev/gemini-api/docs
  */
 final class GeminiDriver implements AiDriver
 {
@@ -18,7 +19,7 @@ final class GeminiDriver implements AiDriver
 
     public function supports(string $modality): bool
     {
-        return in_array($modality, ['text','chat','image','vision','embed'], true);
+        return in_array($modality, ['text', 'chat', 'image', 'vision', 'embed'], true);
     }
 
     public function send(AiPayload $p, AiContext $c): AiResponse

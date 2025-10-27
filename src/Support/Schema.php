@@ -56,21 +56,23 @@ class Schema
 
     protected static function assert(array $data, array $schema, string $key): void
     {
-        // Дуже легка перевірка required (щоб не тягнути пакет-валідатор по дефолту):
         $required = $schema['required'] ?? [];
         foreach ($required as $field) {
             if (!array_key_exists($field, $data)) {
                 throw new \RuntimeException("Schema '{$key}' violation: missing '{$field}'");
             }
         }
-        // Мінімальний контроль типів для string
+
+        
         $props = $schema['properties'] ?? [];
         foreach ($props as $name => $rule) {
-            if (!array_key_exists($name, $data)) continue;
+            if (!array_key_exists($name, $data)) {
+                continue;
+            }
+            
             if (($rule['type'] ?? null) === 'string' && !is_string($data[$name])) {
                 throw new \RuntimeException("Schema '{$key}' violation: '{$name}' must be string");
             }
         }
-        // можна розширити далі або підключити повний валідатор
     }
 }

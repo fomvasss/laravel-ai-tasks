@@ -8,11 +8,14 @@ use Fomvasss\AiTasks\DTO\AiPayload;
 use Fomvasss\AiTasks\DTO\AiResponse;
 use Illuminate\Support\Facades\Http;
 
+/**
+ * Driver for OpenAI API
+ * 
+ * @see https://platform.openai.com/docs/api-reference
+ */
 final class OpenAiDriver implements AiDriver
 {
-    public function __construct(private array $cfg)
-    {
-    }
+    public function __construct(private array $cfg) {}
 
     public function supports(string $modality): bool
     {
@@ -39,17 +42,7 @@ final class OpenAiDriver implements AiDriver
 
         return $this->sendTextAndChat($p, $c);
     }
-
-    /**
-     * TODO: check this
-     *
-     * @param AiPayload $p
-     * @param AiContext $c
-     * @param callable $onChunk
-     * @return AiResponse
-     * @throws \Illuminate\Http\Client\ConnectionException
-     * @throws \Illuminate\Http\Client\RequestException
-     */
+    
     public function stream(AiPayload $p, AiContext $c, callable $onChunk): AiResponse
     {
         if (empty($this->cfg['api_key'])) {
@@ -69,7 +62,9 @@ final class OpenAiDriver implements AiDriver
 
         if (!empty($p->options['tools'])) {
             $body['tools'] = $p->options['tools'];
-            if (isset($p->options['tool_choice'])) $body['tool_choice'] = $p->options['tool_choice'];
+            if (isset($p->options['tool_choice'])) {
+                $body['tool_choice'] = $p->options['tool_choice'];
+            }
         }
 
         $url = rtrim($this->cfg['endpoint'], '/').'/chat/completions';

@@ -58,7 +58,7 @@ return [
             'embed_model' => env('OPENAI_EMBED_MODEL','text-embedding-3-small'),
             'endpoint' => 'https://api.openai.com/v1',
             'mode' => 'chat',
-            'price' => ['in' => 0.0, 'out' => 0.0],
+            'price' => ['in' => 2, 'out' => 3, 'image' => 0.02], // approx per 1K tokens / image
             'limits' => ['rpm' => 200, 'tpm' => 1000000],
             
             'webhook' => [
@@ -92,7 +92,7 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Routing: task name -> list of drivers (priority + fallback)
+    | Routing: Task name -> list of drivers (priority + fallback) for do task
     |--------------------------------------------------------------------------
     |
     | Key — unique task name (AiTask::name()).
@@ -144,6 +144,7 @@ return [
     | Enforced by a guard before calling providers (if you plug it in).
     */
     'budgets' => [
+         'default' => ['monthly_usd' => 100]
         // 'tenant-id' => ['monthly_usd' => 100]
     ],
 
