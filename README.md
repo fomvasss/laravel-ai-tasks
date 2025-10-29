@@ -33,7 +33,7 @@ GEMINI_API_KEY=...
 ```
 
 ### Supervisor/Queue configuration
-Add the following queues to your queue worker command:
+Add the following queues to your queue worker command (or use Horizon as below):
 
 ```bash
 php artisan queue:work --queue=ai:webhook,ai:high,ai:default,ai:low,ai:post,ai:webhook
@@ -42,22 +42,25 @@ php artisan queue:work --queue=ai:webhook,ai:high,ai:default,ai:low,ai:post,ai:w
 ### Horizon configuration
 If you are using Laravel Horizon, you can configure the queues in `config/horizon.php`:
 
+<details>
+  <summary>See details:</summary>
+
 ```php
 'environments' => [
     '*' => [
-        // Пріоритетні онлайн-діалоги/стріми (мін. затримка)
+        // Prioryty online dialogues/streams (min. latency)
         'supervisor-ai-high' => [
             'connection'   => 'redis',
             'queue'        => ['ai:high'],
             'balance'      => 'auto',     // auto|simple|false
             'minProcesses' => 2,
             'maxProcesses' => 24,
-            'tries'        => 1,          // без повторів (керуй у коді)
-            'timeout'      => 40,         // сек
+            'tries'        => 1,
+            'timeout'      => 40,         // seconds
             'nice'         => 0,
         ],
 
-        // Типові текстові генерації
+        // Typical text generations
         'supervisor-ai-default' => [
             'connection'   => 'redis',
             'queue'        => ['ai:default'],
@@ -69,7 +72,7 @@ If you are using Laravel Horizon, you can configure the queues in `config/horizo
             'nice'         => 5,
         ],
 
-        // Масові/повільні задачі (каталоги, зображення)
+        // Mass/slow tasks (catalogs, images)
         'supervisor-ai-low' => [
             'connection'   => 'redis',
             'queue'        => ['ai:low'],
@@ -81,7 +84,7 @@ If you are using Laravel Horizon, you can configure the queues in `config/horizo
             'nice'         => 10,
         ],
 
-        // Постобробка (валидація JSON, конвертації, збереження)
+        // Postprocessing tasks (validation JSON, conversions, saving)
         'supervisor-ai-post' => [
             'connection'   => 'redis',
             'queue'        => ['ai:post'],
@@ -93,7 +96,7 @@ If you are using Laravel Horizon, you can configure the queues in `config/horizo
             'nice'         => 5,
         ],
 
-        // Вебхуки від провайдерів (короткі, реактивні)
+        // Webhook from providers (short, reactive)
         'supervisor-ai-webhook' => [
             'connection'   => 'redis',
             'queue'        => ['ai:webhook'],
@@ -105,7 +108,9 @@ If you are using Laravel Horizon, you can configure the queues in `config/horizo
         ],
     ],
 ]
-````
+```
+</details>
+
 
 ## Usage
 
@@ -115,6 +120,61 @@ Use command to create new task:
 ```bash
 php artisan ai:make-task SomeInterestingTask --modality=text
 ````
+
+This will create new task class in `app/Ai/Tasks/SomeInterestingTask.php`.
+
+### Configure Task
+
+<details>
+  <summary>Edit the created task class to configure it:</summary>
+
+```php
+<?php
+
+namespace App\Ai\Tasks;
+
+use Fomvasss\AiTasks\Contracts\QueueSerializableAi;
+use Fomvasss\AiTasks\Contracts\ShouldQueueAi;
+use Fomvasss\AiTasks\Tasks\AiTask;
+use Fomvasss\AiTasks\DTO\AiPayload;
+use Fomvasss\AiTasks\DTO\AiResponse;
+use Fomvasss\AiTasks\Support\Prompt;
+use Fomvasss\AiTasks\Support\Schema;
+
+class SomeInterestingTask extends AiTask 
+{
+    public function name(): string
+    {
+        return 'some_interesting';
+    }
+
+    public function modality(): string
+    {
+        return 'text'; // text|chat|image|vision|embed
+    }
+
+    public function toPayload(): AiPayload
+    {
+        // TODO add your payload generation logic here        
+        return new AiPayload(
+            modality: $this->modality(),
+            messages: [['role' => 'system', 'content' => 'You are a web programmer\'s assistant.'], [ 'role' => 'user', 'content' => 'Tell me something interesting.']],
+            options:  ['temperature' => 0.3], // model options
+        );
+    }
+
+    public function postprocess(AiResponse $resp): array|AiResponse
+    {
+        // TODO add your post-processing logic here
+        // Post-processing of responses (can be stored in a database/storage or other your own mechanism)
+        // If you expect JSON — parse it and return an array
+        return $resp;
+    }
+    
+}
+
+```
+</details>
 
 ### Run Task
 ```php
@@ -141,6 +201,7 @@ $context = new \Fomvasss\AiTasks\DTO\AiContext(
 $result = app(\Fomvasss\AiTasks\Core\AiManager::class)->driver('gemini')
     ->send($payload, $context);
 ```
+
 
 To perform async tasks and process webhooks, queues with names as specified in the configuration file must be launched `ai.php` section `queues`.
 
