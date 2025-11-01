@@ -159,7 +159,7 @@ class SomeInterestingTask extends AiTask
         return new AiPayload(
             modality: $this->modality(),
             messages: [['role' => 'system', 'content' => 'You are a web programmer\'s assistant.'], [ 'role' => 'user', 'content' => 'Tell me something interesting.']],
-            options:  ['temperature' => 0.3], // model options
+            options:  ['temperature' => 0.3, 'model' => 'gpt-4o'], // model options
         );
     }
 
@@ -204,6 +204,14 @@ $result = app(\Fomvasss\AiTasks\Core\AiManager::class)->driver('gemini')
 
 
 To perform async tasks and process webhooks, queues with names as specified in the configuration file must be launched `ai.php` section `queues`.
+
+## Commands
+The package provides several Artisan commands to manage AI tasks:
+- `ai:budget` — show tenant budget vs spent
+- `ai:runs` — list recent ai_runs
+- `ai:retry` — demo retry of failed runs
+- `ai:make-task` — generate a new Ai task class
+- `ai:request` — ad-hoc AI request (sync or queued)
 
 ## Changelog
 

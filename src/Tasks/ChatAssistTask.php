@@ -32,7 +32,7 @@ class ChatAssistTask extends AiTask
     {
         $system = [
             'role' => 'system',
-            'content' => "You are a support assistant. Answer briefly in {$this->locale}. If necessary, call for tools."
+            'content' => "You are a support assistant. Answer briefly on locale {$this->locale}. If necessary, call for tools."
         ];
         
         return new AiPayload(

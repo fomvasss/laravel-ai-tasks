@@ -99,7 +99,7 @@ return [
     | Value — ordered list of driver names to try.
     */
     'routing' => [
-        'product_description' => ['openai', 'gemini'],
+        'some_task' => ['openai', 'gemini'],
         'chat_assist'         => ['openai'],
 
         // default fallback is 'default' above

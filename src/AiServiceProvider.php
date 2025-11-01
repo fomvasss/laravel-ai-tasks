@@ -51,8 +51,8 @@ class AiServiceProvider extends ServiceProvider
                 \Fomvasss\AiTasks\Console\AiMakeTaskCommand::class,
                 \Fomvasss\AiTasks\Console\AiRetryFailed::class,
                 \Fomvasss\AiTasks\Console\AiRunsList::class,
-                \Fomvasss\AiTasks\Console\AiTestCommand::class,
                 \Fomvasss\AiTasks\Console\AiBudgetCommand::class,
+                \Fomvasss\AiTasks\Console\AiRequestCommand::class,
             ]);
         }
     }

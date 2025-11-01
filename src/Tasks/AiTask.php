@@ -76,8 +76,4 @@ abstract class AiTask
     {
         return [];
     }
-
-    public function preferredModels(): array {
-        return [];
-    }
 }
