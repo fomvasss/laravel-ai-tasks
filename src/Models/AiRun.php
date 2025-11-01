@@ -168,8 +168,7 @@ class AiRun extends Model
             'modality' => $p->modality,
             'messages' => $msg,
             'options'  => $p->options,
-            'template' => $p->template,
-            'schema'   => $p->schema,
+            'meta' => $p->meta,
         ];
     }
 

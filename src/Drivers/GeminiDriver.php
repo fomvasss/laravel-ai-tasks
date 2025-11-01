@@ -50,121 +50,9 @@ final class GeminiDriver implements AiDriver
             return new AiResponse(false, null, [], [], 'driver_not_configured: openai');
         }
 
-//        $body = [
-//            'model' => $this->cfg['model'],
-//            'messages' => $p->messages,
-//            'temperature' => $p->options['temperature'] ?? 0.3,
-//            'stream' => true,
-//        ];
-//
-//        if ($p->schema) {
-//            $body['response_format'] = ['type' => 'json_object'];
-//        }
-//
-//        if (!empty($p->options['tools'])) {
-//            $body['tools'] = $p->options['tools'];
-//            if (isset($p->options['tool_choice'])) {
-//                $body['tool_choice'] = $p->options['tool_choice'];
-//            }
-//        }
-
-        //v1
-        // 1) Будуємо endpoint streamGenerateContent
-//        $base = rtrim($this->cfg['endpoint'], '/'); // напр. https://generativelanguage.googleapis.com
-//        $url  = "{$base}/v1beta/models/{$this->cfg['model']}:streamGenerateContent";
-//
-//        // messages -> contents
-//        $roleMap = ['user' => 'user', 'assistant' => 'model', 'system' => 'user'];
-//        $contents = [];
-//        foreach ($p->messages as $m) {
-//            $role = $roleMap[$m['role'] ?? 'user'] ?? 'user';
-//            $text = (string) ($m['content'] ?? '');
-//            if ($text !== '') $contents[] = ['role' => $role, 'parts' => [['text' => $text]]];
-//        }
-//        if (!$contents) {
-//            $prompt = $p->messages[0]['content'] ?? '';
-//            $contents = [['role' => 'user', 'parts' => [['text' => $prompt]]]];
-//        }
-//
-//        $response = \Illuminate\Support\Facades\Http::accept('text/event-stream')
-//            ->withQueryParameters([
-//                'key' => $this->cfg['api_key'],
-//                'alt' => 'sse', // важливо для коректного SSE
-//            ])
-//            ->withOptions([
-//                'stream'       => true,
-//                'read_timeout' => 0,
-//            ])
-//            ->post($url, [
-//                'contents' => $contents,
-//                'generationConfig' => [
-//                    'temperature' => $p->options['temperature'] ?? 0.3,
-//                ],
-//            ]);
-//
-//        $body = $response->toPsrResponse()->getBody();
-//        $buf  = '';
-//        $full = '';
-//
-//        $emitDelta = function (string $delta) use (&$full, $onChunk) {
-//            if ($delta === '') return;
-//            $full .= $delta;
-//            $onChunk($delta);
-//        };
-//
-//        $parseLine = function (string $line) use ($emitDelta) {
-//            $line = trim($line);
-//            if ($line === '') return;
-//
-//            // Підтримати обидва формати: "data: {...}" та чистий JSON "{...}"
-//            if (str_starts_with($line, 'data:')) {
-//                $line = trim(substr($line, 5));
-//            }
-//
-//            if ($line === '[DONE]') {
-//                // кінець стріму
-//                return 'DONE';
-//            }
-//
-//            if ($line[0] !== '{' && $line[0] !== '[') {
-//                return; // службові рядки/порожні
-//            }
-//
-//            $event = json_decode($line, true);
-//            if (!is_array($event)) return;
-//
-//            // Витяг тексту (може прийти як content.parts[].text або delta.text)
-//            $delta =
-//                $event['candidates'][0]['content']['parts'][0]['text']
-//                ?? $event['candidates'][0]['delta']['text']
-//                ?? '';
-//
-//            $emitDelta($delta);
-//        };
-//
-//        while (! $body->eof()) {
-//            $chunk = $body->read(8192);
-//            if ($chunk === '') { usleep(10000); continue; }
-//
-//            $buf .= $chunk;
-//
-//            // ріжемо по \n (SSE/NDJSON)
-//            while (($pos = strpos($buf, "\n")) !== false) {
-//                $line = substr($buf, 0, $pos);
-//                $buf  = substr($buf, $pos + 1);
-//
-//                $res = $parseLine($line);
-//                if ($res === 'DONE') {
-//                    // очищення буфера від можливого \r після DONE
-//                    $buf = '';
-//                    break 2;
-//                }
-//            }
-//        }
-//
-//        return new \Fomvasss\AiTasks\DTO\AiResponse(true, $full, usage: [], raw: []);
+        $model = $p->options['model']
+            ?? ($this->cfg['model'] ?? 'gemini-2.5-flash');
         
-        //v2
         $base = rtrim($this->cfg['endpoint'], '/'); // напр. https://generativelanguage.googleapis.com
         $url  = "{$base}/v1beta/models/{$this->cfg['model']}:streamGenerateContent";
 
@@ -277,9 +165,12 @@ final class GeminiDriver implements AiDriver
         // Узагальнений варіант: content = messages[..].content
         $prompt = $p->messages[0]['content'] ?? '';
 
+        $model = $p->options['model']
+            ?? ($this->cfg['model'] ?? 'gemini-2.5-flash');
+
         $res = Http::acceptJson()
             ->withQueryParameters(['key' => $this->cfg['api_key']])
-            ->post(rtrim($this->cfg['endpoint'],'/')."/v1beta/models/{$this->cfg['model']}:generateContent", [
+            ->post(rtrim($this->cfg['endpoint'],'/')."/v1beta/models/{$model}:generateContent", [
                 'contents' => [['parts' => [['text' => $prompt]]]],
                 'generationConfig' => [
                     'temperature' => $p->options['temperature'] ?? 0.3
@@ -302,7 +193,8 @@ final class GeminiDriver implements AiDriver
         $n      = (int)($p->options['n'] ?? 1);
 
         // Модель Imagen (див. конфіг/ENV)
-        $model  = $this->cfg['image_model'] ?? 'imagen-4.0-generate-001';
+        $model  = $p->options['image_model']
+            ?? $this->cfg['image_model'] ?? 'imagen-4.0-generate-001';
 
         // Опційні параметри Imagen (мапимо з options)
         // imageSize: '1K' | '2K' (тільки для Standard/Ultra), aspectRatio: '1:1','3:4','4:3','9:16','16:9'
@@ -372,7 +264,8 @@ final class GeminiDriver implements AiDriver
 
     protected function sendEmbed(AiPayload $p, AiContext $c):AiResponse
     {
-        $model = $this->cfg['embed_model'] ?? 'gemini-embedding-001';
+        $model = $p->options['embed_model']
+            ?? $this->cfg['embed_model'] ?? 'gemini-embedding-001';
 
         // Gemini embeddings: POST /v1beta/models/{model}:embedContent
         // input: рядок або масив рядків — якщо масив, зробимо простий батч (по одному запиту), щоб не ускладнювати
@@ -410,7 +303,8 @@ final class GeminiDriver implements AiDriver
 
     protected function sendVision(AiPayload $p, AiContext $c):AiResponse
     {
-        $model = $this->cfg['model'] ?? 'gemini-2.5-flash';
+        $model = $p->options['model']
+            ?? ($this->cfg['model'] ?? 'gemini-2.5-flash');
 
         // Збираємо parts:
         // - text → {text:'...'}
@@ -476,7 +370,7 @@ final class GeminiDriver implements AiDriver
             return new AiResponse(false, null, [], [], 'vision_parts_missing');
         }
 
-        $url = rtrim($this->cfg['endpoint'], '/') . "/v1beta/models/".($this->cfg['model'] ?? 'gemini-1.5-flash').":generateContent";
+        $url = rtrim($this->cfg['endpoint'], '/') . "/v1beta/models/" . $model . ":generateContent";
         $payload = [
             'contents' => [['parts' => $parts]],
             'generationConfig' => [
@@ -492,6 +386,6 @@ final class GeminiDriver implements AiDriver
 
         $msg = $res['candidates'][0]['content']['parts'][0]['text'] ?? null;
 
-        return new AiResponse((bool)$msg, $msg, ['driver'=>'gemini','model'=>$this->cfg['model'] ?? 'gemini-1.5-flash'], $res, $msg ? null : 'empty_vision_response');
+        return new AiResponse((bool)$msg, $msg, ['driver'=>'gemini','model'=> $model], $res, $msg ? null : 'empty_vision_response');
     }
 }

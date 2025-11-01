@@ -15,8 +15,17 @@ class AiTestCommand extends Command
     public function handle(): int
     {
         if ($this->option('case') === 'GenerateProductDescription') {
-            $path = $this->option('fixture') ?: base_path('vendor/fomvasss/laravel-ai-tasks/tests/stubs/product_123.json');
-            $data = json_decode(file_get_contents($path), false, 512, JSON_THROW_ON_ERROR);
+            
+            $data = [
+                'id' => 'a03479ef-599e-46de-b0e2-3b3c134abe6b',
+                'title' => 'Wireless Bluetooth Headphones',
+                'features' => [
+                    'High-quality sound with deep bass',
+                    'Comfortable over-ear design',
+                    'Built-in microphone for hands-free calls',
+                    'Long-lasting battery life (up to 20 hours)',
+                ],
+            ];
 
             $resp = AI::send(new GenerateProductDescription((object)$data, $this->option('locale')));
         } elseif ($this->option('case') === 'ChatAssistTask') {

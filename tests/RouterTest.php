@@ -17,9 +17,20 @@ class RouterTest extends TestCase
     {
         $router = new Router();
         $task = new class extends AiTask {
-            public function name(): string { return 'unknown.task'; }
-            public function modality(): string { return 'text'; }
-            public function toPayload(): \Fomvasss\AiTasks\DTO\AiPayload { return new \Fomvasss\AiTasks\DTO\AiPayload('text'); }
+            public function name(): string
+            {
+                return 'unknown.task';
+            }
+
+            public function modality(): string
+            {
+                return 'text';
+            }
+
+            public function toPayload(): \Fomvasss\AiTasks\DTO\AiPayload
+            {
+                return new \Fomvasss\AiTasks\DTO\AiPayload('text');
+            }
         };
         $this->assertNotEmpty($router->choose($task));
     }

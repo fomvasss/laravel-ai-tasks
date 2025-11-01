@@ -8,7 +8,6 @@ final class AiPayload
         public string $modality,
         public array  $messages = [],
         public array  $options  = [],
-        public ?string $template = null,
-        public ?string $schema   = null
+        public array  $meta     = [],
     ) {}
 }

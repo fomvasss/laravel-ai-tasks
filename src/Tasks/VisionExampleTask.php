@@ -6,8 +6,6 @@ use Fomvasss\AiTasks\Contracts\QueueSerializableAi;
 use Fomvasss\AiTasks\Contracts\ShouldQueueAi;
 use Fomvasss\AiTasks\DTO\AiPayload;
 use Fomvasss\AiTasks\DTO\AiResponse;
-use Fomvasss\AiTasks\Support\Prompt;
-use Fomvasss\AiTasks\Support\Schema;
 use Fomvasss\AiTasks\Traits\QueueableAi;
 
 /**
@@ -61,7 +59,7 @@ class VisionExampleTask extends AiTask implements ShouldQueueAi, QueueSerializab
                 'content' => [
                     ['type' => 'text', 'text' => 'Опиши зображення'],
                     ['type' => 'image_url', 'image_url' => ['url' => 'https://.../img.png']],
-                    // або для Gemini: ['type'=>'inline_base64','mime'=>'image/png','data'=>$b64]
+                    // or for Gemini: ['type' => 'inline_base64','mime' => 'image/png','data' => $b64]
                 ],
             ]],
             options: ['temperature'=>0.2]
@@ -74,9 +72,6 @@ class VisionExampleTask extends AiTask implements ShouldQueueAi, QueueSerializab
      */
     public function postprocess(AiResponse $resp): array|AiResponse
     {
-        // see: vendor/fomvasss/laravel-ai-tasks/resources/ai/schemas/product_description_v1.json
-        $data = Schema::parse($resp->content ?? '', 'product_description_v1');
-        
-        return $data;
+        return $resp;
     }
 }

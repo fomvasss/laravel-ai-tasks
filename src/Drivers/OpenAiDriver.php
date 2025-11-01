@@ -49,6 +49,9 @@ final class OpenAiDriver implements AiDriver
             return new AiResponse(false, null, [], [], 'driver_not_configured: openai');
         }
 
+        $model = $p->options['model']
+            ?? $this->cfg['model'] ?? 'gpt-4.1-mini';
+
         $body = [
             'model' => $this->cfg['model'],
             'messages' => $p->messages,
@@ -80,7 +83,7 @@ final class OpenAiDriver implements AiDriver
                 'read_timeout' => 0,      // не обривати
             ])
             ->post($url, [
-                'model' => $this->cfg['model'],
+                'model' => $model,
                 'messages' => $p->messages,
                 'temperature' => $p->options['temperature'] ?? 0.3,
                 'stream' => true,
@@ -131,15 +134,14 @@ final class OpenAiDriver implements AiDriver
 
     protected function sendTextAndChat(AiPayload $p, AiContext $c): AiResponse
     {
+        $model = $p->options['model']
+            ?? $this->cfg['model'] ?? 'gpt-4.1-mini';
+
         $body = [
-            'model' => $this->cfg['model'],
+            'model' => $model,
             'messages' => $p->messages,
             'temperature' => $p->options['temperature'] ?? 0.3,
         ];
-
-        if ($p->schema) {
-            $body['response_format'] = ['type' => 'json_object'];
-        }
 
         if (!empty($p->options['tools'])) {
             $body['tools'] = $p->options['tools'];          // format OpenAI!
@@ -183,7 +185,8 @@ final class OpenAiDriver implements AiDriver
         $prompt = $p->messages[0]['content'] ?? '';
         $size = $p->options['size'] ?? '1024x1024';
         $n = (int)($p->options['n'] ?? 1);
-        $model = $this->cfg['image_model'] ?? 'gpt-image-1';
+        $model = $p->options['image_model']
+            ?? $this->cfg['image_model'] ?? 'gpt-image-1';
 
         // те, що хоче користувач (url|b64_json), за замовч. b64_json
         $wantedFormat = $p->options['response_format'] ?? 'b64_json';
@@ -244,8 +247,10 @@ final class OpenAiDriver implements AiDriver
 
     protected function sendEmbed(AiPayload $p, AiContext $c): AiResponse
     {
-        $model = $this->cfg['embed_model'] ?? 'text-embedding-3-small';
-        // input: рядок або масив рядків
+        $model = $p->options['embed_model']
+            ?? $this->cfg['embed_model'] ?? 'text-embedding-3-small';
+
+        // input: string or array of strings
         $input = $p->messages[0]['content'] ?? ($p->options['input'] ?? null);
         if ($input === null) {
             return new AiResponse(false, null, [], [], 'embed_input_missing');
@@ -258,7 +263,7 @@ final class OpenAiDriver implements AiDriver
                 'input' => $input,
             ])->throw()->json();
 
-        // Відповідь: data[*].embedding
+        // Response: data[*].embedding
         $vectors = array_map(fn($d) => $d['embedding'] ?? [], $res['data'] ?? []);
         // Якщо був один рядок — повернемо один вектор, інакше масив
         $content = count($vectors) === 1 ? $vectors[0] : $vectors;

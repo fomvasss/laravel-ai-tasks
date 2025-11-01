@@ -39,7 +39,6 @@ class ChatAssistTask extends AiTask
             modality: 'chat',
             messages: array_values(array_merge([$system], $this->history)),
             options:  array_merge(['temperature' => 0.2, 'stream' => true], $this->options + ['tools' => $this->tools]),
-            //template: 'chat_support_v1'
         );
     }
 

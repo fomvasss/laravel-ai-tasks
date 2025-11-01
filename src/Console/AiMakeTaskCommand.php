@@ -88,8 +88,6 @@ use Fomvasss\AiTasks\Contracts\ShouldQueueAi;
 use Fomvasss\\AiTasks\\Tasks\\AiTask;
 use Fomvasss\\AiTasks\\DTO\\AiPayload;
 use Fomvasss\\AiTasks\\DTO\\AiResponse;
-use Fomvasss\\AiTasks\\Support\\Prompt;
-use Fomvasss\\AiTasks\\Support\\Schema;
 
 class {$class} extends AiTask{$queuedImpl} 
 {
@@ -108,7 +106,7 @@ class {$class} extends AiTask{$queuedImpl}
         // TODO add your payload generation logic here
         return new AiPayload(
             modality: \$this->modality(),
-            messages: [[ 'role' => 'user', 'content' => 'Tell me something interesting']],
+            messages: [['system' => 'You ara interesting assistant'], [ 'role' => 'user', 'content' => 'Tell me something interesting']],
             options:  ['temperature' => 0.3],
         );
     }

@@ -17,7 +17,7 @@ class AiRunModelTest extends TestCase
     {
         parent::setUp();
         // sqlite :memory:
-        $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
+        $this->loadMigrationsFrom(__DIR__ . '/../database/migrations');
         $this->artisan('migrate')->run();
     }
 
@@ -30,7 +30,7 @@ class AiRunModelTest extends TestCase
             'driver' => 'openai',
             'modality' => 'text',
             'status' => 'running',
-            'request' => ['x'=>1],
+            'request' => ['x' => 1],
         ]);
 
         $this->assertEquals('t1', $run->tenant_id);

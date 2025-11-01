@@ -77,10 +77,9 @@ class GenerateProductDescription extends AiTask implements ShouldQueueAi, QueueS
      */
     public function toPayload(): AiPayload
     {
-        // see: vendor/fomvasss/laravel-ai-tasks/resources/ai/prompts/product_description_v3.md
-        $tpl = Prompt::get('product_description_v3')->render([
+        $tpl = implode(', ', [
             'title' => $this->product->title ?? '',
-            'features' => $this->product->features ?? [],
+           // 'features' => $this->product->features ?? [],
             'locale' => $this->locale,
         ]);
 
@@ -88,8 +87,7 @@ class GenerateProductDescription extends AiTask implements ShouldQueueAi, QueueS
             modality: 'text',
             messages: [['role' => 'user', 'content' => $tpl]],
             options: ['temperature' => 0.4],
-            template: 'product_description_v3',
-            schema: 'product_description_v1'
+            meta: ['product_id' => $this->product->id ?? null],
         );
     }
 
@@ -99,9 +97,6 @@ class GenerateProductDescription extends AiTask implements ShouldQueueAi, QueueS
      */
     public function postprocess(AiResponse $resp): array|AiResponse
     {
-        // see: vendor/fomvasss/laravel-ai-tasks/resources/ai/schemas/product_description_v1.json
-        $data = Schema::parse($resp->content ?? '', 'product_description_v1');
-
-        return $data;
+        return $resp;
     }
 }
