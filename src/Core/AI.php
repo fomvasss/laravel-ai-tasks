@@ -2,6 +2,7 @@
 
 namespace Fomvasss\AiTasks\Core;
 
+use Fomvasss\AiTasks\DTO\AiContext;
 use Fomvasss\AiTasks\DTO\AiResponse;
 use Fomvasss\AiTasks\Models\AiRun;
 use Fomvasss\AiTasks\Support\Budget;
@@ -93,22 +94,9 @@ class AI
             event(new \Fomvasss\AiTasks\Events\AiRunPostprocessed($run, $result));
 
             return $result instanceof AiResponse ? $result : new AiResponse(true, json_encode($result), usage: []);
-
-//                } catch (\Throwable $e) {
-//                    $run->error($e);
-//                    $errors[] = "$driverName postprocess: ".$e->getMessage();
-//                    continue;
-//                }
-
-            throw new \RuntimeException('All providers failed: ' . implode(' | ', $errors));
-
-//            } catch (\Throwable $e) {
-//                $run->error($e);
-//                continue;
-//            }
         }
 
-        throw new \RuntimeException('All providers failed');
+        throw new \RuntimeException('All providers failed: ' . implode(' | ', $errors));
     }
 
     public function queue(AiTask $task, ?AiContext $ctx = null, string $stage = 'request', array|string $drivers = []): string

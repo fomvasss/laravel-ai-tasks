@@ -151,13 +151,17 @@ class AiRun extends Model
 
     public static function markAsDead(string $id, \Throwable $e): void
     {
+        $instance = static::whereKey($id)->first();
+
         static::whereKey($id)->update([
             'status' => 'dead',
             'error' => mb_substr($e->getMessage(), 0, 500),
             'finished_at' => now(),
         ]);
 
-        event(new AiRunFailed($run));
+        if ($instance) {
+            event(new AiRunFailed($instance));
+        }
     }
 
     public static function minifyRequest(AiPayload $p): array
