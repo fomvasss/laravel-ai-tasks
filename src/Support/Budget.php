@@ -23,9 +23,14 @@ class Budget
     {
         $when = $when ?? now();
 
+        return $this->getSpentBetween($tenantId, $when->copy()->startOfMonth(), $when->copy()->endOfMonth());
+    }
+
+    public function getSpentBetween(string $tenantId, Carbon $from, Carbon $to): float
+    {
         $sum = AiRun::query()
             ->where('tenant_id', $tenantId)
-            ->whereBetween('created_at', [$when->copy()->startOfMonth(), $when->copy()->endOfMonth()])
+            ->whereBetween('created_at', [$from, $to])
             ->where('status', 'ok')
             ->whereNotNull('cost')
             ->sum('cost');
