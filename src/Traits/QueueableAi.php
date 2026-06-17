@@ -1,13 +1,18 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Fomvasss\AiTasks\Traits;
 
 trait QueueableAi
 {
-    public ?string $queue = null;
+    public ?string $queue      = null;
     public ?string $connection = null;
 
-    public function viaQueues(): array { return []; }
+    public function viaQueues(): array
+    {
+        return [];
+    }
 
     public function onQueue(?string $queue): static
     {
@@ -16,7 +21,7 @@ trait QueueableAi
         return $this;
     }
 
-    public function onConnection(?string $connection): static 
+    public function onConnection(?string $connection): static
     {
         $this->connection = $connection;
 

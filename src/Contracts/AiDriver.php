@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Fomvasss\AiTasks\Contracts;
 
 use Fomvasss\AiTasks\DTO\AiContext;
@@ -13,6 +15,4 @@ interface AiDriver
     public function send(AiPayload $payload, AiContext $ctx): AiResponse;
 
     public function stream(AiPayload $payload, AiContext $ctx, callable $onChunk): AiResponse;
-
-    //public function queue(AiPayload $payload, AiContext $ctx, ?string $queue = null): string;
 }

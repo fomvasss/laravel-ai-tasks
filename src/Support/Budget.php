@@ -1,7 +1,10 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Fomvasss\AiTasks\Support;
 
+use Fomvasss\AiTasks\Exceptions\BudgetExceededException;
 use Fomvasss\AiTasks\Models\AiRun;
 use Illuminate\Support\Carbon;
 
@@ -9,59 +12,47 @@ class Budget
 {
     public function getMonthlyLimit(string $tenantId): ?float
     {
-        $conf = config('ai.budgets');
-        if (isset($conf[$tenantId]['monthly_usd'])) {
-            return (float)$conf[$tenantId]['monthly_usd'];
-        }
+        $conf = config('ai.budgets', []);
 
-        if (isset($conf['default']['monthly_usd'])) {
-            return (float)$conf['default']['monthly_usd'];
-        }
-
-        return null; // без ліміту
+        return isset($conf[$tenantId]['monthly_usd'])
+            ? (float) $conf[$tenantId]['monthly_usd']
+            : (isset($conf['default']['monthly_usd']) ? (float) $conf['default']['monthly_usd'] : null);
     }
 
     public function getMonthlySpent(string $tenantId, ?Carbon $when = null): float
     {
-        $when = $when ?: now();
-        $from = $when->copy()->startOfMonth();
-        $to   = $when->copy()->endOfMonth();
+        $when = $when ?? now();
 
-        // usage у нас casted array — сумуємо в PHP, сумісно з усіма БД
-        $runs = AiRun::query()
+        $sum = AiRun::query()
             ->where('tenant_id', $tenantId)
-            ->whereBetween('created_at', [$from, $to])
+            ->whereBetween('created_at', [$when->copy()->startOfMonth(), $when->copy()->endOfMonth()])
             ->where('status', 'ok')
-            ->get(['usage']);
+            ->whereNotNull('cost')
+            ->sum('cost');
 
-        $sum = 0.0;
-        foreach ($runs as $r) {
-            $sum += (float)($r->usage['cost'] ?? 0.0);
-        }
-        return round($sum, 8);
+        return round((float) $sum, 8);
     }
 
     public function getMonthlyRemaining(string $tenantId): ?float
     {
         $limit = $this->getMonthlyLimit($tenantId);
-        if ($limit === null) return null;
+        if ($limit === null) {
+            return null;
+        }
 
-        $spent = $this->getMonthlySpent($tenantId);
-        
-        return max(0.0, round($limit - $spent, 8));
+        return max(0.0, round($limit - $this->getMonthlySpent($tenantId), 8));
     }
 
-    /**
-     * Кидає виняток, якщо ліміт вичерпано (з урахуванням очікуваних витрат $expectedCost)
-     */
     public function ensureNotExceeded(string $tenantId, float $expectedCost = 0.0): void
     {
         $limit = $this->getMonthlyLimit($tenantId);
-        if ($limit === null) return; // без бюджету
+        if ($limit === null) {
+            return;
+        }
 
         $remaining = $this->getMonthlyRemaining($tenantId);
         if ($remaining !== null && $remaining < $expectedCost) {
-            throw new \Fomvasss\AiTasks\Support\BudgetExceededException(
+            throw new BudgetExceededException(
                 "Budget exceeded for tenant [{$tenantId}]: remaining \${$remaining}, expected \${$expectedCost}"
             );
         }

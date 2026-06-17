@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Fomvasss\AiTasks\Core;
 
 use Fomvasss\AiTasks\Tasks\AiTask;
@@ -13,10 +15,10 @@ class Router
         }
 
         if ($byTask = config("ai.routing.{$task->name()}")) {
-            return $byTask;
+            return (array) $byTask;
         }
 
-        return [app(\Fomvasss\AiTasks\Core\AiManager::class)->getDefaultDriver()];
+        return [app(AiManager::class)->getDefaultDriver()];
     }
 
     public function first(AiTask $task): string

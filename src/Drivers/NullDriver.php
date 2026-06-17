@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Fomvasss\AiTasks\Drivers;
 
 use Fomvasss\AiTasks\Contracts\AiDriver;
@@ -9,22 +11,21 @@ use Fomvasss\AiTasks\DTO\AiResponse;
 
 final class NullDriver implements AiDriver
 {
-    public function __construct(private array $cfg = []) {}
-
-    public function supports(string $m): bool { return true; }
+    public function supports(string $modality): bool
+    {
+        return true;
+    }
 
     public function send(AiPayload $p, AiContext $c): AiResponse
     {
-        return new AiResponse(true, '{"short":"stub","html":"<p>stub</p>"}', ['driver' => 'null']);
+        return new AiResponse(true, 'null driver response', ['driver' => 'null', 'tokens_in' => 0, 'tokens_out' => 0]);
     }
 
     public function stream(AiPayload $p, AiContext $c, callable $onChunk): AiResponse
     {
-        return $this->send($p, $c);
-    }
+        $text = 'null driver response';
+        $onChunk($text);
 
-    public function queue(AiPayload $p, AiContext $c, ?string $q = null): string
-    {
-        return dispatch(new \Fomvasss\AiTasks\Jobs\ProcessAiPayload('null', $p, $c))->id;
+        return new AiResponse(true, $text, ['driver' => 'null', 'tokens_in' => 0, 'tokens_out' => 0]);
     }
 }

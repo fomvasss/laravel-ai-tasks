@@ -1,198 +1,188 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Fomvasss\AiTasks\Core;
 
+use Fomvasss\AiTasks\Contracts\ShouldQueueAi;
 use Fomvasss\AiTasks\DTO\AiContext;
 use Fomvasss\AiTasks\DTO\AiResponse;
+use Fomvasss\AiTasks\Events\AiTaskCompleted;
+use Fomvasss\AiTasks\Events\AiTaskFailed;
+use Fomvasss\AiTasks\Events\AiTaskQueued;
+use Fomvasss\AiTasks\Events\AiTaskStarted;
+use Fomvasss\AiTasks\Exceptions\AiDriverException;
+use Fomvasss\AiTasks\Exceptions\BudgetExceededException;
+use Fomvasss\AiTasks\Jobs\ProcessAiPayload;
 use Fomvasss\AiTasks\Models\AiRun;
 use Fomvasss\AiTasks\Support\Budget;
-use Fomvasss\AiTasks\Support\BudgetExceededException;
-use Fomvasss\AiTasks\Support\Cost;
 use Fomvasss\AiTasks\Tasks\AiTask;
 use Illuminate\Pipeline\Pipeline;
-use Illuminate\Support\Arr;
 
 class AI
 {
     public function __construct(
         private readonly AiManager $manager,
-        private readonly Router    $router
-    )
-    {
-    }
+        private readonly Router    $router,
+    ) {}
 
     public function send(AiTask $task, array|string $drivers = []): AiResponse
     {
         $payload = $task->toPayload();
-        $ctx = $task->context();
+        $ctx     = $task->context();
 
-        try {
-            app(Budget::class)->ensureNotExceeded($ctx->tenantId, 0.0);
-        } catch (BudgetExceededException $e) {
-            throw $e;
-        }
+        app(Budget::class)->ensureNotExceeded($ctx->tenantId);
 
-        if ($drivers) {
-            $drivers = is_string($drivers) ? [$drivers] : $drivers;
-            $list = $drivers;
-        } else {
-            $list = $this->router->choose($task);
-        }
-
+        $list   = $this->resolveDrivers($task, $drivers);
         $errors = [];
-        foreach ($list as $driverName) {
 
+        foreach ($list as $driverName) {
             $run = AiRun::start($driverName, $payload, $ctx, $task);
 
-            $cfg = config("ai.drivers.$driverName");
-            $api = $cfg['api_key'] ?? null;
-            if (!$api || trim($api) === '') {
-                $run->skip('driver_not_configured: ' . $driverName);
+            if (! $this->isConfigured($driverName)) {
+                $run->skip("driver_not_configured: {$driverName}");
                 continue;
             }
 
-            //try {
+            event(new AiTaskStarted($task, $ctx, $run));
+
             $resp = $this->manager->driver($driverName)->send($payload, $ctx);
 
-            if ($resp->error === 'async_pending') {
-                $run->markWaiting(['provider_run_id' => $resp->raw['provider_run_id'] ?? null]);
-            }
-
-            if (!$resp->ok) {
-                $run->fail($resp->error, $resp->usage);
-                $errors[] = "$driverName: {$resp->error}";
+            if (! $resp->ok) {
+                $run->fail($resp->error ?? 'unknown_error');
+                event(new AiTaskFailed($task, $resp->error ?? 'unknown_error', $run));
+                $errors[] = "{$driverName}: {$resp->error}";
                 continue;
             }
 
-            // Calculate the cost if it is not set by the driver
-            if (!isset($resp->usage['cost'])) {
-                $driverCfg = config("ai.drivers.{$driverName}", []);
-                $resp->usage['cost'] = Cost::calc($driverName, $resp->usage, $driverCfg);
-            }
-
-            // Budget review taking into account the expected cost of this particular call
-            try {
-                app(Budget::class)->ensureNotExceeded($ctx->tenantId, (float)$resp->usage['cost']);
-            } catch (BudgetExceededException $e) {
-                // mark it as an error and move on to the next driver
-                $run->fail('budget_exceeded', $resp->usage);
-                $errors[] = "{$driverName}: budget_exceeded";
-                continue;
-            }
+            app(Budget::class)->ensureNotExceeded($ctx->tenantId, (float) ($resp->usage['cost'] ?? 0.0));
 
             $run->finish($resp);
 
-            if (config('ai.postprocess.enabled')) {
-                $resp = app(Pipeline::class)
-                    ->send($resp)->through(config('ai.postprocess.pipes', []))
-                    ->thenReturn();
-            }
-
-//                try {
+            $resp = $this->runPostprocess($resp);
             $result = $task->postprocess($resp);
 
-            event(new \Fomvasss\AiTasks\Events\AiRunPostprocessed($run, $result));
+            $finalResponse = $result instanceof AiResponse
+                ? $result
+                : new AiResponse(true, json_encode($result));
 
-            return $result instanceof AiResponse ? $result : new AiResponse(true, json_encode($result), usage: []);
+            event(new AiTaskCompleted($task, $finalResponse, $run));
+
+            return $finalResponse;
         }
 
-        throw new \RuntimeException('All providers failed: ' . implode(' | ', $errors));
+        throw new AiDriverException('All providers failed: ' . implode(' | ', $errors));
     }
 
-    public function queue(AiTask $task, ?AiContext $ctx = null, string $stage = 'request', array|string $drivers = []): string
+    public function queue(AiTask $task, array|string $drivers = []): string
     {
         $payload = $task->toPayload();
-        $ctx = $ctx ?? $task->context();
+        $ctx     = $task->context();
 
-        if ($drivers) {
-            $drivers = is_string($drivers) ? [$drivers] : $drivers;
-            $driver = $drivers[0];
-        } else {
-            $driver = $this->firstConfiguredDriver($task);
-        }
+        $driverName = $this->resolveFirstConfiguredDriver($task, $drivers);
 
-        if ($task instanceof \Fomvasss\AiTasks\Contracts\QueueSerializableAi) {
-            $ctorArgs = $task->toQueueArgs();
-        } elseif (method_exists($task, 'serializeForQueue')) {
-            $ctorArgs = $task->serializeForQueue();
-        } else {
-            throw new \RuntimeException(
-                'Task ' . get_class($task) . ' must implement QueueSerializableAi::toQueueArgs() ' .
-                'or has method serializeForQueue().'
-            );
-        }
+        $run = AiRun::startAsQueue($driverName, $payload, $ctx, $task);
 
-        $run = AiRun::startAsQueue($driver, $payload, $ctx, $task);
-
-        $job = new \Fomvasss\AiTasks\Jobs\ProcessAiPayload(
-            driverName: $driver,
-            payload: $payload,
-            context: $ctx,
-            idempotencyKey: $task->idempotencyKey(),
-            taskName: $task->name(),
-            runId: $run->id,
-            taskClass: $task::class,
-            taskCtorArgs: $ctorArgs,
+        $job = new ProcessAiPayload(
+            driverName:   $driverName,
+            payload:      $payload,
+            context:      $ctx,
+            runId:        $run->id,
+            taskClass:    $task::class,
+            taskCtorArgs: $task->serializeForQueue(),
         );
 
-        if ($task instanceof \Fomvasss\AiTasks\Contracts\ShouldQueueAi) {
+        if ($task instanceof ShouldQueueAi) {
             if ($conn = $task->preferredConnection()) {
                 $job->onConnection($conn);
             }
-            $job->onQueue($task->preferredQueueFor($stage, config('ai.queues.default')));
+            $job->onQueue($task->preferredQueueFor('request', config('ai.queues.default')));
         } else {
             $job->onQueue(config('ai.queues.default'));
         }
 
         dispatch($job);
 
+        event(new AiTaskQueued($task, $run));
+
         return $run->id;
-    }
-
-    private function firstConfiguredDriver(AiTask $task): string
-    {
-        foreach ($this->router->choose($task) as $key) {
-            $api = config("ai.drivers.$key.api_key");
-            if ($api && trim($api) !== '') {
-                return $key;
-            };
-        }
-
-        throw new \RuntimeException("No configured driver for {$task->name()}");
     }
 
     public function stream(AiTask $task, callable $onChunk, array|string $drivers = []): AiResponse
     {
         $payload = $task->toPayload();
-        $ctx = $task->context();
+        $ctx     = $task->context();
 
-        if ($drivers) {
-            $drivers = is_string($drivers) ? [$drivers] : $drivers;
-            $list = $drivers;
-        } else {
-            $list = $this->router->choose($task);
+        app(Budget::class)->ensureNotExceeded($ctx->tenantId);
+
+        $list   = $this->resolveDrivers($task, $drivers);
+        $errors = [];
+
+        foreach ($list as $driverName) {
+            if (! $this->isConfigured($driverName)) {
+                $errors[] = "driver_not_configured: {$driverName}";
+                continue;
+            }
+
+            $run = AiRun::start($driverName, $payload, $ctx, $task);
+
+            event(new AiTaskStarted($task, $ctx, $run));
+
+            $resp = $this->manager->driver($driverName)->stream($payload, $ctx, $onChunk);
+
+            $run->finish($resp);
+
+            $result = $task->postprocess($resp);
+            $finalResponse = $result instanceof AiResponse
+                ? $result
+                : new AiResponse(true, json_encode($result));
+
+            event(new AiTaskCompleted($task, $finalResponse, $run));
+
+            return $finalResponse;
         }
 
-        $errors = [];
-        foreach ($list as $driverName) {
-            try {
-                $driver = $this->manager->driver($driverName);
-                $resp = $driver->stream($payload, $ctx, $onChunk);
+        throw new AiDriverException('All providers failed: ' . implode(' | ', $errors));
+    }
 
-                // post-processing after the stream is complete (if necessary)
-                try {
-                    $out = $task->postprocess($resp);
-                    return $out instanceof AiResponse ? $out : new \Fomvasss\AiTasks\DTO\AiResponse(true, json_encode($out));
-                } catch (\Throwable $e) {
-                    $errors[] = "{$driverName} postprocess: " . $e->getMessage();
-                    continue;
-                }
-            } catch (\Throwable $e) {
-                $errors[] = "{$driverName}: " . $e->getMessage();
-                continue;
+    private function resolveDrivers(AiTask $task, array|string $drivers): array
+    {
+        if ($drivers) {
+            return is_string($drivers) ? [$drivers] : $drivers;
+        }
+
+        return $this->router->choose($task);
+    }
+
+    private function resolveFirstConfiguredDriver(AiTask $task, array|string $drivers): string
+    {
+        $list = $this->resolveDrivers($task, $drivers);
+
+        foreach ($list as $name) {
+            if ($this->isConfigured($name)) {
+                return $name;
             }
         }
 
-        throw new \RuntimeException('All providers failed: ' . implode(' | ', $errors));
+        throw new AiDriverException("No configured driver for task [{$task->name()}]");
+    }
+
+    private function isConfigured(string $driverName): bool
+    {
+        $key = config("ai.drivers.{$driverName}.api_key");
+
+        return $key && trim((string) $key) !== '';
+    }
+
+    private function runPostprocess(AiResponse $resp): AiResponse
+    {
+        if (! config('ai.postprocess.enabled', false)) {
+            return $resp;
+        }
+
+        return app(Pipeline::class)
+            ->send($resp)
+            ->through(config('ai.postprocess.pipes', []))
+            ->thenReturn();
     }
 }

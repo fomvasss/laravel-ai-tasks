@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Fomvasss\AiTasks\Models;
 
 use Fomvasss\AiTasks\DTO\AiContext;
@@ -7,11 +9,9 @@ use Fomvasss\AiTasks\DTO\AiPayload;
 use Fomvasss\AiTasks\DTO\AiResponse;
 use Fomvasss\AiTasks\Events\AiRunFailed;
 use Fomvasss\AiTasks\Events\AiRunFinished;
-use Fomvasss\AiTasks\Events\AiRunStarted;
 use Fomvasss\AiTasks\Tasks\AiTask;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Str;
 
 class AiRun extends Model
 {
@@ -26,85 +26,76 @@ class AiRun extends Model
     protected $guarded = ['id'];
 
     protected $casts = [
-        'request' => 'array',
-        'response' => 'array',
-        'usage' => 'array',
+        'request'    => 'array',
+        'response'   => 'array',
         'started_at' => 'datetime',
-        'finished_at' => 'datetime',
+        'finished_at'=> 'datetime',
+        'cost'       => 'float',
     ];
 
     public static function start(string $driver, AiPayload $p, AiContext $ctx, AiTask $task): self
     {
-        $run = static::create([
-            'tenant_id' => $ctx->tenantId,
-            'task' => $ctx->taskName,
-            'driver' => $driver,
-            'modality' => $p->modality,
-            'subject_type' => $ctx->subjectType,
-            'subject_id' => $ctx->subjectId,
-            'status' => 'running',
-            'idempotency_key' => method_exists($task, 'idempotencyKey') ? $task->idempotencyKey() : null,
-            'request' => self::minifyRequest($p),
-            'started_at' => now(),
+        return static::create([
+            'tenant_id'       => $ctx->tenantId,
+            'task'            => $ctx->taskName,
+            'driver'          => $driver,
+            'modality'        => $p->modality,
+            'subject_type'    => $ctx->subjectType,
+            'subject_id'      => $ctx->subjectId,
+            'status'          => 'running',
+            'idempotency_key' => $task->idempotencyKey(),
+            'request'         => static::minifyRequest($p),
+            'started_at'      => now(),
         ]);
-
-        event(new AiRunStarted($run));
-
-        return $run;
     }
 
     public static function startAsQueue(string $driver, AiPayload $p, AiContext $ctx, AiTask $task): self
     {
-        $run = self::create([
-            'tenant_id'     => $ctx->tenantId,
-            'task'          => $ctx->taskName,
-            'driver'        => $driver,
-            'modality'      => $p->modality,
-            'subject_type'  => $ctx->subjectType,
-            'subject_id'    => $ctx->subjectId,
-            'status'        => 'queued',
-            'idempotency_key'=> $task->idempotencyKey(),
-            'request'       => \Fomvasss\AiTasks\Models\AiRun::minifyRequest($p),
-            'started_at'    => null,
-            'finished_at'   => null,
-            'duration_ms'   => null,
+        return static::create([
+            'tenant_id'       => $ctx->tenantId,
+            'task'            => $ctx->taskName,
+            'driver'          => $driver,
+            'modality'        => $p->modality,
+            'subject_type'    => $ctx->subjectType,
+            'subject_id'      => $ctx->subjectId,
+            'status'          => 'queued',
+            'idempotency_key' => $task->idempotencyKey(),
+            'request'         => static::minifyRequest($p),
         ]);
-
-        return $run;
     }
 
     public function markRunning(): void
     {
         $this->update([
-            'status' => 'running',
+            'status'     => 'running',
             'started_at' => now(),
         ]);
-
-        event(new AiRunStarted($this));
     }
 
-    public function markWaiting(array $resp = []): void
+    public function markWaiting(array $extra = []): void
     {
-        $resp = array_filter($resp);
-
         $this->update([
-            'status' => 'waiting', 
-            'response' => array_merge($this->response ?? [], $resp),
-            'finished_at' => null,
-            'duration_ms' => null,
+            'status'   => 'waiting',
+            'response' => array_filter($extra),
         ]);
     }
 
     public function finish(AiResponse $resp): void
     {
-        $ms = $this->started_at ? now()->diffInMilliseconds($this->started_at, true) : null;
-        
+        $ms = $this->started_at
+            ? (int) now()->diffInMilliseconds($this->started_at, true)
+            : null;
+
         $this->update([
-            'status' => 'ok',
-            'response' => self::storeResponse($resp, $this->modality),
-            'usage' => $resp->usage,
-            'finished_at' => now(),
-            'duration_ms' => $ms,
+            'status'            => 'ok',
+            'response'          => ['content' => $resp->content],
+            'tokens_in'         => $resp->usage['tokens_in']          ?? null,
+            'tokens_out'        => $resp->usage['tokens_out']         ?? null,
+            'cache_read_tokens' => $resp->usage['cache_read_tokens']  ?? null,
+            'cache_write_tokens'=> $resp->usage['cache_write_tokens'] ?? null,
+            'cost'              => $resp->usage['cost']               ?? null,
+            'finished_at'       => now(),
+            'duration_ms'       => $ms,
         ]);
 
         event(new AiRunFinished($this));
@@ -113,35 +104,23 @@ class AiRun extends Model
     public function skip(string $reason): void
     {
         $this->update([
-            'status' => 'skipped',
-            'error' => $reason,
+            'status'      => 'skipped',
+            'error'       => $reason,
             'finished_at' => now(),
-            'duration_ms' => $this->started_at ? max(0, (int) now()->diffInMilliseconds($this->started_at, true)) : null,
         ]);
     }
 
-    public function fail(?string $err, ?array $usage = null): void
+    public function fail(string $error, array $usage = []): void
     {
-        $ms = $this->started_at ? max(0, (int) now()->diffInMilliseconds($this->started_at, true)) : null;
-        
-        $this->update([
-            'status' => 'error',
-            'error' => $err ? mb_substr($err, 0, 500) : null,
-            'usage' => $usage,
-            'finished_at' => now(),
-            'duration_ms' => $ms,
-        ]);
+        $ms = $this->started_at
+            ? (int) now()->diffInMilliseconds($this->started_at, true)
+            : null;
 
-        event(new AiRunFailed($this));
-    }
-
-    public function error(\Throwable $e): void
-    {
-        $ms = $this->started_at ? max(0, (int) now()->diffInMilliseconds($this->started_at, true)) : null;
-        
         $this->update([
-            'status' => 'error',
-            'error' => mb_substr($e->getMessage(), 0, 500),
+            'status'      => 'error',
+            'error'       => mb_substr($error, 0, 500),
+            'tokens_in'   => $usage['tokens_in']  ?? null,
+            'tokens_out'  => $usage['tokens_out'] ?? null,
             'finished_at' => now(),
             'duration_ms' => $ms,
         ]);
@@ -151,55 +130,23 @@ class AiRun extends Model
 
     public static function markAsDead(string $id, \Throwable $e): void
     {
-        $instance = static::whereKey($id)->first();
-
         static::whereKey($id)->update([
-            'status' => 'dead',
-            'error' => mb_substr($e->getMessage(), 0, 500),
+            'status'      => 'dead',
+            'error'       => mb_substr($e->getMessage(), 0, 500),
             'finished_at' => now(),
         ]);
 
-        if ($instance) {
-            event(new AiRunFailed($instance));
+        if ($run = static::find($id)) {
+            event(new AiRunFailed($run));
         }
     }
 
-    public static function minifyRequest(AiPayload $p): array
+    private static function minifyRequest(AiPayload $p): array
     {
-        $msg = $p->messages;
-
         return [
             'modality' => $p->modality,
-            'messages' => $msg,
             'options'  => $p->options,
-            'meta' => $p->meta,
+            'meta'     => $p->meta,
         ];
-    }
-
-    public static function storeResponse(AiResponse $r, ?string $modality = null): array
-    {
-        $content = $r->content;
-
-        // Якщо зображення у base64 — не зберігати в БД
-        if ($modality === 'image' && is_string($content) && ! str_starts_with($content, 'http')) {
-            $len = strlen($content);
-            $content = "[omitted_base64:${len}bytes]";
-        }
-
-        // сирий респонс може містити data[b64_json] — прибираємо важке
-        $raw = $r->raw ?? [];
-        if (is_array($raw) && isset($raw['data'])) {
-            // лишимо тільки мету першого елемента без b64
-            $raw = [
-                'model'   => $raw['model']   ?? null,
-                'created' => $raw['created'] ?? null,
-                'has_data'=> true,
-            ];
-        }
-
-        return [
-            'content' => $content,
-            'raw'     => $raw,
-        ];        
     }
 }

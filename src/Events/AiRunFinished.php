@@ -1,7 +1,14 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Fomvasss\AiTasks\Events;
 
 use Fomvasss\AiTasks\Models\AiRun;
 
-class AiRunFinished { public function __construct(public AiRun $run) {} }
+final class AiRunFinished
+{
+    public function __construct(
+        public readonly AiRun $run,
+    ) {}
+}

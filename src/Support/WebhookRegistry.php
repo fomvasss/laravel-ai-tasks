@@ -1,9 +1,10 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Fomvasss\AiTasks\Support;
 
 use Closure;
-use Illuminate\Support\Arr;
 use InvalidArgumentException;
 
 class WebhookRegistry

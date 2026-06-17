@@ -1,8 +1,8 @@
 <?php
 
-namespace Fomvasss\AiTasks\Support;
+declare(strict_types=1);
 
-use Illuminate\Support\Arr;
+namespace Fomvasss\AiTasks\Support;
 
 class TenantResolver
 {

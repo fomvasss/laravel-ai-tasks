@@ -1,19 +1,24 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Fomvasss\AiTasks\Jobs;
 
 use Fomvasss\AiTasks\Core\AiManager;
 use Fomvasss\AiTasks\DTO\AiContext;
 use Fomvasss\AiTasks\DTO\AiPayload;
+use Fomvasss\AiTasks\Events\AiTaskCompleted;
+use Fomvasss\AiTasks\Events\AiTaskFailed;
+use Fomvasss\AiTasks\Events\AiTaskStarted;
+use Fomvasss\AiTasks\Exceptions\BudgetExceededException;
 use Fomvasss\AiTasks\Models\AiRun;
 use Fomvasss\AiTasks\Support\Budget;
-use Fomvasss\AiTasks\Support\Cost;
 use Fomvasss\AiTasks\Tasks\AiTask;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
+use Illuminate\Pipeline\Pipeline;
 use Illuminate\Queue\InteractsWithQueue;
-use Illuminate\Queue\Middleware\RateLimited;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Queue\SerializesModels;
 
@@ -21,128 +26,87 @@ class ProcessAiPayload implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $timeout = 120;
-    public int $tries = 3;
+    public int   $timeout = 120;
+    public int   $tries   = 3;
     public array $backoff = [10, 30, 120];
 
     public function __construct(
-        public string                          $driverName,
-        public \Fomvasss\AiTasks\DTO\AiPayload $payload,
-        public \Fomvasss\AiTasks\DTO\AiContext $context,
-        public ?string                         $idempotencyKey = null,
-        public ?string                         $taskName = null,
-        public ?string                         $runId = null,
-        public ?string                         $taskClass = null,
-        public array                           $taskCtorArgs = [],
-    )
-    {
-    }
-
-//    public function retryUntil(): \DateTimeInterface
-//    {
-//        return now()->addMinutes(10);
-//    }
+        public readonly string    $driverName,
+        public readonly AiPayload $payload,
+        public readonly AiContext $context,
+        public readonly string    $runId,
+        public readonly string    $taskClass,
+        public readonly array     $taskCtorArgs = [],
+    ) {}
 
     public function middleware(): array
     {
         return [
-            //new \Illuminate\Queue\Middleware\RateLimitedWithRedis("ai:{$this->context->tenantId}:{$this->driverName}"),
-            new \Illuminate\Queue\Middleware\RateLimited("ai:{$this->context->tenantId}:{$this->driverName}"),
-            new \Illuminate\Queue\Middleware\WithoutOverlapping('ai:lock:' . $this->idempotencyKey),
+            new WithoutOverlapping("ai:run:{$this->runId}"),
         ];
     }
 
-    public function handle(\Fomvasss\AiTasks\Core\AiManager $manager): void
+    public function handle(AiManager $manager): void
     {
-        /** @var AiRun $run */
-        $run = \Fomvasss\AiTasks\Models\AiRun::findOrFail($this->runId);
+        $run = AiRun::findOrFail($this->runId);
+        $run->markRunning();
 
-        if ($run->status !== 'running') {
-            $run->markRunning();
-        }
+        $task = $this->resolveTask();
 
         try {
-            app(Budget::class)->ensureNotExceeded($this->context->tenantId, 0.0);
+            app(Budget::class)->ensureNotExceeded($this->context->tenantId);
+
+            event(new AiTaskStarted($task, $this->context, $run));
 
             $resp = $manager->driver($this->driverName)->send($this->payload, $this->context);
 
-            if (!empty($resp->usage['async_pending'])) {
-
-                $run->markWaiting([
-                    'provider_run_id' => $resp->usage['provider_run_id'] ?? null,
-                    'webhook_token' => $resp->usage['webhook_token'] ?? null,
-                ]);
-
-                return; // continue wait webhook
-            }
-
-            if (!$resp->ok) {
-                $run->fail($resp->error, $resp->usage);
-                $this->release($this->backoff[min($this->attempts() - 1, count($this->backoff) - 1)]);
+            if (! $resp->ok) {
+                $run->fail($resp->error ?? 'unknown_error');
+                event(new AiTaskFailed($task, $resp->error ?? 'unknown_error', $run));
                 return;
             }
 
-            // Calculate the cost if it is not set by the driver
-            if (!isset($resp->usage['cost'])) {
-                $driverCfg = config("ai.drivers.{$this->driverName}", []);
-                $resp->usage['cost'] = Cost::calc($this->driverName, $resp->usage, $driverCfg);
-            }
-
-            // Перевірка бюджету з урахуванням фактичної вартості відповіді
-            app(Budget::class)->ensureNotExceeded($this->context->tenantId, (float)$resp->usage['cost']);
-
+            app(Budget::class)->ensureNotExceeded($this->context->tenantId, (float) ($resp->usage['cost'] ?? 0.0));
 
             $run->finish($resp);
 
-            dispatch(new \Fomvasss\AiTasks\Jobs\PostprocessAiResult(
-                $run->id,
-                $this->taskClass,
-                $this->taskCtorArgs,
-            ))->onQueue(config('ai.queues.post'));
+            $resp = $this->runPostprocess($resp);
+
+            dispatch(new PostprocessAiResult($run->id, $this->taskClass, $this->taskCtorArgs))
+                ->onQueue(config('ai.queues.post'));
 
         } catch (BudgetExceededException $e) {
-            
-            $run->error($e);
-            // Don't retry — this is not a temporary error.
-            return;
+            $run->fail($e->getMessage());
+            event(new AiTaskFailed($task, $e->getMessage(), $run));
 
         } catch (\Throwable $e) {
-            $run->error($e);
+            AiRun::markAsDead($this->runId, $e);
             throw $e;
+        }
+    }
 
-//            if ($this->isTransient($e)) {
-//                $this->release($this->nextBackoff());
-//            }
-//            return;
+    public function failed(\Throwable $e): void
+    {
+        AiRun::markAsDead($this->runId, $e);
+    }
+
+    private function resolveTask(): AiTask
+    {
+        /** @var class-string<AiTask> $cls */
+        $cls = $this->taskClass;
+
+        return $cls::fromQueueArgs($this->taskCtorArgs);
+    }
+
+    private function runPostprocess(mixed $resp): mixed
+    {
+        if (! config('ai.postprocess.enabled', false)) {
+            return $resp;
         }
 
-//        if (!$resp->ok) {
-//            $run->fail($resp->error, $resp->usage);
-//
-//            if ($this->isTransientMessage($resp->error)) {
-//                $this->release($this->nextBackoff());
-//            }
-//            return; // не кидаємо
-//        }
-    }
-
-    protected function isTransient(\Throwable $e): bool
-    {
-        $m = strtolower($e->getMessage());
-        return str_contains($m, 'timeout')
-            || str_contains($m, 'connection')
-            || str_contains($m, 'temporar')
-            || str_contains($m, 'rate')
-            || str_contains($m, '429')
-            || str_contains($m, '5'); // грубо, за потреби покращ
-    }
-
-    protected function isTransientMessage(?string $err): bool
-    {
-        $m = strtolower($err ?? '');
-        return str_contains($m, 'timeout')
-            || str_contains($m, 'rate')
-            || str_contains($m, '429')
-            || str_contains($m, '5'); // 5xx
+        return app(Pipeline::class)
+            ->send($resp)
+            ->through(config('ai.postprocess.pipes', []))
+            ->thenReturn();
     }
 }

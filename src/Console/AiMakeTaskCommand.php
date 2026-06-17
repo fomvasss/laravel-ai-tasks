@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Fomvasss\AiTasks\Console;
 
 use Illuminate\Console\Command;
@@ -9,88 +11,70 @@ use Illuminate\Support\Str;
 class AiMakeTaskCommand extends Command
 {
     protected $signature = 'ai:make-task
-        {name : Class name (GetImageTask, Products/GetInfoTask)}
-        {--queued : Add ShouldQueueAi + QueueableAi}
-        {--modality=text : text|chat|image|vision|embed}
-        {--force : rewrite the file if it exists}';
+        {name : Class name, e.g. SummarizeTask or Orders/SummarizeTask}
+        {--queued : Implement ShouldQueueAi}
+        {--force : Overwrite if exists}';
 
-    protected $description = 'Generate an AI task (in a project App\AiTasks namespace by default)';
+    protected $description = 'Generate an AiTask class in App\\Ai\\Tasks';
 
     public function handle(Filesystem $files): int
     {
-        $input = trim($this->argument('name')); // напр.: "Orders/InfoOrderTask" або "InfoOrderTask"
-        $modality = $this->option('modality') ?: 'text';
-        $queued   = (bool) $this->option('queued');
+        $input  = trim($this->argument('name'));
+        $queued = (bool) $this->option('queued');
 
-        // Розділяємо шлях по "/" або "\" незалежно від ОС
-        $parts = preg_split('#[\\\\/]+#', $input, -1, PREG_SPLIT_NO_EMPTY) ?: [];
-        if (empty($parts)) {
-            $this->error('Invalid class name.');
-            return self::FAILURE;
-        }
+        $parts     = preg_split('#[\\\\/]+#', $input, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        $className = array_pop($parts);
+        $subNs     = implode('\\', $parts);
+        $subPath   = implode(DIRECTORY_SEPARATOR, $parts);
 
-        $className   = array_pop($parts);         // "InfoOrderTask"
-        $subPath     = implode(DIRECTORY_SEPARATOR, $parts); // "Orders"
-        $subNs       = implode('\\', $parts);     // "Orders" -> namespace хвіст
-
-        $baseNs      = 'App\\Ai\\Tasks';
-        $namespace   = $subNs ? $baseNs . '\\' . $subNs : $baseNs;
-
-        $baseDir     = app_path('Ai/Tasks');
-        $targetDir   = $subPath ? $baseDir . DIRECTORY_SEPARATOR . $subPath : $baseDir;
-        $path        = $targetDir . DIRECTORY_SEPARATOR . $className . '.php';
+        $namespace = $subNs ? "App\\Ai\\Tasks\\{$subNs}" : 'App\\Ai\\Tasks';
+        $dir       = $subPath ? app_path("Ai/Tasks/{$subPath}") : app_path('Ai/Tasks');
+        $path      = "{$dir}/{$className}.php";
 
         if ($files->exists($path) && ! $this->option('force')) {
-            $this->error("File already exists: {$path}. Use --force for rewrite.");
+            $this->error("Already exists: {$path}. Use --force to overwrite.");
             return self::FAILURE;
         }
 
-        if (! $files->isDirectory($targetDir)) {
-            $files->makeDirectory($targetDir, 0755, true);
-        }
-
-        $stub = $this->buildStub($namespace, $className, $modality, $queued);
-        $files->put($path, $stub);
+        $files->isDirectory($dir) || $files->makeDirectory($dir, 0755, true);
+        $files->put($path, $this->buildStub($namespace, $className, $queued));
 
         $this->info("Created: {$path}");
         return self::SUCCESS;
     }
 
-    protected function buildStub(string $namespace, string $class, string $modality, bool $queued): string
+    private function buildStub(string $namespace, string $class, bool $queued): string
     {
-        $queuedUse   = $queued
-            ? "use Fomvasss\\AiTasks\\Contracts\\ShouldQueueAi;\nuse Fomvasss\\AiTasks\\Traits\\QueueableAi;\n"
-            : "";
-        $queuedImpl  = $queued ? " implements ShouldQueueAi" : "";
-        $queuedTrait = $queued ? "    use QueueableAi;\n\n" : "";
-        
-        $taskName = Str::snake(str_replace('Task','', $class));
+        $taskName    = Str::snake(str_replace('Task', '', $class));
+        $implements  = $queued ? ' implements ShouldQueueAi' : '';
+        $queuedUse   = $queued ? "\nuse Fomvasss\\AiTasks\\Contracts\\ShouldQueueAi;" : '';
+        $serializeMethod = $queued ? <<<PHP
 
-        $viaQueues = $queued
-            ? <<<PHP
-    
-    public function toQueueArgs(): array
+    public function serializeForQueue(): array
     {
-        /*Add your coustructor arguments*/
-        return [ /*this->product, this->locale */];
+        return []; // return constructor args
     }
 
-PHP
-            : "";
+PHP : '';
 
         return <<<PHP
 <?php
 
+declare(strict_types=1);
+
 namespace {$namespace};
 
-use Fomvasss\AiTasks\Contracts\QueueSerializableAi;
-use Fomvasss\AiTasks\Contracts\ShouldQueueAi;
-use Fomvasss\\AiTasks\\Tasks\\AiTask;
-use Fomvasss\\AiTasks\\DTO\\AiPayload;
-use Fomvasss\\AiTasks\\DTO\\AiResponse;
+use EchoLabs\Prism\ValueObjects\Messages\UserMessage;
+use Fomvasss\AiTasks\DTO\AiPayload;
+use Fomvasss\AiTasks\DTO\AiResponse;
+use Fomvasss\AiTasks\Tasks\AiTask;{$queuedUse}
 
-class {$class} extends AiTask{$queuedImpl} 
+class {$class} extends AiTask{$implements}
 {
+    public function __construct(
+        // add your constructor arguments
+    ) {}
+
     public function name(): string
     {
         return '{$taskName}';
@@ -98,29 +82,24 @@ class {$class} extends AiTask{$queuedImpl}
 
     public function modality(): string
     {
-        return '{$modality}'; // text|chat|image|vision|embed
+        return 'text';
     }
 
     public function toPayload(): AiPayload
     {
-        // TODO add your payload generation logic here
         return new AiPayload(
-            modality: \$this->modality(),
-            messages: [['system' => 'You ara interesting assistant'], [ 'role' => 'user', 'content' => 'Tell me something interesting']],
-            options:  ['temperature' => 0.3],
+            modality:     \$this->modality(),
+            messages:     [new UserMessage('Your prompt here')],
+            systemPrompt: null,
+            options:      ['temperature' => 0.3],
         );
     }
 
-    public function postprocess(AiResponse \$resp): array|AiResponse
+    public function postprocess(AiResponse \$response): AiResponse|array
     {
-        // TODO add your post-processing logic here
-        // Post-processing of responses (can be stored in a database/storage or other your own mechanism)
-        // If you expect JSON — parse it and return an array
-        return \$resp;
+        return \$response;
     }
-    {$viaQueues}
-}
-
+{$serializeMethod}}
 PHP;
     }
 }

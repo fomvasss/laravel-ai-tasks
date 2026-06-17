@@ -1,61 +1,55 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Fomvasss\AiTasks\Tasks;
 
-use Fomvasss\AiTasks\DTO\AiResponse;
-use Fomvasss\AiTasks\Tasks\AiTask;
+use EchoLabs\Prism\ValueObjects\Messages\AssistantMessage;
+use EchoLabs\Prism\ValueObjects\Messages\UserMessage;
+use Fomvasss\AiTasks\DTO\AiContext;
 use Fomvasss\AiTasks\DTO\AiPayload;
+use Fomvasss\AiTasks\DTO\AiResponse;
 
 class ChatAssistTask extends AiTask
 {
     public function __construct(
-        public array $history, // [{role,user|assistant|system, content}]
-        public array $tools = [], // OpenAI-style tools
-        public array $options = [], // temperature, tool_choice...
-        public string $locale = 'en',
+        private readonly array  $history,
+        private readonly array  $tools   = [],
+        private readonly string $locale  = 'en',
     ) {}
 
-    /**
-     * @return string
-     */
-    public function name(): string { return 'chat_assist'; }
+    public function name(): string
+    {
+        return 'chat_assist';
+    }
 
-    /**
-     * @return string
-     */
-    public function modality(): string { return 'chat'; }
+    public function modality(): string
+    {
+        return 'text';
+    }
 
-    /**
-     * @return AiPayload
-     */
     public function toPayload(): AiPayload
     {
-        $system = [
-            'role' => 'system',
-            'content' => "You are a support assistant. Answer briefly on locale {$this->locale}. If necessary, call for tools."
-        ];
-        
+        $messages = array_map(function (array $msg) {
+            return $msg['role'] === 'assistant'
+                ? new AssistantMessage($msg['content'])
+                : new UserMessage($msg['content']);
+        }, $this->history);
+
         return new AiPayload(
-            modality: 'chat',
-            messages: array_values(array_merge([$system], $this->history)),
-            options:  array_merge(['temperature' => 0.2, 'stream' => true], $this->options + ['tools' => $this->tools]),
+            modality:     $this->modality(),
+            messages:     $messages,
+            systemPrompt: "You are a support assistant. Answer briefly in locale: {$this->locale}.",
+            options:      ['temperature' => 0.2, 'tools' => $this->tools],
         );
     }
 
-    public function postprocess(AiResponse $resp): array|AiResponse
+    public function context(): AiContext
     {
-        // You can save the summary message in the database, forward it, process it
-        
-        return $resp;
-    }
-
-    public function context(): \Fomvasss\AiTasks\DTO\AiContext
-    {
-        $ctx = parent::context();
-        
-        $ctx->subjectType = 'conversation';
-        //$ctx->subjectId   = (string) $this->conv->id;
-
-        return $ctx;
+        return new AiContext(
+            tenantId:    app(\Fomvasss\AiTasks\Support\TenantResolver::class)->id(),
+            taskName:    $this->name(),
+            subjectType: 'conversation',
+        );
     }
 }

@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Fomvasss\AiTasks\Console;
 
 use Fomvasss\AiTasks\Support\Budget;
@@ -7,21 +9,13 @@ use Illuminate\Console\Command;
 
 class AiBudgetCommand extends Command
 {
-    protected $signature = 'ai:budget
-        {tenant=default : Tenant ID}
-        {--set= : Set monthly_usd budget for this tenant (config-less demo; just echoes)}
-    ';
-    protected $description = 'Show current month AI spend vs budget (per tenant)';
+    protected $signature = 'ai:budget {tenant=default : Tenant ID}';
+
+    protected $description = 'Show current month AI spend vs budget for a tenant';
 
     public function handle(Budget $budget): int
     {
-        $tenant = (string)$this->argument('tenant');
-
-        if ($set = $this->option('set')) {
-            $this->warn('Budgets are configured in config/ai.php. Edit "budgets" section.');
-            $this->line("For tenant [{$tenant}] you want to set monthly_usd={$set}. Please update config and deploy.");
-            return self::SUCCESS;
-        }
+        $tenant = (string) $this->argument('tenant');
 
         $limit = $budget->getMonthlyLimit($tenant);
         $spent = $budget->getMonthlySpent($tenant);

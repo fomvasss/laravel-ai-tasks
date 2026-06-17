@@ -1,77 +1,43 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Fomvasss\AiTasks\Tasks;
 
-use Fomvasss\AiTasks\Contracts\QueueSerializableAi;
+use EchoLabs\Prism\ValueObjects\Messages\UserMessage;
+use EchoLabs\Prism\ValueObjects\Messages\Support\Image;
 use Fomvasss\AiTasks\Contracts\ShouldQueueAi;
 use Fomvasss\AiTasks\DTO\AiPayload;
 use Fomvasss\AiTasks\DTO\AiResponse;
-use Fomvasss\AiTasks\Traits\QueueableAi;
 
-/**
- *  This examplle task.
- */ 
-class VisionExampleTask extends AiTask implements ShouldQueueAi, QueueSerializableAi
+class VisionExampleTask extends AiTask implements ShouldQueueAi
 {
     public function __construct(
-        public object $product, // example model with title/features
-        public string $locale = 'en'
+        private readonly string $imageUrl,
+        private readonly string $prompt = 'Describe this image',
     ) {}
 
-    /**
-     * @return array
-     */
-    public function toQueueArgs(): array
+    public function modality(): string
     {
-        return [$this->product, $this->locale];
-    }
-    
-    /**
-     * @return array
-     */
-    public function viaQueues(): array
-    {
-        return [
-            'request' => config('ai.task_queues.product_description.request', 'ai:low'),
-            'postprocess' => config('ai.task_queues.product_description.postprocess', 'ai:post')
-        ];
+        return 'text';
     }
 
-    /**
-     * @return string
-     */
-    public function name(): string { return 'product_description'; }
-
-    /**
-     * @return string
-     */
-    public function modality(): string { return 'text'; }
-    
-    /**
-     * @return AiPayload
-     */
     public function toPayload(): AiPayload
     {
-        new AiPayload(
-            modality: 'vision',
-            messages: [[
-                'role' => 'user',
-                'content' => [
-                    ['type' => 'text', 'text' => 'Опиши зображення'],
-                    ['type' => 'image_url', 'image_url' => ['url' => 'https://.../img.png']],
-                    // or for Gemini: ['type' => 'inline_base64','mime' => 'image/png','data' => $b64]
-                ],
-            ]],
-            options: ['temperature'=>0.2]
+        return new AiPayload(
+            modality: $this->modality(),
+            messages: [
+                new UserMessage(
+                    $this->prompt,
+                    additionalContent: [Image::fromUrl($this->imageUrl)],
+                ),
+            ],
+            options: ['temperature' => 0.2],
         );
     }
 
-    /**
-     * @param AiResponse $resp
-     * @return array|AiResponse
-     */
-    public function postprocess(AiResponse $resp): array|AiResponse
+    public function serializeForQueue(): array
     {
-        return $resp;
+        return [$this->imageUrl, $this->prompt];
     }
 }

@@ -1,13 +1,16 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Fomvasss\AiTasks\DTO;
 
 final class AiPayload
 {
     public function __construct(
-        public string $modality,
-        public array  $messages = [],
-        public array  $options  = [],
-        public array  $meta     = [],
+        public readonly string  $modality,
+        public readonly array   $messages = [],
+        public readonly ?string $systemPrompt = null,
+        public readonly array   $options = [],
+        public readonly array   $meta = [],
     ) {}
 }
