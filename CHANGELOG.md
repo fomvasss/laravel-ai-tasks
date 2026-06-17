@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 - `PrismDriver` — single driver class for all providers via [echolabs/prism](https://github.com/echolabs/prism)
+- `AiManager` resolves any Prism provider dynamically from `config/ai.php` — no code changes needed to add new providers
 - Support for **Anthropic** (Claude), **Ollama**, **Mistral** providers out of the box
 - `AiPayload::$systemPrompt` — dedicated field for system prompt (Prism-native)
 - `AiPayload` messages now use Prism message objects (`UserMessage`, `AssistantMessage`, etc.)
@@ -40,6 +41,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Removed
 - `OpenAiDriver` — replaced by `PrismDriver`
 - `GeminiDriver` — replaced by `PrismDriver`
+- `AiManager::createOpenaiDriver()`, `createAnthropicDriver()` etc. — replaced by single dynamic `createDriver()`
 - `Contracts/QueueSerializableAi` — unified into `AiTask::serializeForQueue()`
 - `Contracts/AcceptsWebhooks` — unused
 - `Events/AiRunStarted`, `AiRunPostprocessed`, `AiRunPostprocessFailed`

@@ -260,7 +260,7 @@ Event::listen(AiTaskCompleted::class, function (AiTaskCompleted $event) {
 
 ## Supported Providers
 
-Via Prism — add `api_key` + `model` to `config/ai.php` and register in `AiManager`:
+Any provider supported by [Prism](https://github.com/echolabs/prism) works automatically — just add a section to `config/ai.php` with `api_key` and `model`. No code changes needed.
 
 | Provider | Driver key |
 |---|---|
@@ -269,6 +269,10 @@ Via Prism — add `api_key` + `model` to `config/ai.php` and register in `AiMana
 | Google Gemini | `gemini` |
 | Ollama (local) | `ollama` |
 | Mistral | `mistral` |
+| Groq | `groq` |
+| xAI (Grok) | `xai` |
+| DeepSeek | `deepseek` |
+| VoyageAI | `voyageai` |
 
 ## Changelog
 

@@ -7,6 +7,7 @@ namespace Fomvasss\AiTasks\Core;
 use Fomvasss\AiTasks\Contracts\AiDriver;
 use Fomvasss\AiTasks\Drivers\NullDriver;
 use Fomvasss\AiTasks\Drivers\PrismDriver;
+use Fomvasss\AiTasks\Exceptions\AiDriverException;
 use Illuminate\Support\Manager;
 
 class AiManager extends Manager
@@ -16,33 +17,16 @@ class AiManager extends Manager
         return config('ai.default');
     }
 
-    public function createOpenaiDriver(): AiDriver
+    protected function createDriver($driver): AiDriver
     {
-        return new PrismDriver('openai', config('ai.drivers.openai', []));
-    }
+        if ($driver === 'null') {
+            return new NullDriver();
+        }
 
-    public function createAnthropicDriver(): AiDriver
-    {
-        return new PrismDriver('anthropic', config('ai.drivers.anthropic', []));
-    }
+        if (config()->has("ai.drivers.{$driver}")) {
+            return new PrismDriver($driver, config("ai.drivers.{$driver}", []));
+        }
 
-    public function createGeminiDriver(): AiDriver
-    {
-        return new PrismDriver('gemini', config('ai.drivers.gemini', []));
-    }
-
-    public function createOllamaDriver(): AiDriver
-    {
-        return new PrismDriver('ollama', config('ai.drivers.ollama', []));
-    }
-
-    public function createMistralDriver(): AiDriver
-    {
-        return new PrismDriver('mistral', config('ai.drivers.mistral', []));
-    }
-
-    public function createNullDriver(): AiDriver
-    {
-        return new NullDriver();
+        throw new AiDriverException("Driver [{$driver}] is not configured in config/ai.php.");
     }
 }
