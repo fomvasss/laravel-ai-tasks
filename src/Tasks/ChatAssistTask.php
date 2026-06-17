@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Fomvasss\AiTasks\Tasks;
 
-use EchoLabs\Prism\ValueObjects\Messages\AssistantMessage;
-use EchoLabs\Prism\ValueObjects\Messages\UserMessage;
+use Prism\Prism\ValueObjects\Messages\AssistantMessage;
+use Prism\Prism\ValueObjects\Messages\UserMessage;
 use Fomvasss\AiTasks\DTO\AiContext;
 use Fomvasss\AiTasks\DTO\AiPayload;
 use Fomvasss\AiTasks\DTO\AiResponse;

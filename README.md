@@ -4,7 +4,7 @@
 [![Latest Stable Version](https://img.shields.io/packagist/v/fomvasss/laravel-ai-tasks.svg?style=for-the-badge)](https://packagist.org/packages/fomvasss/laravel-ai-tasks)
 [![Total Downloads](https://img.shields.io/packagist/dt/fomvasss/laravel-ai-tasks.svg?style=for-the-badge)](https://packagist.org/packages/fomvasss/laravel-ai-tasks)
 
-AI task orchestrator for Laravel. Handles routing, queuing, audit logging, budget tracking, and webhook processing on top of [Prism](https://github.com/echolabs/prism) as the transport layer.
+AI task orchestrator for Laravel. Handles routing, queuing, audit logging, budget tracking, and webhook processing on top of [Prism](https://prismphp.com) as the transport layer.
 
 [Українська документація](README.uk.md)
 
@@ -12,7 +12,7 @@ AI task orchestrator for Laravel. Handles routing, queuing, audit logging, budge
 
 - PHP ^8.2
 - Laravel ^11 | ^12 | ^13
-- [echolabs/prism](https://github.com/echolabs/prism) ^0.70
+- [prism-php/prism](https://github.com/prism-php/prism) ^0.70
 
 ## Installation
 
@@ -82,7 +82,7 @@ declare(strict_types=1);
 
 namespace App\Ai\Tasks;
 
-use EchoLabs\Prism\ValueObjects\Messages\UserMessage;
+use Prism\Prism\ValueObjects\Messages\UserMessage;
 use Fomvasss\AiTasks\DTO\AiPayload;
 use Fomvasss\AiTasks\DTO\AiResponse;
 use Fomvasss\AiTasks\Tasks\AiTask;
@@ -260,7 +260,7 @@ Event::listen(AiTaskCompleted::class, function (AiTaskCompleted $event) {
 
 ## Supported Providers
 
-Any provider supported by [Prism](https://github.com/echolabs/prism) works automatically — just add a section to `config/ai.php` with `api_key` and `model`. No code changes needed.
+Any provider supported by [Prism](https://prismphp.com) works automatically — just add a section to `config/ai.php` with `api_key` and `model`. No code changes needed.
 
 | Provider | Driver key |
 |---|---|
@@ -273,6 +273,11 @@ Any provider supported by [Prism](https://github.com/echolabs/prism) works autom
 | xAI (Grok) | `xai` |
 | DeepSeek | `deepseek` |
 | VoyageAI | `voyageai` |
+| AWS Bedrock | `bedrock` |
+| OpenRouter | `openrouter` |
+| Perplexity | `perplexity` |
+| ElevenLabs | `elevenlabs` |
+| Z AI | `zai` |
 
 ## Changelog
 

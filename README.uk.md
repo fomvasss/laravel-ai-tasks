@@ -4,7 +4,7 @@
 [![Latest Stable Version](https://img.shields.io/packagist/v/fomvasss/laravel-ai-tasks.svg?style=for-the-badge)](https://packagist.org/packages/fomvasss/laravel-ai-tasks)
 [![Total Downloads](https://img.shields.io/packagist/dt/fomvasss/laravel-ai-tasks.svg?style=for-the-badge)](https://packagist.org/packages/fomvasss/laravel-ai-tasks)
 
-Оркестратор AI-задач для Laravel. Маршрутизація, черги, аудит-лог, бюджети, вебхуки — поверх [Prism](https://github.com/echolabs/prism) як транспортного шару.
+Оркестратор AI-задач для Laravel. Маршрутизація, черги, аудит-лог, бюджети, вебхуки — поверх [Prism](https://prismphp.com) як транспортного шару.
 
 [English documentation](README.md)
 
@@ -12,7 +12,7 @@
 
 - PHP ^8.2
 - Laravel ^11 | ^12 | ^13
-- [echolabs/prism](https://github.com/echolabs/prism) ^0.70
+- [prism-php/prism](https://github.com/prism-php/prism) ^0.70
 
 ## Встановлення
 
@@ -82,7 +82,7 @@ declare(strict_types=1);
 
 namespace App\Ai\Tasks;
 
-use EchoLabs\Prism\ValueObjects\Messages\UserMessage;
+use Prism\Prism\ValueObjects\Messages\UserMessage;
 use Fomvasss\AiTasks\DTO\AiPayload;
 use Fomvasss\AiTasks\DTO\AiResponse;
 use Fomvasss\AiTasks\Tasks\AiTask;
@@ -260,7 +260,7 @@ Event::listen(AiTaskCompleted::class, function (AiTaskCompleted $event) {
 
 ## Підтримувані провайдери
 
-Будь-який провайдер підтримуваний [Prism](https://github.com/echolabs/prism) працює автоматично — достатньо додати секцію до `config/ai.php` з `api_key` і `model`. Зміни в коді не потрібні.
+Будь-який провайдер підтримуваний [Prism](https://prismphp.com) працює автоматично — достатньо додати секцію до `config/ai.php` з `api_key` і `model`. Зміни в коді не потрібні.
 
 | Провайдер | Ключ драйвера |
 |---|---|
@@ -273,6 +273,11 @@ Event::listen(AiTaskCompleted::class, function (AiTaskCompleted $event) {
 | xAI (Grok) | `xai` |
 | DeepSeek | `deepseek` |
 | VoyageAI | `voyageai` |
+| AWS Bedrock | `bedrock` |
+| OpenRouter | `openrouter` |
+| Perplexity | `perplexity` |
+| ElevenLabs | `elevenlabs` |
+| Z AI | `zai` |
 
 ## Changelog
 

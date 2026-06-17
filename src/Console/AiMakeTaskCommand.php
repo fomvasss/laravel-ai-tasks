@@ -64,7 +64,7 @@ declare(strict_types=1);
 
 namespace {$namespace};
 
-use EchoLabs\Prism\ValueObjects\Messages\UserMessage;
+use Prism\Prism\ValueObjects\Messages\UserMessage;
 use Fomvasss\AiTasks\DTO\AiPayload;
 use Fomvasss\AiTasks\DTO\AiResponse;
 use Fomvasss\AiTasks\Tasks\AiTask;{$queuedUse}

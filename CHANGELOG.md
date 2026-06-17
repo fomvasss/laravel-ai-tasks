@@ -7,7 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased — 2.x]
 
 ### Added
-- `PrismDriver` — single driver class for all providers via [echolabs/prism](https://github.com/echolabs/prism)
+- `PrismDriver` — single driver class for all providers via [prism-php/prism](https://github.com/prism-php/prism)
 - `AiManager` resolves any Prism provider dynamically from `config/ai.php` — no code changes needed to add new providers
 - Support for **Anthropic** (Claude), **Ollama**, **Mistral** providers out of the box
 - `AiPayload::$systemPrompt` — dedicated field for system prompt (Prism-native)

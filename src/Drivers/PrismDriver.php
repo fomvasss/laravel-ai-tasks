@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace Fomvasss\AiTasks\Drivers;
 
-use EchoLabs\Prism\Enums\Provider;
-use EchoLabs\Prism\Facades\Prism;
-use EchoLabs\Prism\ValueObjects\Messages\AssistantMessage;
-use EchoLabs\Prism\ValueObjects\Messages\UserMessage;
+use Prism\Prism\Enums\Provider;
+use Prism\Prism\Facades\Prism;
+use Prism\Prism\ValueObjects\Messages\AssistantMessage;
+use Prism\Prism\ValueObjects\Messages\UserMessage;
 use Fomvasss\AiTasks\Contracts\AiDriver;
 use Fomvasss\AiTasks\DTO\AiContext;
 use Fomvasss\AiTasks\DTO\AiPayload;

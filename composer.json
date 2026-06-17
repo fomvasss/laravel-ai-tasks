@@ -20,7 +20,7 @@
     "illuminate/events": "^11.0|^12.0|^13.0",
     "illuminate/pipeline": "^11.0|^12.0|^13.0",
     "illuminate/http": "^11.0|^12.0|^13.0",
-    "echolabs/prism": "^0.70"
+    "prism-php/prism": "^0.70"
   },
   "require-dev": {
     "orchestra/testbench": "^9.0|^10.0|^11.0",

@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Fomvasss\AiTasks\Tasks;
 
-use EchoLabs\Prism\ValueObjects\Messages\UserMessage;
-use EchoLabs\Prism\ValueObjects\Messages\Support\Image;
+use Prism\Prism\ValueObjects\Messages\UserMessage;
+use Prism\Prism\ValueObjects\Messages\Support\Image;
 use Fomvasss\AiTasks\Contracts\ShouldQueueAi;
 use Fomvasss\AiTasks\DTO\AiPayload;
 use Fomvasss\AiTasks\DTO\AiResponse;
