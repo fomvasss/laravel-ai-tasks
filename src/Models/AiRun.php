@@ -143,10 +143,30 @@ class AiRun extends Model
 
     private static function minifyRequest(AiPayload $p): array
     {
-        return [
+        $data = [
             'modality' => $p->modality,
             'options'  => $p->options,
             'meta'     => $p->meta,
         ];
+
+        if (config('ai.store_request')) {
+            if ($p->systemPrompt !== null) {
+                $data['system'] = $p->systemPrompt;
+            }
+            $data['messages'] = array_map(
+                fn($m) => ['role' => self::messageRole($m), 'content' => $m->content],
+                $p->messages,
+            );
+        }
+
+        return $data;
+    }
+
+    private static function messageRole(object $m): string
+    {
+        return match (true) {
+            $m instanceof \Prism\Prism\ValueObjects\Messages\AssistantMessage => 'assistant',
+            default => 'user',
+        };
     }
 }

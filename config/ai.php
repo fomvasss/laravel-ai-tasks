@@ -12,6 +12,8 @@ return [
 
     'default_tenant' => env('AI_DEFAULT_TENANT', 'default'),
 
+    'store_request' => env('AI_STORE_REQUEST', false),
+
     /*
     |--------------------------------------------------------------------------
     | Queues
