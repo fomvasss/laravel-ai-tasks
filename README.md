@@ -145,13 +145,46 @@ echo $response->content;
 $runId = AI::queue(new SummarizeTask($text));
 
 // Streaming
-AI::stream(new SummarizeTask($text), function (string $chunk) {
+$response = AI::stream(new SummarizeTask($text), function (string $chunk) {
     echo $chunk;
 });
+// $response->content — full accumulated text
+// $response->usage  — tokens + cost (same as AI::send)
 
 // Override driver at runtime
 $response = AI::send(new SummarizeTask($text), drivers: 'anthropic');
 ```
+
+## Streaming
+
+`AI::stream()` delivers response text chunk by chunk via a callback, useful for real-time UI (SSE, WebSockets).
+
+```php
+$response = AI::stream(
+    new SummarizeTask($text),
+    function (string $chunk) {
+        echo $chunk;          // or: event('stream', $chunk)
+    },
+    drivers: ['openai'],      // optional driver override
+);
+
+// After the stream ends:
+$response->content;           // full accumulated text
+$response->usage;             // tokens + cost
+```
+
+### Provider support
+
+Native SSE streaming is implemented directly for the main providers (bypassing Prism's stream handlers which have known issues in 0.70):
+
+| Provider | Stream | Notes |
+|---|---|---|
+| `openai` | ✅ | Real chunks via `chat/completions` SSE |
+| `gemini` | ✅ | SSE via `streamGenerateContent` |
+| `anthropic` | ✅ | SSE via Anthropic Messages API |
+| others | ⚠️ | Prism stream → silent fallback to `asText()` |
+
+For providers in the ⚠️ row the callback is called once with the full response — the interface is identical, just without intermediate chunks.
 
 ## Driver Routing
 

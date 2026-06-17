@@ -145,13 +145,46 @@ echo $response->content;
 $runId = AI::queue(new SummarizeTask($text));
 
 // Стрімінг
-AI::stream(new SummarizeTask($text), function (string $chunk) {
+$response = AI::stream(new SummarizeTask($text), function (string $chunk) {
     echo $chunk;
 });
+// $response->content — повний накопичений текст
+// $response->usage  — токени + вартість (як у AI::send)
 
 // Перевизначити драйвер на льоту
 $response = AI::send(new SummarizeTask($text), drivers: 'anthropic');
 ```
+
+## Стрімінг
+
+`AI::stream()` передає текст відповіді чанками через callback — зручно для real-time UI (SSE, WebSockets).
+
+```php
+$response = AI::stream(
+    new SummarizeTask($text),
+    function (string $chunk) {
+        echo $chunk;           // або: event('stream', $chunk)
+    },
+    drivers: ['openai'],       // опціональний override драйвера
+);
+
+// Після завершення стріму:
+$response->content;            // повний накопичений текст
+$response->usage;              // токени + вартість
+```
+
+### Підтримка провайдерів
+
+Нативний SSE реалізований напряму для основних провайдерів (обходить Prism stream handlers, які мають відомі баги у версії 0.70):
+
+| Провайдер | Stream | Примітка |
+|---|---|---|
+| `openai` | ✅ | Реальні чанки через `chat/completions` SSE |
+| `gemini` | ✅ | SSE через `streamGenerateContent` |
+| `anthropic` | ✅ | SSE через Anthropic Messages API |
+| інші | ⚠️ | Prism stream → тихий fallback на `asText()` |
+
+Для провайдерів у рядку ⚠️ callback викликається один раз з повною відповіддю — інтерфейс однаковий, просто без проміжних чанків.
 
 ## Маршрутизація драйверів
 
