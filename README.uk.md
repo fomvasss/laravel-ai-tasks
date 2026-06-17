@@ -279,6 +279,35 @@ Event::listen(AiTaskCompleted::class, function (AiTaskCompleted $event) {
 | ElevenLabs | `elevenlabs` |
 | Z AI | `zai` |
 
+### Як працюють credentials
+
+Prism читає credentials провайдерів зі свого конфігу — або з опублікованого `config/prism.php`, або напряму зі змінних `.env`. Поле `api_key` у `config/ai.php` використовується тільки цим пакетом для перевірки "чи сконфігурований драйвер" перед відправкою запиту.
+
+Щоб дізнатись які `.env` змінні потрібні для конкретного провайдера — дивись:
+
+```
+vendor/prism-php/prism/config/prism.php
+```
+
+**Додавання нового провайдера** (наприклад DeepSeek):
+
+```bash
+# 1. Додай в .env
+DEEPSEEK_API_KEY=sk-...
+
+# 2. Додай в config/ai.php — більше нічого не потрібно
+```
+
+```php
+'deepseek' => [
+    'api_key' => env('DEEPSEEK_API_KEY'),
+    'model'   => 'deepseek-chat',
+    'price'   => ['in' => 0.14, 'out' => 0.28],
+],
+```
+
+Провайдери що потребують кастомного URL (Ollama, self-hosted Mistral, OpenRouter тощо) мають відповідну змінну `*_URL` — видно в тому ж файлі Prism.
+
 ## Changelog
 
 Дивись [CHANGELOG](CHANGELOG.md).

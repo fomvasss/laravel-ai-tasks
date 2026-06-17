@@ -279,6 +279,35 @@ Any provider supported by [Prism](https://prismphp.com) works automatically — 
 | ElevenLabs | `elevenlabs` |
 | Z AI | `zai` |
 
+### How credentials work
+
+Prism reads provider credentials from its own config — either from the published `config/prism.php` or directly from `.env` variables. The `api_key` in `config/ai.php` is only used by this package to check whether a driver is configured before dispatching.
+
+To find out what `.env` variables each provider needs, check:
+
+```
+vendor/prism-php/prism/config/prism.php
+```
+
+**Adding a new provider** (e.g. DeepSeek):
+
+```bash
+# 1. Add to .env
+DEEPSEEK_API_KEY=sk-...
+
+# 2. Add to config/ai.php — no other changes needed
+```
+
+```php
+'deepseek' => [
+    'api_key' => env('DEEPSEEK_API_KEY'),
+    'model'   => 'deepseek-chat',
+    'price'   => ['in' => 0.14, 'out' => 0.28],
+],
+```
+
+Providers that need a custom URL (Ollama, self-hosted Mistral, OpenRouter, etc.) also expose a `*_URL` env variable — visible in the same Prism config file.
+
 ## Changelog
 
 See [CHANGELOG](CHANGELOG.md).
