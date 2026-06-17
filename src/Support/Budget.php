@@ -33,14 +33,14 @@ class Budget
         return round((float) $sum, 8);
     }
 
-    public function getMonthlyRemaining(string $tenantId): ?float
+    public function getMonthlyRemaining(string $tenantId, ?Carbon $when = null): ?float
     {
         $limit = $this->getMonthlyLimit($tenantId);
         if ($limit === null) {
             return null;
         }
 
-        return max(0.0, round($limit - $this->getMonthlySpent($tenantId), 8));
+        return max(0.0, round($limit - $this->getMonthlySpent($tenantId, $when), 8));
     }
 
     public function ensureNotExceeded(string $tenantId, float $expectedCost = 0.0): void
