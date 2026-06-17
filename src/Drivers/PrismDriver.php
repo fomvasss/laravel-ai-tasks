@@ -56,19 +56,26 @@ final class PrismDriver implements AiDriver
 
         $fullText = '';
 
-        $stream = $prism->asStream();
-
-        foreach ($stream as $chunk) {
-            $delta = $chunk->text ?? '';
-            if ($delta !== '') {
-                $fullText .= $delta;
-                $onChunk($delta);
+        try {
+            foreach ($prism->asStream() as $chunk) {
+                $delta = $chunk->text ?? '';
+                if ($delta !== '') {
+                    $fullText .= $delta;
+                    $onChunk($delta);
+                }
             }
+
+            return new AiResponse(true, $fullText, $this->mapUsage(null));
+        } catch (\Throwable) {
+            // fallback to non-streaming (e.g. Prism 0.70 OpenAI stream bug)
+            $result = $prism->asText();
+            $onChunk($result->text);
+
+            $usage        = $this->mapUsage($result->usage);
+            $usage['cost'] = Cost::calc($this->provider, $usage, $this->cfg);
+
+            return new AiResponse(true, $result->text, $usage);
         }
-
-        $usage = $this->mapUsage(null);
-
-        return new AiResponse(true, $fullText, $usage);
     }
 
     private function sendText(AiPayload $p): AiResponse
