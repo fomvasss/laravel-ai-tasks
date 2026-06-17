@@ -11,7 +11,7 @@
 ## Вимоги
 
 - PHP ^8.2
-- Laravel ^11 | ^12
+- Laravel ^11 | ^12 | ^13
 - [echolabs/prism](https://github.com/echolabs/prism) ^0.70
 
 ## Встановлення

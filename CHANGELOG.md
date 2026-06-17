@@ -29,7 +29,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 - **PHP minimum raised to ^8.2** (was ^8.1)
-- **Laravel minimum raised to ^11.0** (dropped Laravel 10 support)
+- **Laravel minimum raised to ^11.0** (dropped Laravel 10 support); **Laravel 13 supported**
 - Queues simplified: `ai` (default) + `ai-post` (postprocess) instead of 5 queues
 - `Cost::calc()` now calculates per 1M tokens (not per 1K); returns `null` if no price configured
 - `Budget::getMonthlySpent()` now uses `SQL SUM(cost)` instead of PHP-level aggregation

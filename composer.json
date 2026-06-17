@@ -13,17 +13,17 @@
   ],
   "require": {
     "php": "^8.2",
-    "illuminate/support": "^11.0|^12.0",
-    "illuminate/contracts": "^11.0|^12.0",
-    "illuminate/queue": "^11.0|^12.0",
-    "illuminate/database": "^11.0|^12.0",
-    "illuminate/events": "^11.0|^12.0",
-    "illuminate/pipeline": "^11.0|^12.0",
-    "illuminate/http": "^11.0|^12.0",
+    "illuminate/support": "^11.0|^12.0|^13.0",
+    "illuminate/contracts": "^11.0|^12.0|^13.0",
+    "illuminate/queue": "^11.0|^12.0|^13.0",
+    "illuminate/database": "^11.0|^12.0|^13.0",
+    "illuminate/events": "^11.0|^12.0|^13.0",
+    "illuminate/pipeline": "^11.0|^12.0|^13.0",
+    "illuminate/http": "^11.0|^12.0|^13.0",
     "echolabs/prism": "^0.70"
   },
   "require-dev": {
-    "orchestra/testbench": "^9.0|^10.0",
+    "orchestra/testbench": "^9.0|^10.0|^11.0",
     "phpunit/phpunit": "^11.0"
   },
   "autoload": {
