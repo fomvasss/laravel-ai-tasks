@@ -8,6 +8,26 @@
 
 [English documentation](README.md)
 
+## Dashboard
+
+Вбудований веб-інтерфейс за адресою `/ai-tasks` — список runs зі статистикою, фільтрами та деталями кожного запиту (request, response, токени, вартість).
+
+![Dashboard](art/dashboard.gif)
+
+| Список | Деталь |
+|---|---|
+| ![Index](art/dashboard-index.jpg) | ![Show](art/dashboard-show.jpg) |
+
+Конфігурується в `config/ai.php`:
+
+```php
+'dashboard' => [
+    'enabled'    => env('AI_DASHBOARD_ENABLED', true),
+    'path'       => env('AI_DASHBOARD_PATH', 'ai-tasks'),
+    'middleware' => ['web'],
+],
+```
+
 ## Вимоги
 
 - PHP ^8.2

@@ -8,6 +8,26 @@ AI task orchestrator for Laravel. Handles routing, queuing, audit logging, budge
 
 [Українська документація](README.uk.md)
 
+## Dashboard
+
+Built-in web UI at `/ai-tasks` — runs list with stats, filters, and per-run detail (request, response, tokens, cost).
+
+![Dashboard](art/dashboard.gif)
+
+| Index | Detail |
+|---|---|
+| ![Index](art/dashboard-index.jpg) | ![Show](art/dashboard-show.jpg) |
+
+Configurable via `config/ai.php`:
+
+```php
+'dashboard' => [
+    'enabled'    => env('AI_DASHBOARD_ENABLED', true),
+    'path'       => env('AI_DASHBOARD_PATH', 'ai-tasks'),
+    'middleware' => ['web'],
+],
+```
+
 ## Requirements
 
 - PHP ^8.2
