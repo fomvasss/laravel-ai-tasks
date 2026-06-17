@@ -280,6 +280,47 @@ class AnalyzeTask extends AiTask implements ShouldQueueAi
 }
 ```
 
+## Тестування
+
+`AI::fake()` замінює реальний AI-менеджер підробленим — без HTTP-запитів. Записує всі виклики і надає assertion-хелпери.
+
+```php
+use Fomvasss\AiTasks\Facades\AI;
+
+// За замовчуванням: всі таски вертають "fake ai response"
+$fake = AI::fake();
+
+// Фіксована відповідь для всіх тасків
+$fake = AI::fake('Короткий підсумок.');
+
+// Відповіді по імені таску
+$fake = AI::fake([
+    'summarize' => 'Це підсумок.',
+    'translate'  => 'This is a translation.',
+    '*'          => 'Відповідь за замовчуванням.',  // catch-all
+]);
+```
+
+### Перевірки
+
+```php
+$fake->assertSent(SummarizeTask::class);
+
+$fake->assertSent(SummarizeTask::class, function (AiTask $task, string $method) {
+    return $task->name() === 'summarize' && $method === 'send';
+});
+
+$fake->assertNotSent(TranslateTask::class);
+
+$fake->assertQueued(SummarizeTask::class);
+
+$fake->assertSentCount(3);   // всі виклики: send + stream + queue
+
+$fake->assertNothingSent();
+```
+
+`AI::stream()` з fake все одно викликає `$onChunk` один раз з повною відповіддю — стрімінгова логіка також тестується.
+
 ## Події
 
 | Подія | Коли |

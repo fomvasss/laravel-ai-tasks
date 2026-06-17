@@ -280,6 +280,47 @@ class AnalyzeTask extends AiTask implements ShouldQueueAi
 }
 ```
 
+## Testing
+
+Use `AI::fake()` in tests to avoid real API calls. The fake records all calls and provides assertion helpers.
+
+```php
+use Fomvasss\AiTasks\Facades\AI;
+
+// Default: all tasks return "fake ai response"
+$fake = AI::fake();
+
+// Fixed response for all tasks
+$fake = AI::fake('Short summary.');
+
+// Per-task responses (matched by task name)
+$fake = AI::fake([
+    'summarize' => 'This is a summary.',
+    'translate'  => 'Це переклад.',
+    '*'          => 'Default fallback.',   // catch-all
+]);
+```
+
+### Assertions
+
+```php
+$fake->assertSent(SummarizeTask::class);
+
+$fake->assertSent(SummarizeTask::class, function (AiTask $task, string $method) {
+    return $task->name() === 'summarize' && $method === 'send';
+});
+
+$fake->assertNotSent(TranslateTask::class);
+
+$fake->assertQueued(SummarizeTask::class);
+
+$fake->assertSentCount(3);   // total calls (send + stream + queue)
+
+$fake->assertNothingSent();
+```
+
+`AI::stream()` with fake still calls the `$onChunk` callback once with the full response, so streaming logic can be tested too.
+
 ## Events
 
 | Event | When |
