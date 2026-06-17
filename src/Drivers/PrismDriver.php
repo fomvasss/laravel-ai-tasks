@@ -4,9 +4,7 @@ declare(strict_types=1);
 
 namespace Fomvasss\AiTasks\Drivers;
 
-use Prism\Prism\Enums\Provider;
-use Prism\Prism\Facades\Prism;
-use Prism\Prism\ValueObjects\Messages\AssistantMessage;
+use Prism\Prism\Prism;
 use Prism\Prism\ValueObjects\Messages\UserMessage;
 use Fomvasss\AiTasks\Contracts\AiDriver;
 use Fomvasss\AiTasks\DTO\AiContext;
@@ -58,7 +56,7 @@ final class PrismDriver implements AiDriver
 
         $fullText = '';
 
-        $stream = $prism->stream();
+        $stream = $prism->asStream();
 
         foreach ($stream as $chunk) {
             $delta = $chunk->text ?? '';
@@ -68,7 +66,7 @@ final class PrismDriver implements AiDriver
             }
         }
 
-        $usage = $this->mapUsage($stream->usage ?? null);
+        $usage = $this->mapUsage(null);
 
         return new AiResponse(true, $fullText, $usage);
     }
@@ -98,7 +96,7 @@ final class PrismDriver implements AiDriver
             $prism = $prism->withMaxTokens((int) $p->options['max_tokens']);
         }
 
-        $result = $prism->generate();
+        $result = $prism->asText();
 
         $usage = $this->mapUsage($result->usage);
         $usage['cost'] = Cost::calc($this->provider, $usage, $this->cfg);
@@ -134,18 +132,22 @@ final class PrismDriver implements AiDriver
             ? $input->content
             : (string) $input;
 
-        $prism = Prism::embeddings()
+        $result = Prism::embeddings()
             ->using($this->provider, $model)
-            ->fromInput($text);
+            ->fromInput($text)
+            ->asEmbeddings();
 
-        $result = $prism->generate();
-
-        $usage = $this->mapUsage($result->usage ?? null);
+        $usage = [
+            'driver'    => $this->provider,
+            'tokens_in' => $result->usage->tokens ?? null,
+        ];
         $usage['cost'] = Cost::calc($this->provider, $usage, $this->cfg);
+
+        $vector = $result->embeddings[0]->embedding ?? [];
 
         return new AiResponse(
             ok: true,
-            content: json_encode($result->embeddings),
+            content: json_encode($vector),
             usage: $usage,
         );
     }
@@ -160,8 +162,8 @@ final class PrismDriver implements AiDriver
             'driver'             => $this->provider,
             'tokens_in'          => $usage->promptTokens ?? null,
             'tokens_out'         => $usage->completionTokens ?? null,
-            'cache_read_tokens'  => $usage->cacheReadTokens ?? null,
-            'cache_write_tokens' => $usage->cacheWriteTokens ?? null,
+            'cache_read_tokens'  => $usage->cacheReadInputTokens ?? null,
+            'cache_write_tokens' => $usage->cacheWriteInputTokens ?? null,
         ];
     }
 }

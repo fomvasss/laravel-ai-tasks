@@ -52,6 +52,7 @@ class AiRequestCommand extends Command
 
             public function name(): string     { return $this->taskName; }
             public function modality(): string { return $this->modalityVal; }
+            public function idempotencyKey(): string { return hash('xxh3', $this->prompt); }
 
             public function context(): AiContext
             {
