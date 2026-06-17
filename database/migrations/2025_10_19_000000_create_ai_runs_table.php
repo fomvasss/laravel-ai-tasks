@@ -19,19 +19,19 @@ return new class extends Migration {
             $t->string('subject_type')->nullable()->index();
             $t->string('subject_id')->nullable()->index();
             $t->string('status')->index(); // queued|running|ok|error|dead|waiting|skipped
-            $t->string('error', 500)->nullable();
+            $t->text('error')->nullable();
             $t->string('idempotency_key')->nullable()->unique();
             $t->json('request')->nullable();
             $t->json('response')->nullable();
             // денормалізовані токени для SQL-аналітики
-            $t->unsignedInteger('tokens_in')->nullable();
-            $t->unsignedInteger('tokens_out')->nullable();
-            $t->unsignedInteger('cache_read_tokens')->nullable();
-            $t->unsignedInteger('cache_write_tokens')->nullable();
+            $t->unsignedMediumInteger('tokens_in')->nullable();
+            $t->unsignedMediumInteger('tokens_out')->nullable();
+            $t->unsignedMediumInteger('cache_read_tokens')->nullable();
+            $t->unsignedMediumInteger('cache_write_tokens')->nullable();
             $t->decimal('cost', 12, 8)->nullable();
             $t->timestamp('started_at')->nullable();
             $t->timestamp('finished_at')->nullable();
-            $t->unsignedInteger('duration_ms')->nullable();
+            $t->unsignedMediumInteger('duration_ms')->nullable();
             $t->timestamps();
         });
     }

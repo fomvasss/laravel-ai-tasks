@@ -118,7 +118,7 @@ class AiRun extends Model
 
         $this->update([
             'status'      => 'error',
-            'error'       => mb_substr($error, 0, 500),
+            'error'       => $error,
             'tokens_in'   => $usage['tokens_in']  ?? null,
             'tokens_out'  => $usage['tokens_out'] ?? null,
             'finished_at' => now(),
@@ -132,7 +132,7 @@ class AiRun extends Model
     {
         static::whereKey($id)->update([
             'status'      => 'dead',
-            'error'       => mb_substr($e->getMessage(), 0, 500),
+            'error'       => $e->getMessage(),
             'finished_at' => now(),
         ]);
 
