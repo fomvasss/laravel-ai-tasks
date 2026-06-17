@@ -14,10 +14,6 @@
 
 ![Dashboard](art/dashboard.gif)
 
-| Список | Деталь |
-|---|---|
-| ![Index](art/dashboard-index.jpg) | ![Show](art/dashboard-show.jpg) |
-
 Конфігурується в `config/ai.php`:
 
 ```php

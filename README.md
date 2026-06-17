@@ -14,10 +14,6 @@ Built-in web UI at `/ai-tasks` — runs list with stats, filters, and per-run de
 
 ![Dashboard](art/dashboard.gif)
 
-| Index | Detail |
-|---|---|
-| ![Index](art/dashboard-index.jpg) | ![Show](art/dashboard-show.jpg) |
-
 Configurable via `config/ai.php`:
 
 ```php
