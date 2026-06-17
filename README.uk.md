@@ -4,17 +4,17 @@
 [![Latest Stable Version](https://img.shields.io/packagist/v/fomvasss/laravel-ai-tasks.svg?style=for-the-badge)](https://packagist.org/packages/fomvasss/laravel-ai-tasks)
 [![Total Downloads](https://img.shields.io/packagist/dt/fomvasss/laravel-ai-tasks.svg?style=for-the-badge)](https://packagist.org/packages/fomvasss/laravel-ai-tasks)
 
-AI task orchestrator for Laravel. Handles routing, queuing, audit logging, budget tracking, and webhook processing on top of [Prism](https://github.com/echolabs/prism) as the transport layer.
+Оркестратор AI-задач для Laravel. Маршрутизація, черги, аудит-лог, бюджети, вебхуки — поверх [Prism](https://github.com/echolabs/prism) як транспортного шару.
 
-[Українська документація](README.uk.md)
+[English documentation](README.md)
 
-## Requirements
+## Вимоги
 
 - PHP ^8.2
 - Laravel ^11 | ^12
 - [echolabs/prism](https://github.com/echolabs/prism) ^0.70
 
-## Installation
+## Встановлення
 
 ```bash
 composer require fomvasss/laravel-ai-tasks
@@ -26,7 +26,7 @@ php artisan vendor:publish --tag=ai-migrations
 php artisan migrate
 ```
 
-Add keys to `.env`:
+Додай ключі до `.env`:
 
 ```env
 AI_DEFAULT=openai
@@ -36,16 +36,16 @@ ANTHROPIC_API_KEY=sk-ant-...
 GEMINI_API_KEY=...
 ```
 
-## Horizon / Queue
+## Horizon / Черги
 
-Two queues are used by default:
+За замовчуванням використовуються дві черги:
 
 ```env
 AI_QUEUE=ai
 AI_QUEUE_POST=ai-post
 ```
 
-Example Horizon config:
+Приклад конфігурації Horizon:
 
 ```php
 'supervisor-ai' => [
@@ -68,7 +68,7 @@ Example Horizon config:
 ],
 ```
 
-## Creating a Task
+## Створення таску
 
 ```bash
 php artisan ai:make-task SummarizeTask
@@ -102,59 +102,59 @@ class SummarizeTask extends AiTask
     {
         return new AiPayload(
             modality:     $this->modality(),
-            messages:     [new UserMessage("Summarize: {$this->text}")],
-            systemPrompt: 'You are a concise summarizer. Reply in 3 sentences max.',
+            messages:     [new UserMessage("Стисни текст: {$this->text}")],
+            systemPrompt: 'Ти помічник-редактор. Відповідай максимум 3 реченнями.',
             options:      ['temperature' => 0.3],
         );
     }
 
     public function postprocess(AiResponse $response): AiResponse|array
     {
-        // save to DB, dispatch further jobs, etc.
+        // зберегти в БД, відправити подію тощо
         return $response;
     }
 }
 ```
 
-## Running Tasks
+## Запуск задач
 
 ```php
 use Fomvasss\AiTasks\Facades\AI;
 
-// Sync
+// Синхронно
 $response = AI::send(new SummarizeTask($text));
 echo $response->content;
 
-// Async (queue)
+// Асинхронно (черга)
 $runId = AI::queue(new SummarizeTask($text));
 
-// Streaming
+// Стрімінг
 AI::stream(new SummarizeTask($text), function (string $chunk) {
     echo $chunk;
 });
 
-// Override driver at runtime
+// Перевизначити драйвер на льоту
 $response = AI::send(new SummarizeTask($text), drivers: 'anthropic');
 ```
 
-## Driver Routing
+## Маршрутизація драйверів
 
-Tasks are routed to drivers via `config/ai.php`:
+Маршрути задаються у `config/ai.php`:
 
 ```php
 'routing' => [
-    'summarize'       => ['openai', 'anthropic'], // fallback chain
-    'orders_analyze'  => ['gemini'],
+    'summarize'      => ['openai', 'anthropic'], // основний + fallback
+    'orders_analyze' => ['gemini'],
 ],
 ```
 
-Or on the task instance:
+Або безпосередньо на інстансі таску:
 
 ```php
 AI::send((new SummarizeTask($text))->viaDrivers('gemini'));
 ```
 
-## Multi-tenant Budget Tracking
+## Multi-tenant бюджет
 
 ```php
 // config/ai.php
@@ -164,15 +164,15 @@ AI::send((new SummarizeTask($text))->viaDrivers('gemini'));
 ],
 ```
 
-The `TenantResolver` picks up tenant ID from `X-Tenant-Id` header, authenticated user, or config default. Override it by binding your own resolver in a service provider:
+`TenantResolver` визначає `tenant_id` з заголовка `X-Tenant-Id`, авторизованого користувача або конфігу. Щоб замінити — збіндити власний клас:
 
 ```php
 $this->app->singleton(\Fomvasss\AiTasks\Support\TenantResolver::class, fn() => new MyTenantResolver());
 ```
 
-## Cost Tracking
+## Відстеження витрат
 
-Set pricing per driver in `config/ai.php` (per 1M tokens):
+Задай ціни у `config/ai.php` (за 1M токенів у USD):
 
 ```php
 'anthropic' => [
@@ -181,36 +181,36 @@ Set pricing per driver in `config/ai.php` (per 1M tokens):
     'price'   => [
         'in'          => 3.00,
         'out'         => 15.00,
-        'cache_write' => 3.75,  // prompt caching write
-        'cache_read'  => 0.30,  // prompt caching read
+        'cache_write' => 3.75,  // запис у кеш промпту
+        'cache_read'  => 0.30,  // читання з кешу промпту
     ],
 ],
 ```
 
-Cost is calculated after each response and stored in `ai_runs.cost`. If `price` is not set, `cost` is `null` but token counts are always saved.
+Вартість розраховується після кожного запиту і зберігається в `ai_runs.cost`. Якщо `price` не задано — `cost` буде `null`, але кількість токенів завжди записується.
 
-Query spend per tenant:
+Аналітика витрат по тенанту через SQL:
 
 ```php
 AiRun::where('tenant_id', $tenantId)
     ->where('status', 'ok')
-    ->sum('cost'); // fast SQL, indexed column
+    ->sum('cost'); // швидкий SQL-запит, проіндексована колонка
 ```
 
-## Prompt Caching (Anthropic)
+## Кешування промптів (Anthropic)
 
 ```php
 return new AiPayload(
     modality:     'text',
     messages:     [new UserMessage($prompt)],
     systemPrompt: $longSystemPrompt,
-    options:      ['cache' => true], // caches systemPrompt on Anthropic
+    options:      ['cache' => true], // кешує systemPrompt на стороні Anthropic
 );
 ```
 
-## Queued Tasks
+## Задачі в черзі
 
-Implement `ShouldQueueAi` and define `serializeForQueue()`:
+Реалізуй `ShouldQueueAi` і визнач `serializeForQueue()`:
 
 ```php
 use Fomvasss\AiTasks\Contracts\ShouldQueueAi;
@@ -231,16 +231,16 @@ class AnalyzeTask extends AiTask implements ShouldQueueAi
 }
 ```
 
-## Events
+## Події
 
-| Event | When |
+| Подія | Коли |
 |---|---|
-| `AiTaskQueued` | Task dispatched to queue |
-| `AiTaskStarted` | API call begins |
-| `AiTaskCompleted` | Postprocess done, response ready |
-| `AiTaskFailed` | All drivers failed |
-| `AiRunFinished` | Low-level: single driver call succeeded |
-| `AiRunFailed` | Low-level: single driver call failed |
+| `AiTaskQueued` | Таск відправлено в чергу |
+| `AiTaskStarted` | Починається виклик API |
+| `AiTaskCompleted` | Постобробка завершена, відповідь готова |
+| `AiTaskFailed` | Всі драйвери впали |
+| `AiRunFinished` | Низький рівень: один виклик драйвера успішний |
+| `AiRunFailed` | Низький рівень: один виклик драйвера впав |
 
 ```php
 Event::listen(AiTaskCompleted::class, function (AiTaskCompleted $event) {
@@ -248,32 +248,32 @@ Event::listen(AiTaskCompleted::class, function (AiTaskCompleted $event) {
 });
 ```
 
-## Artisan Commands
+## Artisan команди
 
-| Command | Description |
+| Команда | Опис |
 |---|---|
-| `ai:make-task Name` | Generate a task class |
-| `ai:request "prompt"` | Ad-hoc sync or queued request |
-| `ai:runs` | List recent ai_runs |
-| `ai:budget {tenant}` | Show monthly spend vs limit |
-| `ai:retry` | List failed runs for retry |
+| `ai:make-task Name` | Згенерувати клас таску |
+| `ai:request "prompt"` | Ad-hoc запит (sync або queue) |
+| `ai:runs` | Список останніх ai_runs |
+| `ai:budget {tenant}` | Витрати vs ліміт за поточний місяць |
+| `ai:retry` | Список failed-записів для повторного запуску |
 
-## Supported Providers
+## Підтримувані провайдери
 
-Via Prism — add `api_key` + `model` to `config/ai.php` and register in `AiManager`:
+Через Prism — додай `api_key` + `model` до `config/ai.php` і зареєструй у `AiManager`:
 
-| Provider | Driver key |
+| Провайдер | Ключ драйвера |
 |---|---|
 | OpenAI | `openai` |
 | Anthropic | `anthropic` |
 | Google Gemini | `gemini` |
-| Ollama (local) | `ollama` |
+| Ollama (локально) | `ollama` |
 | Mistral | `mistral` |
 
 ## Changelog
 
-See [CHANGELOG](CHANGELOG.md).
+Дивись [CHANGELOG](CHANGELOG.md).
 
-## License
+## Ліцензія
 
-MIT — see [LICENSE](LICENSE.md).
+MIT — дивись [LICENSE](LICENSE.md).
