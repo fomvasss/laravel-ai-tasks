@@ -7,6 +7,7 @@ namespace Fomvasss\AiTasks;
 use Fomvasss\AiTasks\Core\AI;
 use Fomvasss\AiTasks\Core\AiManager;
 use Fomvasss\AiTasks\Core\Router;
+use Fomvasss\AiTasks\Http\Controllers\DashboardController;
 use Fomvasss\AiTasks\Http\Controllers\WebhookController;
 use Fomvasss\AiTasks\Support\Budget;
 use Fomvasss\AiTasks\Support\TenantResolver;
@@ -36,15 +37,31 @@ class AiServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        $this->loadViewsFrom(__DIR__ . '/../resources/views', 'ai-tasks');
+
         $this->publishes([
             __DIR__ . '/../config/ai.php' => config_path('ai.php'),
         ], 'ai-config');
+
+        $this->publishes([
+            __DIR__ . '/../resources/views' => resource_path('views/vendor/ai-tasks'),
+        ], 'ai-views');
 
         if (! class_exists('CreateAiRunsTable')) {
             $this->publishes([
                 __DIR__ . '/../database/migrations/2025_10_19_000000_create_ai_runs_table.php'
                     => database_path('migrations/' . date('Y_m_d_His') . '_create_ai_runs_table.php'),
             ], 'ai-migrations');
+        }
+
+        if (config('ai.dashboard.enabled', true)) {
+            Route::middleware(config('ai.dashboard.middleware', ['web']))
+                ->prefix(config('ai.dashboard.path', 'ai-tasks'))
+                ->name('ai-tasks.')
+                ->group(function () {
+                    Route::get('/', [DashboardController::class, 'index'])->name('index');
+                    Route::get('/{id}', [DashboardController::class, 'show'])->name('show');
+                });
         }
 
         Route::middleware(config('ai.webhook_middleware', ['api']))
