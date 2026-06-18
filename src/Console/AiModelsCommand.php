@@ -41,7 +41,7 @@ class AiModelsCommand extends Command
                 'openai'    => $this->fetchOpenAI($cfg, $filter, $detail),
                 'gemini'    => $this->fetchGemini($cfg, $filter, $detail),
                 'anthropic' => $this->fetchAnthropic($cfg, $filter, $detail),
-                default     => [null, null],
+                default     => $this->fetchOpenAICompatible($name, $cfg, $filter, $detail),
             };
 
             if ($rows === null) {
@@ -172,6 +172,54 @@ class AiModelsCommand extends Command
                 $m['id'],
                 $m['display_name'] ?? '',
                 isset($m['created_at']) ? substr($m['created_at'], 0, 10) : '',
+            ])->values()->all(),
+        ];
+    }
+
+    private function fetchOpenAICompatible(string $name, array $cfg, ?string $filter, bool $detail): array
+    {
+        $baseUrl = rtrim(config("prism.providers.{$name}.url", ''), '/');
+
+        if (! $baseUrl) {
+            return [null, null];
+        }
+
+        $resp = Http::withToken($cfg['api_key'])->get("{$baseUrl}/models");
+
+        if (! $resp->successful()) {
+            return [null, null];
+        }
+
+        $data = $resp->json('data');
+
+        if (! is_array($data)) {
+            return [null, null];
+        }
+
+        $rows = collect($data)
+            ->sortBy('id')
+            ->filter(fn($m) => ! $filter || str_contains($m['id'] ?? '', $filter));
+
+        $hasContext = $rows->contains(fn($m) => isset($m['context_window']));
+
+        if ($detail && $hasContext) {
+            return [
+                ['Model ID', 'Context (in)', 'Max out', 'Released'],
+                $rows->map(fn($m) => [
+                    $m['id'],
+                    isset($m['context_window'])          ? number_format($m['context_window'])          : '',
+                    isset($m['max_completion_tokens'])   ? number_format($m['max_completion_tokens'])   : '',
+                    isset($m['created'])                 ? date('Y-m-d', $m['created'])                 : '',
+                ])->values()->all(),
+            ];
+        }
+
+        return [
+            ['Model ID', 'Owner', 'Released'],
+            $rows->map(fn($m) => [
+                $m['id'],
+                $m['owned_by'] ?? '',
+                isset($m['created']) ? date('Y-m-d', $m['created']) : '',
             ])->values()->all(),
         ];
     }
