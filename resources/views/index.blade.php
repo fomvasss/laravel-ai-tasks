@@ -104,9 +104,19 @@
                     <a href="{{ route('ai-tasks.show', $run->id) }}" class="text-blue-600 hover:underline font-medium">
                         {{ $run->task }}
                     </a>
-                    @if($run->subject_type)
-                        <div class="text-xs text-gray-400">{{ class_basename($run->subject_type) }}#{{ $run->subject_id }}</div>
-                    @endif
+                    <div class="flex gap-1 mt-0.5 flex-wrap">
+                        @php $modalityColor = match($run->modality) {
+                            'image'         => 'bg-pink-100 text-pink-700',
+                            'embed'         => 'bg-indigo-100 text-indigo-700',
+                            'audio'         => 'bg-teal-100 text-teal-700',
+                            'transcription' => 'bg-cyan-100 text-cyan-700',
+                            default         => 'bg-gray-100 text-gray-500',
+                        }; @endphp
+                        <span class="inline-flex px-1.5 py-0 rounded text-xs {{ $modalityColor }}">{{ $run->modality }}</span>
+                        @if($run->subject_type)
+                            <span class="text-xs text-gray-400">{{ class_basename($run->subject_type) }}#{{ $run->subject_id }}</span>
+                        @endif
+                    </div>
                 </td>
                 <td class="px-3 py-2 text-gray-600">{{ $run->driver }}</td>
                 <td class="px-3 py-2 text-gray-500 text-xs">{{ $run->tenant_id }}</td>
