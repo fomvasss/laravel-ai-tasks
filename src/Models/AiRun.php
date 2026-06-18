@@ -42,6 +42,7 @@ class AiRun extends Model
             'modality'        => $p->modality,
             'subject_type'    => $ctx->subjectType,
             'subject_id'      => $ctx->subjectId,
+            'dispatch'        => 'sync',
             'status'          => 'running',
             'idempotency_key' => $task->idempotencyKey(),
             'request'         => static::minifyRequest($p),
@@ -58,6 +59,7 @@ class AiRun extends Model
             'modality'        => $p->modality,
             'subject_type'    => $ctx->subjectType,
             'subject_id'      => $ctx->subjectId,
+            'dispatch'        => 'queue',
             'status'          => 'queued',
             'idempotency_key' => $task->idempotencyKey(),
             'request'         => static::minifyRequest($p),
@@ -153,10 +155,12 @@ class AiRun extends Model
             if ($p->systemPrompt !== null) {
                 $data['system'] = $p->systemPrompt;
             }
-            $data['messages'] = array_map(
-                fn($m) => ['role' => self::messageRole($m), 'content' => $m->content],
-                $p->messages,
-            );
+            $data['messages'] = array_map(function ($m) {
+                if (is_array($m)) {
+                    return ['role' => $m['role'] ?? 'user', 'content' => $m['content'] ?? ''];
+                }
+                return ['role' => self::messageRole($m), 'content' => $m->content ?? ''];
+            }, $p->messages);
         }
 
         return $data;

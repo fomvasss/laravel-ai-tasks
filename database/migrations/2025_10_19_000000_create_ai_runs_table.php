@@ -18,6 +18,7 @@ return new class extends Migration {
             $t->string('modality');
             $t->string('subject_type')->nullable()->index();
             $t->string('subject_id')->nullable()->index();
+            $t->string('dispatch')->default('sync'); // sync|queue
             $t->string('status')->index(); // queued|running|ok|error|dead|waiting|skipped
             $t->text('error')->nullable();
             $t->string('idempotency_key')->nullable()->unique();
