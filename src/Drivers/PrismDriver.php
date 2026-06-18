@@ -24,7 +24,7 @@ final class PrismDriver implements AiDriver
 
     public function supports(string $modality): bool
     {
-        return in_array($modality, ['text', 'embed'], true);
+        return in_array($modality, ['text', 'embed', 'image'], true);
     }
 
     public function send(AiPayload $p, AiContext $c): AiResponse
@@ -35,6 +35,7 @@ final class PrismDriver implements AiDriver
 
         return match ($p->modality) {
             'embed' => $this->sendEmbed($p),
+            'image' => $this->sendImage($p),
             default => $this->sendText($p),
         };
     }
@@ -308,6 +309,38 @@ final class PrismDriver implements AiDriver
         return new AiResponse(ok: true, content: $result->text, usage: $usage, raw: [], toolCalls: $toolCalls);
     }
 
+    private function sendImage(AiPayload $p): AiResponse
+    {
+        $baseUrl = rtrim(config('prism.providers.openai.url', 'https://api.openai.com/v1'), '/');
+        $model   = $p->options['model'] ?? $this->cfg['image_model'] ?? 'dall-e-3';
+        $prompt  = $this->extractPrompt($p);
+
+        $body = array_filter([
+            'model'   => $model,
+            'prompt'  => $prompt,
+            'n'       => $p->options['n'] ?? 1,
+            'size'    => $p->options['size'] ?? '1024x1024',
+            'quality' => $p->options['quality'] ?? null,
+            'style'   => $p->options['style'] ?? null,
+        ]);
+
+        $resp = Http::withToken($this->cfg['api_key'])
+            ->post("{$baseUrl}/images/generations", $body);
+
+        if (! $resp->successful()) {
+            $error = $resp->json('error.message') ?? $resp->body();
+            return new AiResponse(false, null, ['driver' => $this->provider], [], $error);
+        }
+
+        $item    = $resp->json('data.0') ?? [];
+        $content = $item['url'] ?? $item['b64_json'] ?? null;
+
+        $usage         = ['driver' => $this->provider, 'tokens_in' => null, 'tokens_out' => null];
+        $usage['cost'] = Cost::calc($this->provider, $usage, $this->cfg);
+
+        return new AiResponse(true, $content, $usage);
+    }
+
     private function sendEmbed(AiPayload $p): AiResponse
     {
         $model = $p->options['embed_model'] ?? $this->cfg['embed_model'] ?? null;
@@ -327,6 +360,16 @@ final class PrismDriver implements AiDriver
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────
+
+    private function extractPrompt(AiPayload $p): string
+    {
+        $first = $p->messages[0] ?? null;
+
+        if ($first === null) return '';
+        if (is_array($first))  return (string) ($first['content'] ?? '');
+
+        return $first->content ?? '';
+    }
 
     private function buildChatMessages(AiPayload $p): array
     {
