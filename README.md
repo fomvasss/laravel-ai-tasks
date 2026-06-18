@@ -186,6 +186,26 @@ $response->usage;             // tokens + cost
 
 For providers in the ⚠️ row the callback is called once with the full response — the interface is identical, just without intermediate chunks.
 
+### Long responses and timeouts
+
+`AI::send()` uses Prism's HTTP client which has a hardcoded 30-second timeout. For tasks that generate large outputs (long articles, stories, detailed reports), this timeout may be hit before the response arrives.
+
+**Use `AI::stream()` for long responses** — it uses native HTTP with no such limit:
+
+```php
+// send() may timeout after 30s for large outputs
+$response = AI::send(new WriteStoryTask(), drivers: ['deepseek']); // ❌ may timeout
+
+// stream() has no timeout — safe for any output size
+$response = AI::stream(new WriteStoryTask(), function (string $chunk) {
+    // process chunks in real-time, or just ignore them
+}, drivers: ['deepseek']); // ✅
+
+$response->content; // full accumulated text
+```
+
+This applies to all providers routed through native SSE (`openai`, `anthropic`, `gemini`, `deepseek`, `groq`, etc.).
+
 ## Driver Routing
 
 Tasks are routed to drivers via `config/ai.php`:
