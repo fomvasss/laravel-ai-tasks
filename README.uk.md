@@ -359,7 +359,7 @@ Event::listen(AiTaskCompleted::class, function (AiTaskCompleted $event) {
 
 ## Генерація зображень
 
-Встановіть `modality: 'image'` в payload. Наразі підтримується через OpenAI Images API (`gpt-image-1`).
+Встановіть `modality: 'image'` в payload. Підтримується OpenAI (`gpt-image-1`, `dall-e-3`) та Gemini.
 
 ```php
 class GenerateImageTask extends AiTask
@@ -372,21 +372,149 @@ class GenerateImageTask extends AiTask
             modality: 'image',
             messages: [new UserMessage('Мінімалістичний синій логотип для tech-стартапу')],
             options: [
-                'model' => 'gpt-image-1',
-                'size'  => '1024x1024',
+                'model'   => 'gpt-image-1',
+                'size'    => '1024x1024', // або '3:2' landscape / '2:3' portrait
+                'quality' => 'standard',
+                'timeout' => 120,
             ],
         );
     }
 
     public function postprocess(AiResponse $resp): array|AiResponse
     {
-        // $resp->content — URL або base64-рядок залежно від моделі
+        // $resp->content — base64-рядок (image/png)
+        // Зберегти на диск:
+        if ($resp->ok) {
+            $path = storage_path('app/images/generated_' . time() . '.png');
+            file_put_contents($path, base64_decode($resp->content));
+        }
         return $resp;
     }
 }
 
 $r = AI::send(new GenerateImageTask(), drivers: ['openai']);
+// $r->content — base64 PNG зображення
 ```
+
+## Вбудовування (Embeddings)
+
+Перетворити текст на вектор для семантичного пошуку, кластеризації тощо.
+
+```php
+class EmbedDocumentTask extends AiTask
+{
+    public function __construct(private readonly string $text) {}
+
+    public function modality(): string { return 'embed'; }
+
+    public function toPayload(): AiPayload
+    {
+        return new AiPayload(
+            modality: 'embed',
+            messages: [$this->text], // рядок, масив або UserMessage
+        );
+    }
+
+    public function postprocess(AiResponse $resp): array|AiResponse
+    {
+        // $resp->content — JSON-масив чисел (вектор вбудовування)
+        $vector = json_decode($resp->content, true);
+        return [
+            'ok'      => $resp->ok,
+            'dims'    => count($vector),
+            'vector'  => $vector,
+            'tokens'  => $resp->usage['tokens_in'] ?? null,
+        ];
+    }
+}
+
+$r = AI::send(new EmbedDocumentTask('Ваш текст тут'), drivers: ['openai']);
+// Повертає: { "ok": true, "dims": 1536, "vector": [0.023, -0.012, ...] }
+```
+
+Підтримувані моделі:
+- OpenAI: `text-embedding-3-small`, `text-embedding-3-large`
+- Gemini: `gemini-embedding-001`
+
+## Аудіо і синтез мовлення (TTS)
+
+Генерувати мовлення з тексту через OpenAI або ElevenLabs.
+
+```php
+class GenerateSpeechTask extends AiTask
+{
+    public function __construct(private readonly string $text) {}
+
+    public function modality(): string { return 'audio'; }
+
+    public function toPayload(): AiPayload
+    {
+        return new AiPayload(
+            modality: 'audio',
+            messages: [$this->text],
+            options: [
+                'model'    => 'tts-1', // або 'tts-1-hd'
+                'voice'    => 'alloy', // alloy, echo, fable, onyx, nova, shimmer
+                'female'   => false,   // або true для ElevenLabs
+                'instructions' => 'Говори чітко і повільно', // опціонально
+            ],
+        );
+    }
+
+    public function postprocess(AiResponse $resp): array|AiResponse
+    {
+        // $resp->content — base64 аудіо (MP3 або WAV)
+        if ($resp->ok) {
+            $path = storage_path('app/audio/speech_' . time() . '.mp3');
+            file_put_contents($path, base64_decode($resp->content));
+        }
+        return ['ok' => $resp->ok, 'size' => strlen($resp->content)];
+    }
+}
+
+AI::send(new GenerateSpeechTask('Привіт світе'), drivers: ['openai']);
+```
+
+## Транскрипція мовлення (STT)
+
+Перетворити аудіофайли на текст через OpenAI, ElevenLabs, Mistral або Gemini.
+
+```php
+class TranscribeAudioTask extends AiTask
+{
+    public function __construct(private readonly string $audioPath) {}
+
+    public function modality(): string { return 'transcription'; }
+
+    public function toPayload(): AiPayload
+    {
+        return new AiPayload(
+            modality: 'transcription',
+            options: [
+                'path'    => $this->audioPath, // повний шлях до файлу
+                // або:
+                // 'storage' => 'file_path',  // з диску storage
+                // 'disk'    => 'local',      // назва диску
+                'diarize' => true, // ідентифікація спікера (лише OpenAI)
+            ],
+        );
+    }
+
+    public function postprocess(AiResponse $resp): array|AiResponse
+    {
+        return [
+            'ok'   => $resp->ok,
+            'text' => $resp->content,
+            'duration_seconds' => round(strlen($resp->content) / 100), // орієнтовно
+        ];
+    }
+}
+
+$r = AI::send(new TranscribeAudioTask('/path/to/audio.mp3'), drivers: ['openai']);
+// Повертає: { "ok": true, "text": "транскрипований текст...", "duration_seconds": 42 }
+```
+
+Підтримувані формати: MP3, MP4, MPEG, MPGA, M4A, OGG, WAV, WEBM
 
 ## Artisan команди
 
