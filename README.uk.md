@@ -175,13 +175,13 @@ $response->usage;              // токени + вартість
 
 ### Підтримка провайдерів
 
-Нативний SSE реалізований напряму для основних провайдерів (обходить Prism stream handlers, які мають відомі баги у версії 0.70):
-
 | Провайдер | Stream | Примітка |
 |---|---|---|
-| `openai` | ✅ | Реальні чанки через `chat/completions` SSE |
-| `gemini` | ✅ | SSE через `streamGenerateContent` |
-| `anthropic` | ✅ | SSE через Anthropic Messages API |
+| `openai` | ✅ | Нативний SSE через `chat/completions` |
+| `gemini` | ✅ | Нативний SSE через `streamGenerateContent` |
+| `anthropic` | ✅ | Нативний SSE через Anthropic Messages API |
+| `deepseek`, `groq`, `mistral`, `xai` | ✅ | Нативний SSE — OpenAI-сумісний endpoint |
+| будь-який провайдер з `prism.providers.*.url` | ✅ | Автоматично як OpenAI-сумісний |
 | інші | ⚠️ | Prism stream → тихий fallback на `asText()` |
 
 Для провайдерів у рядку ⚠️ callback викликається один раз з повною відповіддю — інтерфейс однаковий, просто без проміжних чанків.
@@ -338,36 +338,87 @@ Event::listen(AiTaskCompleted::class, function (AiTaskCompleted $event) {
 });
 ```
 
+## Генерація зображень
+
+Встановіть `modality: 'image'` в payload. Наразі підтримується через OpenAI Images API (`gpt-image-1`).
+
+```php
+class GenerateImageTask extends AiTask
+{
+    public function modality(): string { return 'image'; }
+
+    public function toPayload(): AiPayload
+    {
+        return new AiPayload(
+            modality: 'image',
+            messages: [new UserMessage('Мінімалістичний синій логотип для tech-стартапу')],
+            options: [
+                'model' => 'gpt-image-1',
+                'size'  => '1024x1024',
+            ],
+        );
+    }
+
+    public function postprocess(AiResponse $resp): array|AiResponse
+    {
+        // $resp->content — URL або base64-рядок залежно від моделі
+        return $resp;
+    }
+}
+
+$r = AI::send(new GenerateImageTask(), drivers: ['openai']);
+```
+
 ## Artisan команди
 
 | Команда | Опис |
 |---|---|
 | `ai:make-task Name` | Згенерувати клас таску |
+| `ai:models [driver]` | Список доступних моделей від провайдера |
 | `ai:request "prompt"` | Ad-hoc запит (sync або queue) |
 | `ai:runs` | Список останніх ai_runs |
 | `ai:budget {tenant}` | Витрати vs ліміт за поточний місяць |
 | `ai:retry` | Список failed-записів для повторного запуску |
 
+### ai:models
+
+```bash
+# всі сконфігуровані драйвери
+php artisan ai:models
+
+# конкретний драйвер
+php artisan ai:models gemini
+
+# фільтр по назві моделі
+php artisan ai:models openai --filter=gpt-4
+
+# детально: ліміти токенів, дата релізу, можливості
+php artisan ai:models anthropic --detail
+```
+
+Поточна модель з конфігу позначається `✓`. Провайдери з URL у `prism.providers.*.url` (Groq, Mistral, DeepSeek, xAI, Ollama, OpenRouter…) опитуються через OpenAI-сумісний `/v1/models` автоматично.
+
 ## Підтримувані провайдери
 
 Будь-який провайдер підтримуваний [Prism](https://prismphp.com) працює автоматично — достатньо додати секцію до `config/ai.php` з `api_key` і `model`. Зміни в коді не потрібні.
 
-| Провайдер | Ключ драйвера |
-|---|---|
-| OpenAI | `openai` |
-| Anthropic | `anthropic` |
-| Google Gemini | `gemini` |
-| Ollama (локально) | `ollama` |
-| Mistral | `mistral` |
-| Groq | `groq` |
-| xAI (Grok) | `xai` |
-| DeepSeek | `deepseek` |
-| VoyageAI | `voyageai` |
-| AWS Bedrock | `bedrock` |
-| OpenRouter | `openrouter` |
-| Perplexity | `perplexity` |
-| ElevenLabs | `elevenlabs` |
-| Z AI | `zai` |
+Наступні провайдери вже є в `config/ai.php` (достатньо додати `.env` ключ):
+
+| Провайдер | Ключ драйвера | В конфігу |
+|---|---|---|
+| OpenAI | `openai` | ✅ |
+| Anthropic | `anthropic` | ✅ |
+| Google Gemini | `gemini` | ✅ |
+| DeepSeek | `deepseek` | ✅ |
+| Groq | `groq` | ✅ |
+| Mistral | `mistral` | ✅ |
+| xAI (Grok) | `xai` | ✅ |
+| Ollama (локально) | `ollama` | ✅ |
+| VoyageAI | `voyageai` | додати вручну |
+| AWS Bedrock | `bedrock` | додати вручну |
+| OpenRouter | `openrouter` | додати вручну |
+| Perplexity | `perplexity` | додати вручну |
+| будь-який Prism провайдер | — | додати вручну |
 
 ### Як працюють credentials
 

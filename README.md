@@ -175,13 +175,13 @@ $response->usage;             // tokens + cost
 
 ### Provider support
 
-Native SSE streaming is implemented directly for the main providers (bypassing Prism's stream handlers which have known issues in 0.70):
-
 | Provider | Stream | Notes |
 |---|---|---|
-| `openai` | ✅ | Real chunks via `chat/completions` SSE |
-| `gemini` | ✅ | SSE via `streamGenerateContent` |
-| `anthropic` | ✅ | SSE via Anthropic Messages API |
+| `openai` | ✅ | Native SSE via `chat/completions` |
+| `gemini` | ✅ | Native SSE via `streamGenerateContent` |
+| `anthropic` | ✅ | Native SSE via Anthropic Messages API |
+| `deepseek`, `groq`, `mistral`, `xai` | ✅ | Native SSE — OpenAI-compatible endpoint |
+| any provider with `prism.providers.*.url` | ✅ | Auto-detected as OpenAI-compatible |
 | others | ⚠️ | Prism stream → silent fallback to `asText()` |
 
 For providers in the ⚠️ row the callback is called once with the full response — the interface is identical, just without intermediate chunks.
@@ -338,36 +338,87 @@ Event::listen(AiTaskCompleted::class, function (AiTaskCompleted $event) {
 });
 ```
 
+## Image Generation
+
+Set `modality: 'image'` in the payload. Currently supported via OpenAI Images API (`gpt-image-1`).
+
+```php
+class GenerateImageTask extends AiTask
+{
+    public function modality(): string { return 'image'; }
+
+    public function toPayload(): AiPayload
+    {
+        return new AiPayload(
+            modality: 'image',
+            messages: [new UserMessage('A minimalist blue logo for a tech startup')],
+            options: [
+                'model' => 'gpt-image-1',
+                'size'  => '1024x1024',
+            ],
+        );
+    }
+
+    public function postprocess(AiResponse $resp): array|AiResponse
+    {
+        // $resp->content — URL or base64 string depending on model
+        return $resp;
+    }
+}
+
+$r = AI::send(new GenerateImageTask(), drivers: ['openai']);
+```
+
 ## Artisan Commands
 
 | Command | Description |
 |---|---|
 | `ai:make-task Name` | Generate a task class |
+| `ai:models [driver]` | List available models from provider API |
 | `ai:request "prompt"` | Ad-hoc sync or queued request |
 | `ai:runs` | List recent ai_runs |
 | `ai:budget {tenant}` | Show monthly spend vs limit |
 | `ai:retry` | List failed runs for retry |
 
+### ai:models
+
+```bash
+# all configured drivers
+php artisan ai:models
+
+# specific driver
+php artisan ai:models gemini
+
+# filter by substring
+php artisan ai:models openai --filter=gpt-4
+
+# show token limits, release date, capabilities
+php artisan ai:models anthropic --detail
+```
+
+Currently configured model is highlighted with `✓`. Providers with a URL in `prism.providers.*.url` (Groq, Mistral, DeepSeek, xAI, Ollama, OpenRouter…) are queried via the OpenAI-compatible `/v1/models` endpoint automatically.
+
 ## Supported Providers
 
 Any provider supported by [Prism](https://prismphp.com) works automatically — just add a section to `config/ai.php` with `api_key` and `model`. No code changes needed.
 
-| Provider | Driver key |
-|---|---|
-| OpenAI | `openai` |
-| Anthropic | `anthropic` |
-| Google Gemini | `gemini` |
-| Ollama (local) | `ollama` |
-| Mistral | `mistral` |
-| Groq | `groq` |
-| xAI (Grok) | `xai` |
-| DeepSeek | `deepseek` |
-| VoyageAI | `voyageai` |
-| AWS Bedrock | `bedrock` |
-| OpenRouter | `openrouter` |
-| Perplexity | `perplexity` |
-| ElevenLabs | `elevenlabs` |
-| Z AI | `zai` |
+The following providers are pre-configured in `config/ai.php` (just add the `.env` key):
+
+| Provider | Driver key | Pre-configured |
+|---|---|---|
+| OpenAI | `openai` | ✅ |
+| Anthropic | `anthropic` | ✅ |
+| Google Gemini | `gemini` | ✅ |
+| DeepSeek | `deepseek` | ✅ |
+| Groq | `groq` | ✅ |
+| Mistral | `mistral` | ✅ |
+| xAI (Grok) | `xai` | ✅ |
+| Ollama (local) | `ollama` | ✅ |
+| VoyageAI | `voyageai` | add manually |
+| AWS Bedrock | `bedrock` | add manually |
+| OpenRouter | `openrouter` | add manually |
+| Perplexity | `perplexity` | add manually |
+| any Prism provider | — | add manually |
 
 ### How credentials work
 
