@@ -13,7 +13,10 @@ class DashboardController extends Controller
 {
     public function index(Request $request): View
     {
-        $query = AiRun::query()->latest('started_at');
+        $query = AiRun::query()->latest('started_at')->select([
+            'id', 'tenant_id', 'task', 'driver', 'modality', 'status',
+            'tokens_in', 'tokens_out', 'cost', 'error', 'started_at', 'finished_at', 'duration_ms',
+        ]);
 
         if ($v = $request->input('status'))  { $query->where('status', $v); }
         if ($v = $request->input('driver'))  { $query->where('driver', $v); }
