@@ -14,10 +14,27 @@
         }
     </script>
     <style>
-        /* custom pagination override */
-        nav[aria-label="Pagination"] span[aria-current="page"] > span,
-        nav[aria-label="Pagination"] a {
-            all: unset;
+        /* pagination active page: match theme */
+        nav[aria-label="Pagination Navigation"] span[aria-current="page"] > span {
+            background-color: #374151 !important; /* gray-700 */
+            color: #fff !important;
+            border-color: #374151 !important;
+        }
+        .dark nav[aria-label="Pagination Navigation"] span[aria-current="page"] > span {
+            background-color: #e5e7eb !important; /* gray-200 */
+            color: #111827 !important;
+            border-color: #e5e7eb !important;
+        }
+        /* inactive links in dark mode */
+        .dark nav[aria-label="Pagination Navigation"] a,
+        .dark nav[aria-label="Pagination Navigation"] button {
+            background-color: #111827;
+            color: #9ca3af;
+            border-color: #374151;
+        }
+        .dark nav[aria-label="Pagination Navigation"] a:hover {
+            background-color: #1f2937;
+            color: #e5e7eb;
         }
     </style>
 </head>

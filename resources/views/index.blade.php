@@ -151,34 +151,8 @@
     </table>
 </div>
 
-{{-- Pagination --}}
-<div class="mt-4 flex justify-end">
-    @if ($runs->hasPages())
-    <nav class="flex items-center gap-1 text-sm" aria-label="Pagination">
-        {{-- prev --}}
-        @if ($runs->onFirstPage())
-            <span class="px-2 py-1 rounded text-gray-300 dark:text-gray-600 cursor-default">&lsaquo;</span>
-        @else
-            <a href="{{ $runs->previousPageUrl() }}" class="px-2 py-1 rounded text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800">&lsaquo;</a>
-        @endif
-
-        {{-- pages --}}
-        @foreach ($runs->getUrlRange(1, $runs->lastPage()) as $page => $url)
-            @if ($page === $runs->currentPage())
-                <span class="px-3 py-1 rounded bg-gray-800 dark:bg-gray-200 text-white dark:text-gray-900 font-medium">{{ $page }}</span>
-            @else
-                <a href="{{ $url }}" class="px-3 py-1 rounded text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800">{{ $page }}</a>
-            @endif
-        @endforeach
-
-        {{-- next --}}
-        @if ($runs->hasMorePages())
-            <a href="{{ $runs->nextPageUrl() }}" class="px-2 py-1 rounded text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800">&rsaquo;</a>
-        @else
-            <span class="px-2 py-1 rounded text-gray-300 dark:text-gray-600 cursor-default">&rsaquo;</span>
-        @endif
-    </nav>
-    @endif
+<div class="mt-4">
+    {{ $runs->links('pagination::tailwind') }}
 </div>
 
 @endsection
