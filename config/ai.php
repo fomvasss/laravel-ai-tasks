@@ -86,6 +86,33 @@ return [
             'price'   => null,
         ],
 
+        'deepseek' => [
+            'api_key' => env('DEEPSEEK_API_KEY'),
+            'model'   => env('DEEPSEEK_MODEL', 'deepseek-chat'),
+            'price' => [
+                'in'  => 0.27,
+                'out' => 1.10,
+            ],
+        ],
+
+        'groq' => [
+            'api_key' => env('GROQ_API_KEY'),
+            'model'   => env('GROQ_MODEL', 'llama-3.3-70b-versatile'),
+            'price'   => null,
+        ],
+
+        'mistral' => [
+            'api_key' => env('MISTRAL_API_KEY'),
+            'model'   => env('MISTRAL_MODEL', 'mistral-small-latest'),
+            'price'   => null,
+        ],
+
+        'xai' => [
+            'api_key' => env('XAI_API_KEY'),
+            'model'   => env('XAI_MODEL', 'grok-3-mini'),
+            'price'   => null,
+        ],
+
         'null' => [
             'api_key' => 'null-driver',
             'model'   => 'null',

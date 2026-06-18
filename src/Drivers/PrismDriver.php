@@ -46,20 +46,30 @@ final class PrismDriver implements AiDriver
             return new AiResponse(false, null, [], [], "driver_not_configured: {$this->provider}");
         }
 
-        return match ($this->provider) {
-            'openai'    => $this->streamOpenAI($p, $onChunk),
-            'gemini'    => $this->streamGemini($p, $onChunk),
-            'anthropic' => $this->streamAnthropic($p, $onChunk),
-            default     => $this->streamViaPrism($p, $onChunk),
+        return match (true) {
+            $this->provider === 'gemini'    => $this->streamGemini($p, $onChunk),
+            $this->provider === 'anthropic' => $this->streamAnthropic($p, $onChunk),
+            $this->isOpenAICompatible()     => $this->streamOpenAICompatible($p, $onChunk),
+            default                         => $this->streamViaPrism($p, $onChunk),
         };
     }
 
     // ── Native SSE streams ─────────────────────────────────────────────────
 
-    private function streamOpenAI(AiPayload $p, callable $onChunk): AiResponse
+    // OpenAI-compatible providers: openai, deepseek, groq, mistral, xai, openrouter, perplexity, ...
+    private function isOpenAICompatible(): bool
+    {
+        return (bool) config("prism.providers.{$this->provider}.url")
+            || $this->provider === 'openai';
+    }
+
+    private function streamOpenAICompatible(AiPayload $p, callable $onChunk): AiResponse
     {
         $model    = $p->options['model'] ?? $this->cfg['model'];
-        $baseUrl  = rtrim(config('prism.providers.openai.url', 'https://api.openai.com/v1'), '/');
+        $baseUrl  = rtrim(
+            config("prism.providers.{$this->provider}.url", 'https://api.openai.com/v1'),
+            '/'
+        );
         $messages = $this->buildChatMessages($p);
 
         $resp = Http::withToken($this->cfg['api_key'])
