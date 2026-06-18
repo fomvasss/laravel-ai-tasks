@@ -8,16 +8,26 @@ use Fomvasss\AiTasks\Support\Pipes\SanitizeHtml;
 
 return [
 
+    // Default driver used when no routing rule matches and no driver is passed explicitly.
     'default' => env('AI_DEFAULT', 'openai'),
 
+    // Tenant ID used when the request cannot be resolved to a specific tenant.
     'default_tenant' => env('AI_DEFAULT_TENANT', 'default'),
 
+    // Whether to persist messages and system prompt in ai_runs.request.
+    // Disable in production if prompts contain sensitive data.
     'store_request' => env('AI_STORE_REQUEST', false),
 
     /*
     |--------------------------------------------------------------------------
     | Dashboard
     |--------------------------------------------------------------------------
+    |
+    | Built-in web UI at /{path} showing ai_runs with filters and stats.
+    |
+    | middleware — add 'auth' or any Gate/Role middleware to restrict access.
+    |   Example: ['web', 'auth']
+    |   Example: ['web', 'auth', 'role:admin']  // spatie/laravel-permission
     */
     'dashboard' => [
         'enabled'    => env('AI_DASHBOARD_ENABLED', true),
@@ -29,6 +39,10 @@ return [
     |--------------------------------------------------------------------------
     | Queues
     |--------------------------------------------------------------------------
+    |
+    | Two separate queues allow independent scaling:
+    |   default — AI API requests (slow, IO-bound, needs higher timeout)
+    |   post    — postprocess jobs after response arrives (fast, CPU-bound)
     */
     'queues' => [
         'default' => env('AI_QUEUE', 'ai'),
@@ -40,9 +54,15 @@ return [
     | Drivers
     |--------------------------------------------------------------------------
     |
-    | Key = provider name (must match laravel/ai provider key in config/ai.php).
-    | Credentials go in config/ai.php (laravel/ai) — not here.
-    | price: per 1M tokens in USD (null = cost not tracked).
+    | Key must match a provider name in config/ai.php (laravel/ai).
+    | API credentials go in config/ai.php — not here.
+    |
+    | model       — default model for text/chat requests
+    | embed_model — model for 'embed' modality
+    | image_model — model for 'image' modality
+    | audio_model — model for 'audio' (TTS) modality
+    | price       — per 1M tokens in USD; null = cost not tracked
+    |               anthropic supports: in, out, cache_write, cache_read
     */
     'drivers' => [
 
@@ -55,6 +75,7 @@ return [
                 'in'  => 0.15,
                 'out' => 0.60,
             ],
+            // Webhook signature verification (optional)
             'webhook' => [
                 'secret'           => env('OPENAI_WEBHOOK_SECRET'),
                 'signature_header' => 'X-OpenAI-Signature',
@@ -66,8 +87,8 @@ return [
             'price' => [
                 'in'          => 3.00,
                 'out'         => 15.00,
-                'cache_write' => 3.75,
-                'cache_read'  => 0.30,
+                'cache_write' => 3.75,  // prompt cache write
+                'cache_read'  => 0.30,  // prompt cache hit
             ],
         ],
 
@@ -78,11 +99,6 @@ return [
                 'in'  => 0.15,
                 'out' => 0.60,
             ],
-        ],
-
-        'ollama' => [
-            'model' => env('OLLAMA_MODEL', 'llama3.2'),
-            'price' => null,
         ],
 
         'deepseek' => [
@@ -108,26 +124,38 @@ return [
             'price' => null,
         ],
 
+        'ollama' => [
+            'model' => env('OLLAMA_MODEL', 'llama3.2'),
+            'price' => null,
+        ],
+
+        // ElevenLabs — audio/TTS only
         'eleven' => [
-            'model'       => env('ELEVENLABS_MODEL', 'eleven_multilingual_v2'),
             'audio_model' => env('ELEVENLABS_AUDIO_MODEL', 'eleven_multilingual_v2'),
             'price'       => null,
         ],
 
+        // Null driver — returns empty response, useful for testing/local dev
         'null' => [
             'model' => 'null',
             'price' => null,
         ],
+
     ],
 
     /*
     |--------------------------------------------------------------------------
-    | Routing: task name → driver list (priority + fallback)
+    | Routing
     |--------------------------------------------------------------------------
+    |
+    | Maps task name → ordered list of drivers (first available is used,
+    | next is tried on failure — fallback chain).
+    |
+    | Task name comes from AiTask::name() (defaults to snake_case class name).
     */
     'routing' => [
-        // 'summarize' => ['openai', 'gemini'],
-        // 'chat'      => ['anthropic'],
+        // 'summarize'  => ['openai', 'gemini'],
+        // 'chat'       => ['anthropic'],
         // 'transcribe' => ['openai'],
         // 'tts'        => ['openai', 'eleven'],
     ],
@@ -136,6 +164,10 @@ return [
     |--------------------------------------------------------------------------
     | Postprocess Pipeline
     |--------------------------------------------------------------------------
+    |
+    | Global pipes applied to every AiResponse before AiTaskCompleted fires.
+    | Each pipe receives AiResponse and must return AiResponse.
+    | Task-level postprocess() runs before these pipes.
     */
     'postprocess' => [
         'enabled' => false,
@@ -148,11 +180,12 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Budgets (per tenant)
+    | Budgets
     |--------------------------------------------------------------------------
     |
-    | monthly_usd — місячний ліміт витрат у USD.
-    | Якщо не задано — бюджет не контролюється.
+    | Per-tenant monthly spend limit in USD.
+    | BudgetExceededException is thrown before and after each request.
+    | Tenant ID is resolved via TenantResolver (X-Tenant-Id header by default).
     */
     'budgets' => [
         // 'default'   => ['monthly_usd' => 100],
@@ -161,8 +194,10 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Webhooks
+    | Webhook Middleware
     |--------------------------------------------------------------------------
+    |
+    | Applied to POST /ai-tasks/webhook/{driver} routes.
     */
     'webhook_middleware' => ['api'],
 
