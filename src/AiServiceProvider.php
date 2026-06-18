@@ -72,6 +72,7 @@ class AiServiceProvider extends ServiceProvider
         if ($this->app->runningInConsole()) {
             $this->commands([
                 Console\AiMakeTaskCommand::class,
+                Console\AiModelsCommand::class,
                 Console\AiRetryFailed::class,
                 Console\AiRunsList::class,
                 Console\AiBudgetCommand::class,
