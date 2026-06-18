@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [2.1.0] — 2026-06-18
+
+### Added
+- `image` modality — generates images via OpenAI Images API (`gpt-image-1`, `dall-e-3`)
+- `ai:models` command — lists available models per provider; `--detail` shows token limits, release date, capabilities; auto-fallback to OpenAI-compatible `/v1/models` for unknown providers
+- DeepSeek, Groq, Mistral, xAI added to default `config/ai.php`
+- Generic OpenAI-compatible SSE stream — any provider with `prism.providers.*.url` gets native streaming automatically
+
+### Fixed
+- Dashboard OOM (`Out of sort buffer`) when `ai_runs.response` contains large base64 images — `index()` now selects only needed columns
+
+### Changed
+- Gemini price updated to $0.15/$0.60 per 1M tokens (gemini-2.5-flash)
+
+---
+
 ## [2.0.0] — 2026-06-18
 
 ### Added
