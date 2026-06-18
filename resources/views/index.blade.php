@@ -49,6 +49,15 @@
         </select>
     </div>
     <div>
+        <label class="block text-xs text-gray-500 mb-1">Dispatch</label>
+        <select name="dispatch" class="border border-gray-300 rounded px-2 py-1 text-sm">
+            <option value="">All</option>
+            @foreach(['sync','queue'] as $d)
+                <option value="{{ $d }}" @selected(request('dispatch') === $d)>{{ $d }}</option>
+            @endforeach
+        </select>
+    </div>
+    <div>
         <label class="block text-xs text-gray-500 mb-1">Task</label>
         <input type="text" name="task" value="{{ request('task') }}" placeholder="search..."
                class="border border-gray-300 rounded px-2 py-1 text-sm w-32">
@@ -70,7 +79,7 @@
     <table class="min-w-full text-sm">
         <thead class="bg-gray-50 border-b border-gray-200">
             <tr>
-                @foreach(['Task','Driver','Tenant','Status','Tok in','Tok out','Cost','Duration','Started'] as $col)
+                @foreach(['Task','Driver','Tenant','Dispatch','Status','Tok in','Tok out','Cost','Duration','Started'] as $col)
                 <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ $col }}</th>
                 @endforeach
             </tr>
@@ -102,6 +111,10 @@
                 <td class="px-3 py-2 text-gray-600">{{ $run->driver }}</td>
                 <td class="px-3 py-2 text-gray-500 text-xs">{{ $run->tenant_id }}</td>
                 <td class="px-3 py-2">
+                    @php $dispatchBadge = $run->dispatch === 'queue' ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-600'; @endphp
+                    <span class="inline-flex px-2 py-0.5 rounded text-xs font-medium {{ $dispatchBadge }}">{{ $run->dispatch }}</span>
+                </td>
+                <td class="px-3 py-2">
                     <span class="inline-flex px-2 py-0.5 rounded text-xs font-medium {{ $badge }}">{{ $run->status }}</span>
                 </td>
                 <td class="px-3 py-2 text-gray-600">{{ $run->tokens_in ?? '—' }}</td>
@@ -114,7 +127,7 @@
             </tr>
             @empty
             <tr>
-                <td colspan="9" class="px-3 py-8 text-center text-gray-400">No runs found.</td>
+                <td colspan="10" class="px-3 py-8 text-center text-gray-400">No runs found.</td>
             </tr>
             @endforelse
         </tbody>

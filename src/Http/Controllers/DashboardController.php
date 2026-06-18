@@ -14,16 +14,17 @@ class DashboardController extends Controller
     public function index(Request $request): View
     {
         $query = AiRun::query()->latest('started_at')->select([
-            'id', 'tenant_id', 'task', 'driver', 'modality', 'status',
+            'id', 'tenant_id', 'task', 'driver', 'modality', 'dispatch', 'status',
             'tokens_in', 'tokens_out', 'cost', 'error', 'started_at', 'finished_at', 'duration_ms',
         ]);
 
-        if ($v = $request->input('status'))  { $query->where('status', $v); }
-        if ($v = $request->input('driver'))  { $query->where('driver', $v); }
-        if ($v = $request->input('tenant'))  { $query->where('tenant_id', $v); }
-        if ($v = $request->input('task'))    { $query->where('task', 'like', "%{$v}%"); }
-        if ($v = $request->input('from'))    { $query->where('started_at', '>=', $v); }
-        if ($v = $request->input('to'))      { $query->where('started_at', '<=', $v . ' 23:59:59'); }
+        if ($v = $request->input('status'))   { $query->where('status', $v); }
+        if ($v = $request->input('driver'))   { $query->where('driver', $v); }
+        if ($v = $request->input('tenant'))   { $query->where('tenant_id', $v); }
+        if ($v = $request->input('dispatch')) { $query->where('dispatch', $v); }
+        if ($v = $request->input('task'))     { $query->where('task', 'like', "%{$v}%"); }
+        if ($v = $request->input('from'))     { $query->where('started_at', '>=', $v); }
+        if ($v = $request->input('to'))       { $query->where('started_at', '<=', $v . ' 23:59:59'); }
 
         $runs = $query->paginate(50)->withQueryString();
 
