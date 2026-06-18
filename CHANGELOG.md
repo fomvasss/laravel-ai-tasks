@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [Unreleased — 2.x]
+## [2.0.0] — 2026-06-18
 
 ### Added
 - `PrismDriver` — single driver class for all providers via [prism-php/prism](https://github.com/prism-php/prism)
@@ -26,6 +26,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `readonly` properties on all DTOs
 - `require-dev`: `orchestra/testbench`, `phpunit/phpunit`
 - `scripts.test` in `composer.json`
+- Built-in dashboard at `/ai-tasks` — runs list with stats, filters, per-run detail (Blade + Tailwind CDN)
+- `ai:budget --month`, `--from`, `--to` options for custom period reporting
+- `Budget::getSpentBetween()` for arbitrary date range queries
+- Native SSE streaming for **OpenAI**, **Gemini**, **Anthropic** — bypasses Prism 0.70 broken stream handlers
+- `AI::fake()` — test helper with `assertSent()`, `assertNotSent()`, `assertQueued()`, `assertSentCount()`, `assertNothingSent()`
 
 ### Changed
 - **PHP minimum raised to ^8.2** (was ^8.1)
