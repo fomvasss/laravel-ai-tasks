@@ -4,6 +4,50 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [3.0.0] — 2026-06-18
+
+### Added
+- `audio` modality — TTS via `Laravel\Ai\Audio` (OpenAI, ElevenLabs, Gemini)
+- `transcription` modality — STT via `Laravel\Ai\Transcription` (OpenAI, ElevenLabs, Mistral, Gemini)
+- `AiPayload::options['attachments']` — pass file attachments (images, documents) to agent prompt
+- Vision support via `Laravel\Ai\Files\Image::fromUrl()` in task attachments
+- ElevenLabs driver added to default `config/ai-tasks.php`
+
+### Changed
+- **Engine replaced**: `prism-php/prism` → `laravel/ai ^0.8` — all providers now use `AnonymousAgent`
+- **PHP minimum raised to ^8.3** (was ^8.2)
+- **Laravel minimum raised to ^12.0** (was ^11.0)
+- **Config renamed**: `config/ai.php` → `config/ai-tasks.php` (config key `ai-tasks.*`) to avoid conflict with `laravel/ai`'s own `config/ai.php`
+- Publish tag renamed: `ai-config` → `ai-tasks-config`
+- Credentials (`api_key`) removed from `config/ai-tasks.php` drivers — they live in `laravel/ai`'s `config/ai.php` (`providers.*.key`)
+- `AI::isConfigured()` now checks `ai.providers.*.key` (laravel/ai config)
+- Message objects changed from `Prism\Prism\ValueObjects\Messages\*` → `Laravel\Ai\Messages\*`
+- Streaming now handled natively by laravel/ai (removed all custom SSE code)
+
+### Removed
+- `PrismDriver` — replaced by `LaravelAiDriver`
+- `prism-php/prism` dependency
+- All native SSE streaming code (`streamGemini`, `streamAnthropic`, `streamOpenAICompatible`, `sseLines`)
+- `api_key` field from driver config entries
+
+### Migration from v2
+
+```bash
+composer require laravel/ai
+php artisan vendor:publish --provider="Laravel\Ai\AiServiceProvider" --tag=ai-config
+```
+
+Rename `config/ai.php` → `config/ai-tasks.php`, remove `api_key` from each driver. Update message imports:
+
+```php
+// before
+use Prism\Prism\ValueObjects\Messages\UserMessage;
+// after
+use Laravel\Ai\Messages\UserMessage;
+```
+
+---
+
 ## [2.1.0] — 2026-06-18
 
 ### Added

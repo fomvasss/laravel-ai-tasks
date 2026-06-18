@@ -4,7 +4,7 @@
 [![Latest Stable Version](https://img.shields.io/packagist/v/fomvasss/laravel-ai-tasks.svg?style=for-the-badge)](https://packagist.org/packages/fomvasss/laravel-ai-tasks)
 [![Total Downloads](https://img.shields.io/packagist/dt/fomvasss/laravel-ai-tasks.svg?style=for-the-badge)](https://packagist.org/packages/fomvasss/laravel-ai-tasks)
 
-AI task orchestrator for Laravel. Handles routing, queuing, audit logging, budget tracking, and webhook processing on top of [Prism](https://prismphp.com) as the transport layer.
+AI task orchestrator for Laravel. Handles routing, queuing, audit logging, budget tracking, and webhook processing on top of [laravel/ai](https://laravel.com/docs/ai-sdk) as the transport layer.
 
 [Українська документація](README.uk.md)
 
@@ -14,7 +14,7 @@ Built-in web UI at `/ai-tasks` — runs list with stats, filters, and per-run de
 
 ![Dashboard](art/dashboard.gif)
 
-Configurable via `config/ai.php`:
+Configurable via `config/ai-tasks.php`:
 
 ```php
 'dashboard' => [
@@ -26,9 +26,9 @@ Configurable via `config/ai.php`:
 
 ## Requirements
 
-- PHP ^8.2
-- Laravel ^11 | ^12 | ^13
-- [prism-php/prism](https://github.com/prism-php/prism) ^0.70
+- PHP ^8.3
+- Laravel ^12 | ^13
+- [laravel/ai](https://laravel.com/docs/ai-sdk) ^0.8
 
 ## Installation
 
@@ -36,13 +36,20 @@ Configurable via `config/ai.php`:
 composer require fomvasss/laravel-ai-tasks
 ```
 
+Publish configs and run migrations:
+
 ```bash
-php artisan vendor:publish --tag=ai-config
+# laravel/ai provider config (credentials go here)
+php artisan vendor:publish --provider="Laravel\Ai\AiServiceProvider" --tag=ai-config
+
+# this package config (routing, budgets, queues)
+php artisan vendor:publish --tag=ai-tasks-config
+
 php artisan vendor:publish --tag=ai-migrations
 php artisan migrate
 ```
 
-Add keys to `.env`:
+Add API keys to `.env` — credentials are read by `laravel/ai`:
 
 ```env
 AI_DEFAULT=openai
@@ -50,7 +57,16 @@ AI_DEFAULT=openai
 OPENAI_API_KEY=sk-...
 ANTHROPIC_API_KEY=sk-ant-...
 GEMINI_API_KEY=...
+DEEPSEEK_API_KEY=sk-...
+GROQ_API_KEY=gsk_...
 ```
+
+### Two config files
+
+| File | Purpose |
+|---|---|
+| `config/ai.php` | laravel/ai — API keys, provider URLs |
+| `config/ai-tasks.php` | this package — models, prices, routing, budgets |
 
 ## Horizon / Queue
 
@@ -98,7 +114,7 @@ declare(strict_types=1);
 
 namespace App\Ai\Tasks;
 
-use Prism\Prism\ValueObjects\Messages\UserMessage;
+use Laravel\Ai\Messages\UserMessage;
 use Fomvasss\AiTasks\DTO\AiPayload;
 use Fomvasss\AiTasks\DTO\AiResponse;
 use Fomvasss\AiTasks\Tasks\AiTask;
@@ -175,40 +191,23 @@ $response->usage;             // tokens + cost
 
 ### Provider support
 
-| Provider | Stream | Notes |
-|---|---|---|
-| `openai` | ✅ | Native SSE via `chat/completions` |
-| `gemini` | ✅ | Native SSE via `streamGenerateContent` |
-| `anthropic` | ✅ | Native SSE via Anthropic Messages API |
-| `deepseek`, `groq`, `mistral`, `xai` | ✅ | Native SSE — OpenAI-compatible endpoint |
-| any provider with `prism.providers.*.url` | ✅ | Auto-detected as OpenAI-compatible |
-| others | ⚠️ | Prism stream → silent fallback to `asText()` |
+All providers supported by `laravel/ai` work with streaming automatically — OpenAI, Anthropic, Gemini, DeepSeek, Groq, Mistral, xAI, Ollama, and any OpenAI-compatible endpoint.
 
-For providers in the ⚠️ row the callback is called once with the full response — the interface is identical, just without intermediate chunks.
+### Long responses
 
-### Long responses and timeouts
-
-`AI::send()` uses Prism's HTTP client which has a hardcoded 30-second timeout. For tasks that generate large outputs (long articles, stories, detailed reports), this timeout may be hit before the response arrives.
-
-**Use `AI::stream()` for long responses** — it uses native HTTP with no such limit:
+`AI::send()` has a default 60-second timeout per request. For tasks that generate large outputs (long articles, stories, detailed reports), use `AI::stream()` — it has no timeout by default:
 
 ```php
-// send() may timeout after 30s for large outputs
-$response = AI::send(new WriteStoryTask(), drivers: ['deepseek']); // ❌ may timeout
-
-// stream() has no timeout — safe for any output size
 $response = AI::stream(new WriteStoryTask(), function (string $chunk) {
-    // process chunks in real-time, or just ignore them
-}, drivers: ['deepseek']); // ✅
+    // process chunks, or ignore them
+}, drivers: ['deepseek']);
 
 $response->content; // full accumulated text
 ```
 
-This applies to all providers routed through native SSE (`openai`, `anthropic`, `gemini`, `deepseek`, `groq`, etc.).
-
 ## Driver Routing
 
-Tasks are routed to drivers via `config/ai.php`:
+Tasks are routed to drivers via `config/ai-tasks.php`:
 
 ```php
 'routing' => [
@@ -226,7 +225,7 @@ AI::send((new SummarizeTask($text))->viaDrivers('gemini'));
 ## Multi-tenant Budget Tracking
 
 ```php
-// config/ai.php
+// config/ai-tasks.php
 'budgets' => [
     'tenant-abc' => ['monthly_usd' => 50.0],
     'default'    => ['monthly_usd' => 100.0],
@@ -241,7 +240,7 @@ $this->app->singleton(\Fomvasss\AiTasks\Support\TenantResolver::class, fn() => n
 
 ## Cost Tracking
 
-Set pricing per driver in `config/ai.php` (per 1M tokens):
+Set pricing per driver in `config/ai-tasks.php` (per 1M tokens):
 
 ```php
 'anthropic' => [
@@ -420,9 +419,9 @@ Currently configured model is highlighted with `✓`. Providers with a URL in `p
 
 ## Supported Providers
 
-Any provider supported by [Prism](https://prismphp.com) works automatically — just add a section to `config/ai.php` with `api_key` and `model`. No code changes needed.
+Any provider supported by [Prism](https://prismphp.com) works automatically — just add a section to `config/ai-tasks.php` with `api_key` and `model`. No code changes needed.
 
-The following providers are pre-configured in `config/ai.php` (just add the `.env` key):
+The following providers are pre-configured in `config/ai-tasks.php` (just add the `.env` key):
 
 | Provider | Driver key | Pre-configured |
 |---|---|---|
@@ -438,36 +437,34 @@ The following providers are pre-configured in `config/ai.php` (just add the `.en
 | AWS Bedrock | `bedrock` | add manually |
 | OpenRouter | `openrouter` | add manually |
 | Perplexity | `perplexity` | add manually |
-| any Prism provider | — | add manually |
+| ElevenLabs | `eleven` | ✅ (audio/tts) |
+| any laravel/ai provider | — | add manually |
 
 ### How credentials work
 
-Prism reads provider credentials from its own config — either from the published `config/prism.php` or directly from `.env` variables. The `api_key` in `config/ai.php` is only used by this package to check whether a driver is configured before dispatching.
+`laravel/ai` reads API keys from `config/ai.php` (published via `vendor:publish --provider="Laravel\Ai\AiServiceProvider"`). The `api_key` is **not** stored in `config/ai-tasks.php` — that file only contains model names, pricing, and routing config.
 
-To find out what `.env` variables each provider needs, check:
+To check what `.env` variables each provider needs, see:
 
 ```
-vendor/prism-php/prism/config/prism.php
+vendor/laravel/ai/config/ai.php
 ```
 
-**Adding a new provider** (e.g. DeepSeek):
+**Adding a new provider** (e.g. Mistral):
 
 ```bash
-# 1. Add to .env
-DEEPSEEK_API_KEY=sk-...
+# 1. Add to config/ai.php (laravel/ai config)
+'mistral' => [
+    'key' => env('MISTRAL_API_KEY'),
+    'url' => 'https://api.mistral.ai/v1',
+],
 
-# 2. Add to config/ai.php — no other changes needed
-```
-
-```php
-'deepseek' => [
-    'api_key' => env('DEEPSEEK_API_KEY'),
-    'model'   => 'deepseek-chat',
-    'price'   => ['in' => 0.14, 'out' => 0.28],
+# 2. Add to config/ai-tasks.php (this package)
+'mistral' => [
+    'model' => 'mistral-large-latest',
+    'price' => ['in' => 2.00, 'out' => 6.00],
 ],
 ```
-
-Providers that need a custom URL (Ollama, self-hosted Mistral, OpenRouter, etc.) also expose a `*_URL` env variable — visible in the same Prism config file.
 
 ## Changelog
 
