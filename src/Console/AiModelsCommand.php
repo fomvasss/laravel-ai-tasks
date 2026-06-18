@@ -72,7 +72,12 @@ class AiModelsCommand extends Command
     private function fetchOpenAI(array $cfg, ?string $filter, bool $detail): array
     {
         $baseUrl = rtrim(config('prism.providers.openai.url', 'https://api.openai.com/v1'), '/');
-        $resp    = Http::withToken($cfg['api_key'])->get("{$baseUrl}/models");
+        try {
+            $resp = Http::timeout(10)->withToken($cfg['api_key'])->get("{$baseUrl}/models");
+        } catch (\Illuminate\Http\Client\ConnectionException $e) {
+            $this->error('OpenAI connection error: ' . $e->getMessage());
+            return [[], []];
+        }
 
         if (! $resp->successful()) {
             $this->error('OpenAI API error: ' . ($resp->json('error.message') ?? $resp->body()));
@@ -102,8 +107,13 @@ class AiModelsCommand extends Command
 
     private function fetchGemini(array $cfg, ?string $filter, bool $detail): array
     {
-        $resp = Http::withQueryParameters(['key' => $cfg['api_key']])
-            ->get('https://generativelanguage.googleapis.com/v1beta/models');
+        try {
+            $resp = Http::timeout(10)->withQueryParameters(['key' => $cfg['api_key']])
+                ->get('https://generativelanguage.googleapis.com/v1beta/models');
+        } catch (\Illuminate\Http\Client\ConnectionException $e) {
+            $this->error('Gemini connection error: ' . $e->getMessage());
+            return [[], []];
+        }
 
         if (! $resp->successful()) {
             $this->error('Gemini API error: ' . ($resp->json('error.message') ?? $resp->body()));
@@ -138,10 +148,15 @@ class AiModelsCommand extends Command
     private function fetchAnthropic(array $cfg, ?string $filter, bool $detail): array
     {
         $version = config('prism.providers.anthropic.version', '2023-06-01');
-        $resp    = Http::withHeaders([
-            'x-api-key'         => $cfg['api_key'],
-            'anthropic-version' => $version,
-        ])->get('https://api.anthropic.com/v1/models');
+        try {
+            $resp = Http::timeout(10)->withHeaders([
+                'x-api-key'         => $cfg['api_key'],
+                'anthropic-version' => $version,
+            ])->get('https://api.anthropic.com/v1/models');
+        } catch (\Illuminate\Http\Client\ConnectionException $e) {
+            $this->error('Anthropic connection error: ' . $e->getMessage());
+            return [[], []];
+        }
 
         if (! $resp->successful()) {
             $this->error('Anthropic API error: ' . ($resp->json('error.message') ?? $resp->body()));
@@ -184,7 +199,12 @@ class AiModelsCommand extends Command
             return [null, null];
         }
 
-        $resp = Http::withToken($cfg['api_key'])->get("{$baseUrl}/models");
+        try {
+            $resp = Http::timeout(5)->withToken($cfg['api_key'])->get("{$baseUrl}/models");
+        } catch (\Illuminate\Http\Client\ConnectionException) {
+            $this->line("  <fg=yellow>Cannot connect to {$baseUrl} — is the service running?</>");
+            return [null, null];
+        }
 
         if (! $resp->successful()) {
             return [null, null];
