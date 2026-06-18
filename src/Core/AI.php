@@ -96,9 +96,9 @@ class AI
             if ($conn = $task->preferredConnection()) {
                 $job->onConnection($conn);
             }
-            $job->onQueue($task->preferredQueueFor('request', config('ai.queues.default')));
+            $job->onQueue($task->preferredQueueFor('request', config('ai-tasks.queues.default')));
         } else {
-            $job->onQueue(config('ai.queues.default'));
+            $job->onQueue(config('ai-tasks.queues.default'));
         }
 
         dispatch($job);
@@ -169,20 +169,26 @@ class AI
 
     private function isConfigured(string $driverName): bool
     {
-        $key = config("ai.drivers.{$driverName}.api_key");
+        if ($driverName === 'null') {
+            return true;
+        }
+
+        // credentials are in laravel/ai config (config/ai.php providers section)
+        $key = config("ai.providers.{$driverName}.key")
+            ?? config("ai.providers.{$driverName}.access_key_id"); // bedrock
 
         return $key && trim((string) $key) !== '';
     }
 
     private function runPostprocess(AiResponse $resp): AiResponse
     {
-        if (! config('ai.postprocess.enabled', false)) {
+        if (! config('ai-tasks.postprocess.enabled', false)) {
             return $resp;
         }
 
         return app(Pipeline::class)
             ->send($resp)
-            ->through(config('ai.postprocess.pipes', []))
+            ->through(config('ai-tasks.postprocess.pipes', []))
             ->thenReturn();
     }
 }

@@ -40,15 +40,17 @@ return [
     | Drivers
     |--------------------------------------------------------------------------
     |
-    | Key = driver name, must match AiManager::create{Name}Driver().
-    | price: per 1M tokens in USD (optional — без price cost буде null).
+    | Key = provider name (must match laravel/ai provider key in config/ai.php).
+    | Credentials go in config/ai.php (laravel/ai) — not here.
+    | price: per 1M tokens in USD (null = cost not tracked).
     */
     'drivers' => [
 
         'openai' => [
-            'api_key'     => env('OPENAI_API_KEY'),
             'model'       => env('OPENAI_MODEL', 'gpt-4o-mini'),
             'embed_model' => env('OPENAI_EMBED_MODEL', 'text-embedding-3-small'),
+            'image_model' => env('OPENAI_IMAGE_MODEL', 'gpt-image-1'),
+            'audio_model' => env('OPENAI_AUDIO_MODEL', 'gpt-4o-audio-preview'),
             'price' => [
                 'in'  => 0.15,
                 'out' => 0.60,
@@ -60,8 +62,7 @@ return [
         ],
 
         'anthropic' => [
-            'api_key' => env('ANTHROPIC_API_KEY'),
-            'model'   => env('ANTHROPIC_MODEL', 'claude-sonnet-4-6'),
+            'model' => env('ANTHROPIC_MODEL', 'claude-sonnet-4-6'),
             'price' => [
                 'in'          => 3.00,
                 'out'         => 15.00,
@@ -71,24 +72,21 @@ return [
         ],
 
         'gemini' => [
-            'api_key'     => env('GEMINI_API_KEY'),
             'model'       => env('GEMINI_MODEL', 'gemini-2.5-flash'),
             'embed_model' => env('GEMINI_EMBED_MODEL', 'gemini-embedding-001'),
             'price' => [
-                'in'  => 0.15,  // per 1M tokens, prompts ≤200K; verify at ai.google.dev/pricing
+                'in'  => 0.15,
                 'out' => 0.60,
             ],
         ],
 
         'ollama' => [
-            'api_key' => env('OLLAMA_API_KEY', 'ollama'),
-            'model'   => env('OLLAMA_MODEL', 'llama3.2'),
-            'price'   => null,
+            'model' => env('OLLAMA_MODEL', 'llama3.2'),
+            'price' => null,
         ],
 
         'deepseek' => [
-            'api_key' => env('DEEPSEEK_API_KEY'),
-            'model'   => env('DEEPSEEK_MODEL', 'deepseek-chat'),
+            'model' => env('DEEPSEEK_MODEL', 'deepseek-chat'),
             'price' => [
                 'in'  => 0.27,
                 'out' => 1.10,
@@ -96,27 +94,29 @@ return [
         ],
 
         'groq' => [
-            'api_key' => env('GROQ_API_KEY'),
-            'model'   => env('GROQ_MODEL', 'llama-3.3-70b-versatile'),
-            'price'   => null,
+            'model' => env('GROQ_MODEL', 'llama-3.3-70b-versatile'),
+            'price' => null,
         ],
 
         'mistral' => [
-            'api_key' => env('MISTRAL_API_KEY'),
-            'model'   => env('MISTRAL_MODEL', 'mistral-small-latest'),
-            'price'   => null,
+            'model' => env('MISTRAL_MODEL', 'mistral-small-latest'),
+            'price' => null,
         ],
 
         'xai' => [
-            'api_key' => env('XAI_API_KEY'),
-            'model'   => env('XAI_MODEL', 'grok-3-mini'),
-            'price'   => null,
+            'model' => env('XAI_MODEL', 'grok-3-mini'),
+            'price' => null,
+        ],
+
+        'eleven' => [
+            'model'       => env('ELEVENLABS_MODEL', 'eleven_multilingual_v2'),
+            'audio_model' => env('ELEVENLABS_AUDIO_MODEL', 'eleven_multilingual_v2'),
+            'price'       => null,
         ],
 
         'null' => [
-            'api_key' => 'null-driver',
-            'model'   => 'null',
-            'price'   => null,
+            'model' => 'null',
+            'price' => null,
         ],
     ],
 
@@ -128,6 +128,8 @@ return [
     'routing' => [
         // 'summarize' => ['openai', 'gemini'],
         // 'chat'      => ['anthropic'],
+        // 'transcribe' => ['openai'],
+        // 'tts'        => ['openai', 'eleven'],
     ],
 
     /*

@@ -73,7 +73,7 @@ class ProcessAiPayload implements ShouldQueue
             $resp = $this->runPostprocess($resp);
 
             dispatch(new PostprocessAiResult($run->id, $this->taskClass, $this->taskCtorArgs))
-                ->onQueue(config('ai.queues.post'));
+                ->onQueue(config('ai-tasks.queues.post'));
 
         } catch (BudgetExceededException $e) {
             $run->fail($e->getMessage());
@@ -100,13 +100,13 @@ class ProcessAiPayload implements ShouldQueue
 
     private function runPostprocess(mixed $resp): mixed
     {
-        if (! config('ai.postprocess.enabled', false)) {
+        if (! config('ai-tasks.postprocess.enabled', false)) {
             return $resp;
         }
 
         return app(Pipeline::class)
             ->send($resp)
-            ->through(config('ai.postprocess.pipes', []))
+            ->through(config('ai-tasks.postprocess.pipes', []))
             ->thenReturn();
     }
 }

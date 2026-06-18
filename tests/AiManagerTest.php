@@ -6,8 +6,8 @@ namespace Fomvasss\AiTasks\Tests;
 
 use Fomvasss\AiTasks\AiServiceProvider;
 use Fomvasss\AiTasks\Core\AiManager;
+use Fomvasss\AiTasks\Drivers\LaravelAiDriver;
 use Fomvasss\AiTasks\Drivers\NullDriver;
-use Fomvasss\AiTasks\Drivers\PrismDriver;
 use Fomvasss\AiTasks\Exceptions\AiDriverException;
 use Orchestra\Testbench\TestCase;
 
@@ -26,14 +26,14 @@ class AiManagerTest extends TestCase
         $this->assertInstanceOf(NullDriver::class, $driver);
     }
 
-    public function test_configured_driver_returns_prism_driver(): void
+    public function test_configured_driver_returns_laravel_ai_driver(): void
     {
-        config(['ai.drivers.openai' => ['model' => 'gpt-4o', 'api_key' => 'sk-test']]);
+        config(['ai-tasks.drivers.openai' => ['model' => 'gpt-4o']]);
 
         $manager = app(AiManager::class);
         $driver  = $manager->driver('openai');
 
-        $this->assertInstanceOf(PrismDriver::class, $driver);
+        $this->assertInstanceOf(LaravelAiDriver::class, $driver);
     }
 
     public function test_unknown_driver_throws_exception(): void

@@ -16,12 +16,12 @@ class PackageBootTest extends TestCase
 
     public function test_config_loaded(): void
     {
-        $this->assertNotEmpty(config('ai.default'));
+        $this->assertNotEmpty(config('ai-tasks.default'));
     }
 
     public function test_queues_config_present(): void
     {
-        $this->assertNotNull(config('ai.queues.default'));
-        $this->assertNotNull(config('ai.queues.post'));
+        $this->assertNotNull(config('ai-tasks.queues.default'));
+        $this->assertNotNull(config('ai-tasks.queues.post'));
     }
 }

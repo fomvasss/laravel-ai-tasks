@@ -3,7 +3,7 @@
   "description": "AI task orchestrator for Laravel: routing, queue, audit, budget, webhooks",
   "type": "library",
   "license": "MIT",
-  "keywords": ["laravel", "ai", "llm", "queue", "openai", "gemini", "anthropic", "ollama", "orchestrator", "prism"],
+  "keywords": ["laravel", "ai", "llm", "queue", "openai", "gemini", "anthropic", "ollama", "orchestrator"],
   "authors": [
     {
       "name": "fomvasss",
@@ -12,18 +12,18 @@
     }
   ],
   "require": {
-    "php": "^8.2",
-    "illuminate/support": "^11.0|^12.0|^13.0",
-    "illuminate/contracts": "^11.0|^12.0|^13.0",
-    "illuminate/queue": "^11.0|^12.0|^13.0",
-    "illuminate/database": "^11.0|^12.0|^13.0",
-    "illuminate/events": "^11.0|^12.0|^13.0",
-    "illuminate/pipeline": "^11.0|^12.0|^13.0",
-    "illuminate/http": "^11.0|^12.0|^13.0",
-    "prism-php/prism": "^0.70"
+    "php": "^8.3",
+    "illuminate/support": "^12.0|^13.0",
+    "illuminate/contracts": "^12.0|^13.0",
+    "illuminate/queue": "^12.0|^13.0",
+    "illuminate/database": "^12.0|^13.0",
+    "illuminate/events": "^12.0|^13.0",
+    "illuminate/pipeline": "^12.0|^13.0",
+    "illuminate/http": "^12.0|^13.0",
+    "laravel/ai": "^0.8"
   },
   "require-dev": {
-    "orchestra/testbench": "^9.0|^10.0|^11.0",
+    "orchestra/testbench": "^10.0|^11.0",
     "phpunit/phpunit": "^11.0"
   },
   "autoload": {
@@ -49,6 +49,6 @@
       }
     }
   },
-  "minimum-stability": "stable",
+  "minimum-stability": "dev",
   "prefer-stable": true
 }

@@ -41,7 +41,7 @@ class WebhookController extends Controller
             $run->finish(new AiResponse(true, $content, $payload->usage));
 
             dispatch(new PostprocessAiResult($run->id, $run->task, []))
-                ->onQueue(config('ai.queues.post'));
+                ->onQueue(config('ai-tasks.queues.post'));
 
             return response()->json(['ok' => true]);
         }

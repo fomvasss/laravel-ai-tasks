@@ -149,7 +149,7 @@ class AiRun extends Model
             'meta'     => $p->meta,
         ];
 
-        if (config('ai.store_request')) {
+        if (config('ai-tasks.store_request')) {
             if ($p->systemPrompt !== null) {
                 $data['system'] = $p->systemPrompt;
             }
@@ -165,7 +165,7 @@ class AiRun extends Model
     private static function messageRole(object $m): string
     {
         return match (true) {
-            $m instanceof \Prism\Prism\ValueObjects\Messages\AssistantMessage => 'assistant',
+            $m instanceof \Laravel\Ai\Messages\AssistantMessage => 'assistant',
             default => 'user',
         };
     }

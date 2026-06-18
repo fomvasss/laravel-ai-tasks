@@ -20,6 +20,6 @@ class TenantResolver
         }
 
         // 3) із конфіга
-        return (string) config('ai.default_tenant', 'default');
+        return (string) config('ai-tasks.default_tenant', 'default');
     }
 }

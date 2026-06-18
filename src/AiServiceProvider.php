@@ -19,7 +19,7 @@ class AiServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        $this->mergeConfigFrom(__DIR__ . '/../config/ai.php', 'ai');
+        $this->mergeConfigFrom(__DIR__ . '/../config/ai-tasks.php', 'ai-tasks');
 
         $this->app->singleton(AiManager::class, fn($app) => new AiManager($app));
         $this->app->singleton(Router::class, fn() => new Router());
@@ -40,8 +40,8 @@ class AiServiceProvider extends ServiceProvider
         $this->loadViewsFrom(__DIR__ . '/../resources/views', 'ai-tasks');
 
         $this->publishes([
-            __DIR__ . '/../config/ai.php' => config_path('ai.php'),
-        ], 'ai-config');
+            __DIR__ . '/../config/ai-tasks.php' => config_path('ai-tasks.php'),
+        ], 'ai-tasks-config');
 
         $this->publishes([
             __DIR__ . '/../resources/views' => resource_path('views/vendor/ai-tasks'),
@@ -54,9 +54,9 @@ class AiServiceProvider extends ServiceProvider
             ], 'ai-migrations');
         }
 
-        if (config('ai.dashboard.enabled', true)) {
-            Route::middleware(config('ai.dashboard.middleware', ['web']))
-                ->prefix(config('ai.dashboard.path', 'ai-tasks'))
+        if (config('ai-tasks.dashboard.enabled', true)) {
+            Route::middleware(config('ai-tasks.dashboard.middleware', ['web']))
+                ->prefix(config('ai-tasks.dashboard.path', 'ai-tasks'))
                 ->name('ai-tasks.')
                 ->group(function () {
                     Route::get('/', [DashboardController::class, 'index'])->name('index');
@@ -64,7 +64,7 @@ class AiServiceProvider extends ServiceProvider
                 });
         }
 
-        Route::middleware(config('ai.webhook_middleware', ['api']))
+        Route::middleware(config('ai-tasks.webhook_middleware', ['api']))
             ->prefix('ai-webhooks')
             ->post('{driver}', [WebhookController::class, 'handle'])
             ->name('ai.webhooks');
@@ -84,10 +84,10 @@ class AiServiceProvider extends ServiceProvider
     private function registerWebhookHandlers(): void
     {
         $this->app->afterResolving(WebhookRegistry::class, function (WebhookRegistry $registry) {
-            if (config('ai.drivers.openai')) {
+            if (config('ai-tasks.drivers.openai')) {
                 $registry->extend('openai', function (\Illuminate\Http\Request $r) {
-                    $secret = config('ai.drivers.openai.webhook.secret');
-                    $sigHdr = config('ai.drivers.openai.webhook.signature_header', 'X-OpenAI-Signature');
+                    $secret = config('ai-tasks.drivers.openai.webhook.secret');
+                    $sigHdr = config('ai-tasks.drivers.openai.webhook.signature_header', 'X-OpenAI-Signature');
 
                     if ($secret) {
                         $sig  = (string) $r->header($sigHdr);

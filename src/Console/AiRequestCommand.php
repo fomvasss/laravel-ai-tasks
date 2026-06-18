@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Fomvasss\AiTasks\Console;
 
-use Prism\Prism\ValueObjects\Messages\UserMessage;
+use Laravel\Ai\Messages\UserMessage;
 use Fomvasss\AiTasks\Core\AI;
 use Fomvasss\AiTasks\DTO\AiContext;
 use Fomvasss\AiTasks\DTO\AiPayload;

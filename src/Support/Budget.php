@@ -12,7 +12,7 @@ class Budget
 {
     public function getMonthlyLimit(string $tenantId): ?float
     {
-        $conf = config('ai.budgets', []);
+        $conf = config('ai-tasks.budgets', []);
 
         return isset($conf[$tenantId]['monthly_usd'])
             ? (float) $conf[$tenantId]['monthly_usd']

@@ -24,15 +24,18 @@ class AiModelsCommand extends Command
 
         $drivers = $driver
             ? [$driver]
-            : array_keys(config('ai.drivers', []));
+            : array_keys(config('ai-tasks.drivers', []));
 
         foreach ($drivers as $name) {
-            $cfg = config("ai.drivers.{$name}");
+            $cfg    = config("ai-tasks.drivers.{$name}", []);
+            $apiKey = config("ai.providers.{$name}.key");
 
-            if (empty($cfg['api_key'])) {
-                $this->line("<fg=yellow>  {$name}: no api_key configured, skipping</>");
+            if (empty($apiKey)) {
+                $this->line("<fg=yellow>  {$name}: no api_key configured in config/ai.php, skipping</>");
                 continue;
             }
+
+            $cfg['api_key'] = $apiKey;
 
             $this->newLine();
             $this->line("<fg=cyan;options=bold>── {$name}</>");
@@ -71,7 +74,7 @@ class AiModelsCommand extends Command
 
     private function fetchOpenAI(array $cfg, ?string $filter, bool $detail): array
     {
-        $baseUrl = rtrim(config('prism.providers.openai.url', 'https://api.openai.com/v1'), '/');
+        $baseUrl = rtrim(config('ai.providers.openai.url', 'https://api.openai.com/v1'), '/');
         try {
             $resp = Http::timeout(10)->withToken($cfg['api_key'])->get("{$baseUrl}/models");
         } catch (\Illuminate\Http\Client\ConnectionException $e) {
@@ -147,7 +150,7 @@ class AiModelsCommand extends Command
 
     private function fetchAnthropic(array $cfg, ?string $filter, bool $detail): array
     {
-        $version = config('prism.providers.anthropic.version', '2023-06-01');
+        $version = '2023-06-01';
         try {
             $resp = Http::timeout(10)->withHeaders([
                 'x-api-key'         => $cfg['api_key'],
@@ -193,7 +196,7 @@ class AiModelsCommand extends Command
 
     private function fetchOpenAICompatible(string $name, array $cfg, ?string $filter, bool $detail): array
     {
-        $baseUrl = rtrim(config("prism.providers.{$name}.url", ''), '/');
+        $baseUrl = rtrim(config("ai.providers.{$name}.url", ''), '/');
 
         if (! $baseUrl) {
             return [null, null];

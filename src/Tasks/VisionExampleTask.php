@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace Fomvasss\AiTasks\Tasks;
 
-use Prism\Prism\ValueObjects\Messages\UserMessage;
-use Prism\Prism\ValueObjects\Messages\Support\Image;
 use Fomvasss\AiTasks\Contracts\ShouldQueueAi;
 use Fomvasss\AiTasks\DTO\AiPayload;
 use Fomvasss\AiTasks\DTO\AiResponse;
+use Laravel\Ai\Files\Image as AiImage;
+use Laravel\Ai\Messages\UserMessage;
 
 class VisionExampleTask extends AiTask implements ShouldQueueAi
 {
@@ -26,13 +26,11 @@ class VisionExampleTask extends AiTask implements ShouldQueueAi
     {
         return new AiPayload(
             modality: $this->modality(),
-            messages: [
-                new UserMessage(
-                    $this->prompt,
-                    additionalContent: [Image::fromUrl($this->imageUrl)],
-                ),
+            messages: [new UserMessage($this->prompt)],
+            options: [
+                'temperature'  => 0.2,
+                'attachments'  => [AiImage::fromUrl($this->imageUrl)],
             ],
-            options: ['temperature' => 0.2],
         );
     }
 
