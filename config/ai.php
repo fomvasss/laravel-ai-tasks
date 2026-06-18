@@ -75,8 +75,8 @@ return [
             'model'       => env('GEMINI_MODEL', 'gemini-2.5-flash'),
             'embed_model' => env('GEMINI_EMBED_MODEL', 'gemini-embedding-001'),
             'price' => [
-                'in'  => 0.00,
-                'out' => 0.00,
+                'in'  => 0.15,  // per 1M tokens, prompts ≤200K; verify at ai.google.dev/pricing
+                'out' => 0.60,
             ],
         ],
 
