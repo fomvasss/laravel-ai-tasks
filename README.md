@@ -22,8 +22,6 @@ AI task orchestrator for Laravel. Handles routing, queuing, audit logging, budge
 
 Built-in web UI at `/ai-tasks` — runs list with stats, filters, and per-run detail (request, response, tokens, cost).
 
-The dashboard auto-refreshes every 8 seconds — stats and the current table page update without a full reload, respecting any active filters and pagination.
-
 ![Dashboard](art/dashboard.gif)
 
 Configurable via `config/ai-tasks.php`:
