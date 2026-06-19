@@ -9,9 +9,12 @@
         tailwind.config = { darkMode: 'class' }
         const html = document.documentElement;
         const stored = localStorage.getItem('ai-tasks-theme');
-        if (stored === 'dark' || (!stored && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-            html.classList.replace('light', 'dark');
-        }
+        const cfgTheme = '{{ config('ai-tasks.dashboard.theme', 'system') }}';
+        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        const useDark = stored
+            ? stored === 'dark'
+            : (cfgTheme === 'dark' || (cfgTheme === 'system' && prefersDark));
+        if (useDark) html.classList.replace('light', 'dark');
     </script>
     <style>
         /* pagination active page: match theme */
