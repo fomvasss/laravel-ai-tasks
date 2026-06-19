@@ -33,6 +33,8 @@ return [
         'enabled'    => env('AI_DASHBOARD_ENABLED', true),
         'path'       => env('AI_DASHBOARD_PATH', 'ai-tasks'),
         'middleware' => ['web'],
+        // Auto-refresh interval in seconds. Set to 0 to disable polling.
+        'poll_interval' => env('AI_DASHBOARD_POLL', 3),
     ],
 
     /*

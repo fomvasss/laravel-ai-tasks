@@ -221,7 +221,10 @@
             .catch(() => {});
     }
 
-    setInterval(refresh, 8000);
+    const pollInterval = {{ (int) config('ai-tasks.dashboard.poll_interval', 3) }};
+    if (pollInterval > 0) {
+        setInterval(refresh, pollInterval * 1000);
+    }
 })();
 </script>
 
