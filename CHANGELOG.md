@@ -4,11 +4,23 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [Unreleased]
+## [3.2.0] — 2026-06-19
 
 ### Added
 - `AI::queue($task, delay: ...)` — optional dispatch delay (`int` seconds, `DateTimeInterface`, or `DateInterval`)
 - `AiTask::shouldRun(): bool` — pre-execution guard called inside the queue job before any API call; return `false` to skip the run (status → `skipped`)
+- `config('ai-tasks.dashboard.poll_interval')` — configurable auto-refresh interval in seconds (`AI_DASHBOARD_POLL`, default `3`); set to `0` to disable
+- `config('ai-tasks.dashboard.theme')` — default dashboard theme (`AI_DASHBOARD_THEME`): `light` | `dark` | `system` (default); user's manual toggle always takes priority via `localStorage`
+
+### Fixed
+- `Router::choose()` was reading routing config from wrong key (`ai.routing.*` → `ai-tasks.routing.*`)
+- `FakeAI::queue()` signature updated to accept `$delay` parameter (matches real `AI::queue()`)
+- Dashboard `select` was missing `subject_type` / `subject_id` columns
+
+### Tests
+- Fixed `Prism\Prism\ValueObjects\Messages\UserMessage` import → `Laravel\Ai\Messages\UserMessage`
+- Added `AiTaskTest`: `shouldRun()` default, override, and `AiRun::skip()` behavior
+- Added delay tests to `FakeAITest`
 
 ---
 
