@@ -4,6 +4,16 @@
 [![Latest Stable Version](https://img.shields.io/packagist/v/fomvasss/laravel-ai-tasks.svg?style=for-the-badge)](https://packagist.org/packages/fomvasss/laravel-ai-tasks)
 [![Total Downloads](https://img.shields.io/packagist/dt/fomvasss/laravel-ai-tasks.svg?style=for-the-badge)](https://packagist.org/packages/fomvasss/laravel-ai-tasks)
 
+## Підтримка
+
+Якщо цей пакет є корисним для вас, розгляньте можливість підтримки його розробки:
+
+[![Monobank](https://img.shields.io/badge/Donate-Monobank-black)](https://send.monobank.ua/jar/5xsqtHvVrY)
+[![Ko-Fi](https://img.shields.io/badge/Donate-Ko--fi-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/fomvasss)
+[![USDT TRC20](https://img.shields.io/badge/Donate-USDT%20TRC20-26A17B?logo=tether&logoColor=white)](https://link.trustwallet.com/send?coin=195&address=THLgp6DxiAtbNHvgnKV56vk1L38UuUagKf&token_id=TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t)
+
+> Адреса USDT TRC20: `THLgp6DxiAtbNHvgnKV56vk1L38UuUagKf`
+
 Оркестратор AI-задач для Laravel. Маршрутизація, черги, аудит-лог, бюджети, вебхуки — поверх [laravel/ai](https://laravel.com/docs/ai-sdk) як транспортного шару.
 
 [English documentation](README.md)
@@ -246,9 +256,8 @@ $this->app->singleton(\Fomvasss\AiTasks\Support\TenantResolver::class, fn() => n
 
 ```php
 'anthropic' => [
-    'api_key' => env('ANTHROPIC_API_KEY'),
-    'model'   => 'claude-sonnet-4-6',
-    'price'   => [
+    'model' => 'claude-sonnet-4-6',
+    'price' => [
         'in'          => 3.00,
         'out'         => 15.00,
         'cache_write' => 3.75,  // запис у кеш промпту
@@ -574,11 +583,11 @@ php artisan ai:models openai --filter=gpt-4
 php artisan ai:models anthropic --detail
 ```
 
-Поточна модель з конфігу позначається `✓`. Провайдери з URL у `config/ai.php` (Groq, Mistral, DeepSeek, xAI, Ollama…) опитуються через OpenAI-сумісний `/v1/models` автоматично.
+Поточна модель з конфігу позначається `✓`. Провайдери з URL у `ai.providers.*.url` (Groq, Mistral, DeepSeek, xAI, Ollama…) опитуються через OpenAI-сумісний `/v1/models` автоматично.
 
 ## Підтримувані провайдери
 
-Будь-який провайдер підтримуваний [laravel/ai](https://laravel.com/docs/ai-sdk) працює автоматично — достатньо додати секцію до `config/ai.php` (ключ) і `config/ai-tasks.php` (модель, ціна). Зміни в коді не потрібні.
+Будь-який провайдер підтримуваний [laravel/ai](https://laravel.com/docs/ai-sdk) працює автоматично — достатньо додати секцію до `config/ai.php` (credentials) і `config/ai-tasks.php` (модель, ціна). Зміни в коді не потрібні.
 
 | Провайдер | Ключ драйвера | В конфігу |
 |---|---|---|

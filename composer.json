@@ -3,6 +3,16 @@
   "description": "AI task orchestrator for Laravel: routing, queue, audit, budget, webhooks",
   "type": "library",
   "license": "MIT",
+  "funding": [
+    {
+      "type": "custom",
+      "url": "https://send.monobank.ua/jar/5xsqtHvVrY"
+    },
+    {
+      "type": "ko_fi",
+      "url": "https://ko-fi.com/fomvasss"
+    }
+  ],
   "keywords": ["laravel", "ai", "llm", "queue", "openai", "gemini", "anthropic", "ollama", "orchestrator"],
   "authors": [
     {

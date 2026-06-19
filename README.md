@@ -4,6 +4,16 @@
 [![Latest Stable Version](https://img.shields.io/packagist/v/fomvasss/laravel-ai-tasks.svg?style=for-the-badge)](https://packagist.org/packages/fomvasss/laravel-ai-tasks)
 [![Total Downloads](https://img.shields.io/packagist/dt/fomvasss/laravel-ai-tasks.svg?style=for-the-badge)](https://packagist.org/packages/fomvasss/laravel-ai-tasks)
 
+## Support
+
+If this package is useful to you, consider supporting its development:
+
+[![Monobank](https://img.shields.io/badge/Donate-Monobank-black)](https://send.monobank.ua/jar/5xsqtHvVrY)
+[![Ko-Fi](https://img.shields.io/badge/Donate-Ko--fi-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/fomvasss)
+[![USDT TRC20](https://img.shields.io/badge/Donate-USDT%20TRC20-26A17B?logo=tether&logoColor=white)](https://link.trustwallet.com/send?coin=195&address=THLgp6DxiAtbNHvgnKV56vk1L38UuUagKf&token_id=TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t)
+
+> USDT TRC20: `THLgp6DxiAtbNHvgnKV56vk1L38UuUagKf`
+
 AI task orchestrator for Laravel. Handles routing, queuing, audit logging, budget tracking, and webhook processing on top of [laravel/ai](https://laravel.com/docs/ai-sdk) as the transport layer.
 
 [Українська документація](README.uk.md)
@@ -246,9 +256,8 @@ Set pricing per driver in `config/ai-tasks.php` (per 1M tokens):
 
 ```php
 'anthropic' => [
-    'api_key' => env('ANTHROPIC_API_KEY'),
-    'model'   => 'claude-sonnet-4-6',
-    'price'   => [
+    'model' => 'claude-sonnet-4-6',
+    'price' => [
         'in'          => 3.00,
         'out'         => 15.00,
         'cache_write' => 3.75,  // prompt caching write
@@ -574,11 +583,11 @@ php artisan ai:models openai --filter=gpt-4
 php artisan ai:models anthropic --detail
 ```
 
-Currently configured model is highlighted with `✓`. Providers with a URL in `prism.providers.*.url` (Groq, Mistral, DeepSeek, xAI, Ollama, OpenRouter…) are queried via the OpenAI-compatible `/v1/models` endpoint automatically.
+Currently configured model is highlighted with `✓`. Providers with a URL in `ai.providers.*.url` (Groq, Mistral, DeepSeek, xAI, Ollama, OpenRouter…) are queried via the OpenAI-compatible `/v1/models` endpoint automatically.
 
 ## Supported Providers
 
-Any provider supported by [Prism](https://prismphp.com) works automatically — just add a section to `config/ai-tasks.php` with `api_key` and `model`. No code changes needed.
+Any provider supported by [laravel/ai](https://laravel.com/docs/ai-sdk) works automatically — just add a section to `config/ai.php` (credentials) and `config/ai-tasks.php` (model, price). No code changes needed.
 
 The following providers are pre-configured in `config/ai-tasks.php` (just add the `.env` key):
 
