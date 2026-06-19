@@ -22,8 +22,6 @@
 
 Вбудований веб-інтерфейс за адресою `/ai-tasks` — список runs зі статистикою, фільтрами та деталями кожного запиту (request, response, токени, вартість).
 
-Дашборд автоматично оновлюється кожні 8 секунд — статистика і поточна сторінка таблиці підтягуються без перезавантаження, з урахуванням активних фільтрів і пагінації.
-
 ![Dashboard](art/dashboard.gif)
 
 Конфігурується в `config/ai-tasks.php`:
@@ -256,8 +254,9 @@ $this->app->singleton(\Fomvasss\AiTasks\Support\TenantResolver::class, fn() => n
 
 ```php
 'anthropic' => [
-    'model' => 'claude-sonnet-4-6',
-    'price' => [
+    'api_key' => env('ANTHROPIC_API_KEY'),
+    'model'   => 'claude-sonnet-4-6',
+    'price'   => [
         'in'          => 3.00,
         'out'         => 15.00,
         'cache_write' => 3.75,  // запис у кеш промпту
@@ -583,11 +582,11 @@ php artisan ai:models openai --filter=gpt-4
 php artisan ai:models anthropic --detail
 ```
 
-Поточна модель з конфігу позначається `✓`. Провайдери з URL у `ai.providers.*.url` (Groq, Mistral, DeepSeek, xAI, Ollama…) опитуються через OpenAI-сумісний `/v1/models` автоматично.
+Поточна модель з конфігу позначається `✓`. Провайдери з URL у `config/ai.php` (Groq, Mistral, DeepSeek, xAI, Ollama…) опитуються через OpenAI-сумісний `/v1/models` автоматично.
 
 ## Підтримувані провайдери
 
-Будь-який провайдер підтримуваний [laravel/ai](https://laravel.com/docs/ai-sdk) працює автоматично — достатньо додати секцію до `config/ai.php` (credentials) і `config/ai-tasks.php` (модель, ціна). Зміни в коді не потрібні.
+Будь-який провайдер підтримуваний [laravel/ai](https://laravel.com/docs/ai-sdk) працює автоматично — достатньо додати секцію до `config/ai.php` (ключ) і `config/ai-tasks.php` (модель, ціна). Зміни в коді не потрібні.
 
 | Провайдер | Ключ драйвера | В конфігу |
 |---|---|---|
