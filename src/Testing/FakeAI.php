@@ -52,7 +52,7 @@ final class FakeAI
         return $result instanceof AiResponse ? $result : new AiResponse(true, json_encode($result));
     }
 
-    public function queue(AiTask $task, array|string $drivers = []): string
+    public function queue(AiTask $task, array|string $drivers = [], \DateTimeInterface|\DateInterval|int|null $delay = null): string
     {
         $this->record('queue', $task, $drivers);
 

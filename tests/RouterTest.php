@@ -36,7 +36,7 @@ class RouterTest extends TestCase
 
     public function test_router_returns_configured_drivers(): void
     {
-        config(['ai.routing.summarize' => ['openai', 'anthropic']]);
+        config(['ai-tasks.routing.summarize' => ['openai', 'anthropic']]);
 
         $router = new Router();
         $task   = $this->makeTask()->setName('summarize');

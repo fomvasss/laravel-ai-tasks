@@ -14,7 +14,7 @@ class Router
             return $custom;
         }
 
-        if ($byTask = config("ai.routing.{$task->name()}")) {
+        if ($byTask = config("ai-tasks.routing.{$task->name()}")) {
             return (array) $byTask;
         }
 

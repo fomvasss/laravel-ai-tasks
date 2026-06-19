@@ -6,11 +6,10 @@ namespace Fomvasss\AiTasks\Tests;
 
 use Fomvasss\AiTasks\AiServiceProvider;
 use Fomvasss\AiTasks\DTO\AiPayload;
-use Fomvasss\AiTasks\DTO\AiResponse;
 use Fomvasss\AiTasks\Facades\AI;
 use Fomvasss\AiTasks\Tasks\AiTask;
+use Laravel\Ai\Messages\UserMessage;
 use Orchestra\Testbench\TestCase;
-use Prism\Prism\ValueObjects\Messages\UserMessage;
 
 class FakeAITest extends TestCase
 {
@@ -143,5 +142,23 @@ class FakeAITest extends TestCase
 
         $this->assertIsString($runId);
         $this->assertMatchesRegularExpression('/^[0-9a-f-]{36}$/', $runId);
+    }
+
+    public function test_queue_accepts_integer_delay(): void
+    {
+        AI::fake();
+
+        $runId = AI::queue($this->makeTask(), delay: 300);
+
+        $this->assertIsString($runId);
+    }
+
+    public function test_queue_accepts_carbon_delay(): void
+    {
+        AI::fake();
+
+        $runId = AI::queue($this->makeTask(), delay: now()->addMinutes(5));
+
+        $this->assertIsString($runId);
     }
 }
