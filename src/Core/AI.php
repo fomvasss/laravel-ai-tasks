@@ -74,7 +74,7 @@ class AI
         throw new AiDriverException('All providers failed: ' . implode(' | ', $errors));
     }
 
-    public function queue(AiTask $task, array|string $drivers = []): string
+    public function queue(AiTask $task, array|string $drivers = [], \DateTimeInterface|\DateInterval|int|null $delay = null): string
     {
         $payload = $task->toPayload();
         $ctx     = $task->context();
@@ -101,7 +101,11 @@ class AI
             $job->onQueue(config('ai-tasks.queues.default'));
         }
 
-        dispatch($job);
+        $pending = dispatch($job);
+
+        if ($delay !== null) {
+            $pending->delay($delay);
+        }
 
         event(new AiTaskQueued($task, $run));
 

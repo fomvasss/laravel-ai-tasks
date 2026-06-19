@@ -48,10 +48,15 @@ class ProcessAiPayload implements ShouldQueue
 
     public function handle(AiManager $manager): void
     {
-        $run = AiRun::findOrFail($this->runId);
-        $run->markRunning();
-
+        $run  = AiRun::findOrFail($this->runId);
         $task = $this->resolveTask();
+
+        if (! $task->shouldRun()) {
+            $run->skip('guard_rejected');
+            return;
+        }
+
+        $run->markRunning();
 
         try {
             app(Budget::class)->ensureNotExceeded($this->context->tenantId);

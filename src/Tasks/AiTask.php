@@ -51,6 +51,11 @@ abstract class AiTask
         );
     }
 
+    public function shouldRun(): bool
+    {
+        return true;
+    }
+
     public function postprocess(AiResponse $response): AiResponse|array
     {
         return $response;
