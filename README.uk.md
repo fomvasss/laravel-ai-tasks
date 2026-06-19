@@ -12,6 +12,8 @@
 
 Вбудований веб-інтерфейс за адресою `/ai-tasks` — список runs зі статистикою, фільтрами та деталями кожного запиту (request, response, токени, вартість).
 
+Дашборд автоматично оновлюється кожні 8 секунд — статистика і поточна сторінка таблиці підтягуються без перезавантаження, з урахуванням активних фільтрів і пагінації.
+
 ![Dashboard](art/dashboard.gif)
 
 Конфігурується в `config/ai-tasks.php`:
@@ -65,7 +67,7 @@ GROQ_API_KEY=gsk_...
 
 | Файл | Призначення |
 |---|---|
-| `config/ai-tasks.php` | laravel/ai — API-ключі, URL провайдерів |
+| `config/ai.php` | laravel/ai — API-ключі, URL провайдерів |
 | `config/ai-tasks.php` | цей пакет — моделі, ціни, маршрутизація, бюджети |
 
 ## Horizon / Черги
@@ -298,6 +300,35 @@ class AnalyzeTask extends AiTask implements ShouldQueueAi
     }
 }
 ```
+
+### Відкладений запуск (delay)
+
+Передай `delay` у `AI::queue()` щоб відкласти виконання:
+
+```php
+AI::queue(new SummarizeTask($text), delay: 300);                 // 5 хвилин (секунди)
+AI::queue(new SummarizeTask($text), delay: now()->addHours(2));  // Carbon
+AI::queue(new SummarizeTask($text), delay: new \DateInterval('PT10M'));
+```
+
+### Перевірка перед виконанням — `shouldRun()`
+
+Перевизнач `shouldRun()` у будь-якому таску, щоб зробити останню перевірку всередині job-а, **до** виклику API. Якщо метод повертає `false` — run отримує статус `skipped`, токени не витрачаються:
+
+```php
+class AnalyzeProductTask extends AiTask
+{
+    public function __construct(private readonly int $productId) {}
+
+    public function shouldRun(): bool
+    {
+        // перевіряємо актуальний стан в момент виконання
+        return Product::find($this->productId)?->needs_analysis ?? false;
+    }
+}
+```
+
+Корисно коли задача в черзі може втратити актуальність до того, як воркер її підхопить (запис видалено, статус змінився, результат вже є).
 
 ## Тестування
 

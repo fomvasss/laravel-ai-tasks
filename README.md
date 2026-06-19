@@ -12,6 +12,8 @@ AI task orchestrator for Laravel. Handles routing, queuing, audit logging, budge
 
 Built-in web UI at `/ai-tasks` — runs list with stats, filters, and per-run detail (request, response, tokens, cost).
 
+The dashboard auto-refreshes every 8 seconds — stats and the current table page update without a full reload, respecting any active filters and pagination.
+
 ![Dashboard](art/dashboard.gif)
 
 Configurable via `config/ai-tasks.php`:
@@ -298,6 +300,35 @@ class AnalyzeTask extends AiTask implements ShouldQueueAi
     }
 }
 ```
+
+### Delayed dispatch
+
+Pass a `delay` to `AI::queue()` to defer execution:
+
+```php
+AI::queue(new SummarizeTask($text), delay: 300);                 // 5 minutes (seconds)
+AI::queue(new SummarizeTask($text), delay: now()->addHours(2));  // Carbon
+AI::queue(new SummarizeTask($text), delay: new \DateInterval('PT10M'));
+```
+
+### Pre-execution guard — `shouldRun()`
+
+Override `shouldRun()` on any task to perform a last-moment check inside the queue job, **before** the API call is made. If it returns `false`, the run is marked `skipped` and no tokens are consumed:
+
+```php
+class AnalyzeProductTask extends AiTask
+{
+    public function __construct(private readonly int $productId) {}
+
+    public function shouldRun(): bool
+    {
+        // re-check at job execution time — the model state may have changed
+        return Product::find($this->productId)?->needs_analysis ?? false;
+    }
+}
+```
+
+Useful when a queued task may become irrelevant by the time a worker picks it up (e.g. record deleted, status changed, result already computed).
 
 ## Testing
 

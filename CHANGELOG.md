@@ -4,6 +4,27 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+### Added
+- `AI::queue($task, delay: ...)` — optional dispatch delay (`int` seconds, `DateTimeInterface`, or `DateInterval`)
+- `AiTask::shouldRun(): bool` — pre-execution guard called inside the queue job before any API call; return `false` to skip the run (status → `skipped`)
+
+---
+
+## [3.1.0] — 2026-06-19
+
+### Added
+- Dashboard live polling — table and stats auto-refresh every 8 seconds via JS `fetch`; respects active filters and current pagination page
+- `GET /ai-tasks/data` JSON endpoint backing the polling (same filter params as the index page)
+- `DashboardController::data()` returns paginated runs + today/month stats as JSON
+
+### Changed
+- `DashboardController` refactored: query building and stats calculation extracted to private methods (`buildQuery`, `stats`), shared between `index()` and `data()`
+- `subject_type` / `subject_id` added to the dashboard select list (were missing)
+
+---
+
 ## [3.0.0] — 2026-06-18
 
 ### Added
