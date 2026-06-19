@@ -60,6 +60,7 @@ class AiServiceProvider extends ServiceProvider
                 ->name('ai-tasks.')
                 ->group(function () {
                     Route::get('/', [DashboardController::class, 'index'])->name('index');
+                    Route::get('/data', [DashboardController::class, 'data'])->name('data');
                     Route::get('/{id}', [DashboardController::class, 'show'])->name('show');
                 });
         }

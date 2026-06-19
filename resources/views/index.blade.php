@@ -7,14 +7,14 @@
 {{-- Stats --}}
 <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
     @foreach([
-        ['label' => 'Today total',  'value' => $stats['today_total'], 'color' => ''],
-        ['label' => 'Today OK',     'value' => $stats['today_ok'],    'color' => 'text-green-600'],
-        ['label' => 'Today errors', 'value' => $stats['today_error'], 'color' => 'text-red-600'],
-        ['label' => 'Month cost',   'value' => '$' . $stats['month_cost'], 'color' => ''],
+        ['label' => 'Today total', 'value' => $stats['today_total'], 'color' => '', 'key' => 'today_total'],
+        ['label' => 'Today OK', 'value' => $stats['today_ok'], 'color' => 'text-green-600', 'key' => 'today_ok'],
+        ['label' => 'Today errors', 'value' => $stats['today_error'], 'color' => 'text-red-600', 'key' => 'today_error'],
+        ['label' => 'Month cost', 'value' => '$' . $stats['month_cost'], 'color' => '', 'key' => 'month_cost'],
     ] as $s)
     <div class="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 px-4 py-3">
         <div class="text-xs text-gray-500 dark:text-gray-400 mb-1">{{ $s['label'] }}</div>
-        <div class="text-2xl font-semibold {{ $s['color'] }} dark:text-gray-100">{{ $s['value'] }}</div>
+        <div class="text-2xl font-semibold {{ $s['color'] }} dark:text-gray-100" data-stat="{{ $s['key'] }}">{{ $s['value'] }}</div>
     </div>
     @endforeach
 </div>
@@ -89,7 +89,7 @@
                 @endforeach
             </tr>
         </thead>
-        <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
+        <tbody id="ai-runs-tbody" class="divide-y divide-gray-100 dark:divide-gray-800">
             @forelse ($runs as $run)
             @php
                 $badge = match($run->status) {
@@ -154,5 +154,75 @@
 <div class="mt-4">
     {{ $runs->links('pagination::tailwind') }}
 </div>
+
+<script>
+(function () {
+    const dataUrl = '{{ route('ai-tasks.data') }}';
+    const showBase = '{{ rtrim(route('ai-tasks.index'), '/') }}/';
+
+    const statusClass = {
+        ok:      'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400',
+        error:   'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400',
+        dead:    'bg-red-200 text-red-800 dark:bg-red-900/60 dark:text-red-300',
+        running: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400',
+        queued:  'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-400',
+        waiting: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-400',
+    };
+    const modalityClass = {
+        image:         'bg-pink-100 text-pink-700 dark:bg-pink-900/40 dark:text-pink-400',
+        embed:         'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-400',
+        audio:         'bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-400',
+        transcription: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-400',
+    };
+    const gray = 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400';
+
+    function renderRow(r) {
+        const dur = r.duration_ms === null ? '—' : (r.duration_ms < 1000 ? r.duration_ms + 'ms' : (r.duration_ms / 1000).toFixed(1) + 's');
+        const cost = r.cost !== null ? '$' + parseFloat(r.cost).toFixed(6) : '—';
+        const subject = r.subject_type ? `<span class="text-xs text-gray-400 dark:text-gray-500">${r.subject_type}#${r.subject_id}</span>` : '';
+        const badge = statusClass[r.status] || gray;
+        const mc = modalityClass[r.modality] || 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400';
+        const dc = r.dispatch === 'queue' ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-400' : gray;
+
+        return `<tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+            <td class="px-3 py-2">
+                <a href="${showBase}${r.id}" class="text-blue-600 dark:text-blue-400 hover:underline font-medium">${r.task}</a>
+                <div class="flex gap-1 mt-0.5 flex-wrap">
+                    <span class="inline-flex px-1.5 py-0 rounded text-xs ${mc}">${r.modality}</span>
+                    ${subject}
+                </div>
+            </td>
+            <td class="px-3 py-2 text-gray-600 dark:text-gray-300">${r.driver ?? '—'}</td>
+            <td class="px-3 py-2 text-gray-500 dark:text-gray-400 text-xs">${r.tenant_id ?? ''}</td>
+            <td class="px-3 py-2"><span class="inline-flex px-2 py-0.5 rounded text-xs font-medium ${dc}">${r.dispatch}</span></td>
+            <td class="px-3 py-2"><span class="inline-flex px-2 py-0.5 rounded text-xs font-medium ${badge}">${r.status}</span></td>
+            <td class="px-3 py-2 text-gray-600 dark:text-gray-300">${r.tokens_in ?? '—'}</td>
+            <td class="px-3 py-2 text-gray-600 dark:text-gray-300">${r.tokens_out ?? '—'}</td>
+            <td class="px-3 py-2 text-gray-600 dark:text-gray-300">${cost}</td>
+            <td class="px-3 py-2 text-gray-500 dark:text-gray-400">${dur}</td>
+            <td class="px-3 py-2 text-gray-400 dark:text-gray-500 text-xs whitespace-nowrap">${r.started_at ?? '—'}</td>
+        </tr>`;
+    }
+
+    function refresh() {
+        fetch(dataUrl + window.location.search)
+            .then(r => r.json())
+            .then(data => {
+                document.querySelectorAll('[data-stat]').forEach(el => {
+                    const k = el.dataset.stat;
+                    el.textContent = k === 'month_cost' ? '$' + data.stats[k] : data.stats[k];
+                });
+
+                const tbody = document.getElementById('ai-runs-tbody');
+                if (tbody && data.runs.length > 0) {
+                    tbody.innerHTML = data.runs.map(renderRow).join('');
+                }
+            })
+            .catch(() => {});
+    }
+
+    setInterval(refresh, 8000);
+})();
+</script>
 
 @endsection
