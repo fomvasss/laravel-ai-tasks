@@ -34,7 +34,7 @@ class PostprocessAiResult implements ShouldQueue
         }
 
         $resp = new AiResponse(
-            ok:      true,
+            ok: true,
             content: $run->response['content'] ?? null,
         );
 

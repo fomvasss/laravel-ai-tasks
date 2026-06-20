@@ -28,9 +28,12 @@
 
 ```php
 'dashboard' => [
-    'enabled'    => env('AI_DASHBOARD_ENABLED', true),
-    'path'       => env('AI_DASHBOARD_PATH', 'ai-tasks'),
-    'middleware' => ['web'],
+    'enabled'       => env('AI_DASHBOARD_ENABLED', true),
+    'path'          => env('AI_DASHBOARD_PATH', 'ai-tasks'),
+    'middleware'    => ['web'],
+    'poll_interval' => env('AI_DASHBOARD_POLL', 3),        // секунди; 0 = вимкнути
+    'theme'         => env('AI_DASHBOARD_THEME', 'system'), // light|dark|system
+    'per_page'      => env('AI_DASHBOARD_PER_PAGE', 50),
 ],
 ```
 
@@ -97,7 +100,7 @@ AI_QUEUE_POST=ai-post
     'minProcesses' => 2,
     'maxProcesses' => 20,
     'tries'        => 3,
-    'timeout'      => 120,
+    'timeout'      => 300,
 ],
 'supervisor-ai-post' => [
     'connection'   => 'redis',
@@ -143,10 +146,10 @@ class SummarizeTask extends AiTask
     public function toPayload(): AiPayload
     {
         return new AiPayload(
-            modality:     $this->modality(),
-            messages:     [new UserMessage("Стисни текст: {$this->text}")],
+            modality: $this->modality(),
+            messages: [new UserMessage("Стисни текст: {$this->text}")],
             systemPrompt: 'Ти помічник-редактор. Відповідай максимум 3 реченнями.',
-            options:      ['temperature' => 0.3],
+            options: ['temperature' => 0.3],
         );
     }
 
@@ -245,7 +248,7 @@ AI::send((new SummarizeTask($text))->viaDrivers('gemini'));
 `TenantResolver` визначає `tenant_id` з заголовка `X-Tenant-Id`, авторизованого користувача або конфігу. Щоб замінити — збіндити власний клас:
 
 ```php
-$this->app->singleton(\Fomvasss\AiTasks\Support\TenantResolver::class, fn() => new MyTenantResolver());
+$this->app->scoped(\Fomvasss\AiTasks\Support\TenantResolver::class, fn() => new MyTenantResolver());
 ```
 
 ## Відстеження витрат
@@ -254,13 +257,12 @@ $this->app->singleton(\Fomvasss\AiTasks\Support\TenantResolver::class, fn() => n
 
 ```php
 'anthropic' => [
-    'api_key' => env('ANTHROPIC_API_KEY'),
-    'model'   => 'claude-sonnet-4-6',
-    'price'   => [
+    'model' => 'claude-sonnet-4-6',
+    'price' => [
         'in'          => 3.00,
         'out'         => 15.00,
-        'cache_write' => 3.75,  // запис у кеш промпту
-        'cache_read'  => 0.30,  // читання з кешу промпту
+        'cache_write' => 3.75,
+        'cache_read'  => 0.30,
     ],
 ],
 ```
@@ -337,6 +339,244 @@ class AnalyzeProductTask extends AiTask
 ```
 
 Корисно коли задача в черзі може втратити актуальність до того, як воркер її підхопить (запис видалено, статус змінився, результат вже є).
+
+### Ідемпотентність
+
+Кожен run захищений від дублів через унікальний `idempotency_key` в `ai_runs`. Дефолтний ключ — хеш від `[tenantId, taskName, modality, serializeForQueue()]`, тому задачі з різними вхідними параметрами автоматично отримують різні ключі.
+
+Перевизнач `idempotencyKey()` для власної логіки дедублікації:
+
+```php
+class ChatTask extends AiTask
+{
+    public function __construct(
+        private readonly string $question,
+        private readonly string $messageId, // унікальний ID повідомлення з чат-системи
+        private readonly array  $history = [],
+    ) {}
+
+    public function serializeForQueue(): array
+    {
+        return [$this->question, $this->messageId, $this->history];
+    }
+    // idempotencyKey() за замовчуванням — включає messageId, кожен turn унікальний
+}
+```
+
+Для чат/асистент-інтеграцій, де одне й те саме питання може задаватись кілька разів: поки в `serializeForQueue()` є `messageId` або повна історія чату — кожен turn дає унікальний ключ, і idempotency захищає тільки від технічних дублів (double-send, retry черги).
+
+## Інструменти (Tools)
+
+Перевизнач `tools()` у будь-якому таску, щоб передати `Laravel\Ai\Contracts\Tool[]` в `AnonymousAgent`. Інструменти автоматично передаються при `send()`, `stream()` і `queue()`.
+
+```php
+use Illuminate\Contracts\JsonSchema\JsonSchema;
+use Laravel\Ai\Contracts\Tool;
+use Laravel\Ai\Tools\Request;
+
+class ResearchTask extends AiTask
+{
+    public function tools(): array
+    {
+        return [
+            new class implements Tool {
+                public function name(): string        { return 'web_search'; }
+                public function description(): string { return 'Search the web for current information.'; }
+
+                public function handle(Request $request): string
+                {
+                    $query = $request['query'] ?? '';
+                    // call your search API here
+                    return json_encode(['results' => ["Result for: {$query}"]]);
+                }
+
+                public function schema(JsonSchema $schema): array
+                {
+                    return ['query' => $schema->string('The search query')];
+                }
+            },
+        ];
+    }
+
+    public function modality(): string { return 'text'; }
+
+    public function toPayload(): AiPayload
+    {
+        return new AiPayload(
+            modality: 'text',
+            messages: [new UserMessage('What happened in tech this week?')],
+        );
+    }
+}
+```
+
+**Важливо:** анонімний клас, що реалізує `Tool`, повинен мати метод `name()` — без нього `ToolNameResolver` генерує невалідну назву для OpenAI API.
+
+Агент сам вирішує коли і як викликати інструменти. Кожен виклик виконується локально і результат повертається моделі для наступного кроку.
+
+## MCP-інструменти
+
+Підключення до будь-якого MCP-сервера (Streamable HTTP, JSON-RPC 2.0) без встановлення `laravel/mcp`. Реалізуйте тонкий HTTP-клієнт і загорніть кожен знайдений інструмент:
+
+```php
+// app/Ai/Mcp/HttpMcpClient.php
+class HttpMcpClient
+{
+    public function __construct(
+        private readonly string $url,
+        private readonly string $token,
+    ) {}
+
+    public function listTools(): array
+    {
+        return $this->rpc('tools/list')['tools'] ?? [];
+    }
+
+    public function readResource(string $uri): string
+    {
+        $result = $this->rpc('resources/read', ['uri' => $uri]);
+        return collect($result['contents'] ?? [])
+            ->map(fn($c) => $c['text'] ?? '')
+            ->filter()
+            ->implode("\n");
+    }
+
+    public function callTool(string $name, array $arguments = []): string
+    {
+        $result  = $this->rpc('tools/call', ['name' => $name, 'arguments' => $arguments]);
+        $content = $result['content'] ?? [];
+        $isError = $result['isError'] ?? false;
+        $text = collect($content)
+            ->filter(fn($c) => ($c['type'] ?? '') === 'text')
+            ->map(fn($c) => $c['text'] ?? '')
+            ->implode("\n");
+        if ($isError) {
+            throw new \RuntimeException("MCP tool error [{$name}]: {$text}");
+        }
+        return $text ?: json_encode($result);
+    }
+
+    private function rpc(string $method, array $params = []): array
+    {
+        static $id = 0;
+        $response = Http::withToken($this->token)
+            ->withHeaders(['Accept' => 'application/json, text/event-stream'])
+            ->post($this->url, ['jsonrpc' => '2.0', 'id' => ++$id, 'method' => $method, 'params' => $params]);
+        $data = $response->json();
+        if (isset($data['error'])) {
+            throw new \RuntimeException("MCP error [{$method}]: " . ($data['error']['message'] ?? ''));
+        }
+        return $data['result'] ?? [];
+    }
+}
+```
+
+```php
+// app/Ai/Mcp/HttpMcpTool.php
+class HttpMcpTool implements Tool
+{
+    public function __construct(
+        private readonly HttpMcpClient $client,
+        private readonly string $name,
+        private readonly string $toolDescription,
+        private readonly array $inputSchema,
+    ) {}
+
+    public function name(): string        { return $this->name; }
+    public function description(): string { return $this->toolDescription; }
+
+    public function handle(Request $request): string
+    {
+        return $this->client->callTool($this->name, $request->all());
+    }
+
+    public function schema(JsonSchema $schema): array
+    {
+        if (empty($this->inputSchema)) return [];
+        try {
+            $type = \Illuminate\JsonSchema\JsonSchema::fromArray(
+                \Laravel\Ai\Schema\SchemaNormalizer::normalize($this->inputSchema)
+            );
+        } catch (\Throwable) {
+            return [];
+        }
+        return $type instanceof \Illuminate\JsonSchema\Types\ObjectType
+            ? (fn(): array => $this->properties)->call($type)
+            : [];
+    }
+}
+```
+
+```php
+// Таск, що підключає всі інструменти з MCP-сервера
+class CrmTask extends AiTask
+{
+    private ?HttpMcpClient $mcpClient = null;
+
+    public function __construct(private readonly string $question) {}
+
+    public function tools(): array
+    {
+        $client = $this->client();
+        return collect($client->listTools())
+            ->map(fn(array $t) => new HttpMcpTool(
+                client: $client,
+                name: $t['name'],
+                toolDescription: $t['description'] ?? $t['name'],
+                inputSchema: $t['inputSchema'] ?? [],
+            ))
+            ->all();
+    }
+
+    public function toPayload(): AiPayload
+    {
+        $me = $this->client()->readResource('crm://me');
+        return new AiPayload(
+            modality: 'text',
+            messages: [new UserMessage($this->question)],
+            systemPrompt: "Поточний користувач: {$me}\nВикористовуй надані інструменти для відповіді.",
+        );
+    }
+
+    private function client(): HttpMcpClient
+    {
+        return $this->mcpClient ??= new HttpMcpClient(
+            url: config('services.crm_mcp.url'),
+            token: config('services.crm_mcp.token'),
+        );
+    }
+
+    public function modality(): string        { return 'text'; }
+    public function serializeForQueue(): array { return [$this->question]; }
+}
+```
+
+```php
+AI::send(new CrmTask('Показати завантаженість всіх користувачів'));
+AI::queue(new CrmTask('Створи задачу "Виправити баг входу" в проекті CRM, пріоритет 3'));
+```
+
+## Таймаут завдань черги
+
+Перевизнач `jobTimeout()` для контролю максимального часу виконання job-а в черзі:
+
+```php
+class HeavyTask extends AiTask
+{
+    public function jobTimeout(): int { return 600; } // секунди, дефолт 300
+}
+```
+
+Значення передається в `ProcessAiPayload` при диспетчеризації. Supervisor Horizon повинен мати `timeout` не менший за максимальний `jobTimeout()` у ваших задачах.
+
+## Laravel Octane
+
+Додаткова конфігурація не потрібна. Пакет підтримує Octane автоматично:
+
+- `TenantResolver` збіндений як `scoped` — новий інстанс на кожен запит/job
+- Кеш драйверів `AiManager` скидається при кожній події `RequestReceived` і `TaskReceived`
+
+Якщо ти надаєш власний `TenantResolver` зі станом — `scoped` гарантує коректне скидання між запитами.
 
 ## Тестування
 
@@ -588,6 +828,8 @@ php artisan ai:models anthropic --detail
 
 Будь-який провайдер підтримуваний [laravel/ai](https://laravel.com/docs/ai-sdk) працює автоматично — достатньо додати секцію до `config/ai.php` (ключ) і `config/ai-tasks.php` (модель, ціна). Зміни в коді не потрібні.
 
+Наступні провайдери вже прописані в `config/ai-tasks.php` (достатньо додати `.env` ключ):
+
 | Провайдер | Ключ драйвера | В конфігу |
 |---|---|---|
 | OpenAI | `openai` | ✅ |
@@ -598,14 +840,22 @@ php artisan ai:models anthropic --detail
 | Mistral | `mistral` | ✅ |
 | xAI (Grok) | `xai` | ✅ |
 | Ollama (локально) | `ollama` | ✅ |
-| ElevenLabs | `eleven` | ✅ (audio/tts) |
+| VoyageAI | `voyageai` | додати вручну |
 | AWS Bedrock | `bedrock` | додати вручну |
 | OpenRouter | `openrouter` | додати вручну |
+| Perplexity | `perplexity` | додати вручну |
+| ElevenLabs | `eleven` | ✅ (audio/tts) |
 | будь-який laravel/ai провайдер | — | додати вручну |
 
 ### Як працюють credentials
 
-`laravel/ai` читає API-ключі з `config/ai.php` (публікується через `vendor:publish --provider="Laravel\Ai\AiServiceProvider"`). У `config/ai-tasks.php` зберігаються лише назви моделей і ціни — без `api_key`.
+`laravel/ai` читає API-ключі з `config/ai.php` (публікується через `vendor:publish --provider="Laravel\Ai\AiServiceProvider"`). `api_key` **не** зберігається в `config/ai-tasks.php` — там лише назви моделей, ціни і маршрутизація.
+
+Щоб дізнатися, які `.env` змінні потрібні кожному провайдеру, перегляньте:
+
+```
+vendor/laravel/ai/config/ai.php
+```
 
 **Додавання нового провайдера** (наприклад Mistral):
 

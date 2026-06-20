@@ -22,17 +22,18 @@ AI task orchestrator for Laravel. Handles routing, queuing, audit logging, budge
 
 Built-in web UI at `/ai-tasks` — runs list with stats, filters, and per-run detail (request, response, tokens, cost).
 
-The dashboard auto-refreshes every 8 seconds — stats and the current table page update without a full reload, respecting any active filters and pagination.
-
 ![Dashboard](art/dashboard.gif)
 
 Configurable via `config/ai-tasks.php`:
 
 ```php
 'dashboard' => [
-    'enabled'    => env('AI_DASHBOARD_ENABLED', true),
-    'path'       => env('AI_DASHBOARD_PATH', 'ai-tasks'),
-    'middleware' => ['web'],
+    'enabled'       => env('AI_DASHBOARD_ENABLED', true),
+    'path'          => env('AI_DASHBOARD_PATH', 'ai-tasks'),
+    'middleware'    => ['web'],
+    'poll_interval' => env('AI_DASHBOARD_POLL', 3),       // seconds; 0 = off
+    'theme'         => env('AI_DASHBOARD_THEME', 'system'), // light|dark|system
+    'per_page'      => env('AI_DASHBOARD_PER_PAGE', 50),
 ],
 ```
 
@@ -99,7 +100,7 @@ Example Horizon config:
     'minProcesses' => 2,
     'maxProcesses' => 20,
     'tries'        => 3,
-    'timeout'      => 120,
+    'timeout'      => 300,
 ],
 'supervisor-ai-post' => [
     'connection'   => 'redis',
@@ -145,10 +146,10 @@ class SummarizeTask extends AiTask
     public function toPayload(): AiPayload
     {
         return new AiPayload(
-            modality:     $this->modality(),
-            messages:     [new UserMessage("Summarize: {$this->text}")],
+            modality: $this->modality(),
+            messages: [new UserMessage("Summarize: {$this->text}")],
             systemPrompt: 'You are a concise summarizer. Reply in 3 sentences max.',
-            options:      ['temperature' => 0.3],
+            options: ['temperature' => 0.3],
         );
     }
 
@@ -217,6 +218,211 @@ $response = AI::stream(new WriteStoryTask(), function (string $chunk) {
 $response->content; // full accumulated text
 ```
 
+## Tools
+
+Override `tools()` on any task to pass `Laravel\Ai\Contracts\Tool[]` to the underlying `AnonymousAgent`. Tools are forwarded automatically on `send()`, `stream()`, and `queue()`.
+
+```php
+use Illuminate\Contracts\JsonSchema\JsonSchema;
+use Laravel\Ai\Contracts\Tool;
+use Laravel\Ai\Tools\Request;
+
+class ResearchTask extends AiTask
+{
+    public function tools(): array
+    {
+        return [
+            new class implements Tool {
+                public function name(): string        { return 'web_search'; }
+                public function description(): string { return 'Search the web for current information.'; }
+
+                public function handle(Request $request): string
+                {
+                    $query = $request['query'] ?? '';
+                    // call your search API here
+                    return json_encode(['results' => ["Result for: {$query}"]]);
+                }
+
+                public function schema(JsonSchema $schema): array
+                {
+                    return ['query' => $schema->string('The search query')];
+                }
+            },
+        ];
+    }
+
+    public function modality(): string { return 'text'; }
+
+    public function toPayload(): AiPayload
+    {
+        return new AiPayload(
+            modality: 'text',
+            messages: [new UserMessage('What happened in tech this week?')],
+        );
+    }
+}
+```
+
+**Note:** anonymous classes implementing `Tool` must define `name()` — without it the tool name resolver falls back to `class_basename()`, which produces an invalid identifier for OpenAI.
+
+The agent decides when and how to invoke tools. Each tool call is executed locally and the result is returned to the model for the next step.
+
+## MCP Tools
+
+Connect to any remote MCP server (Streamable HTTP transport, JSON-RPC 2.0) without installing `laravel/mcp`. Implement a thin HTTP client and wrap each discovered tool:
+
+```php
+// app/Ai/Mcp/HttpMcpClient.php
+class HttpMcpClient
+{
+    public function __construct(
+        private readonly string $url,
+        private readonly string $token,
+    ) {}
+
+    public function listTools(): array
+    {
+        return $this->rpc('tools/list')['tools'] ?? [];
+    }
+
+    public function readResource(string $uri): string
+    {
+        $result = $this->rpc('resources/read', ['uri' => $uri]);
+        return collect($result['contents'] ?? [])
+            ->map(fn($c) => $c['text'] ?? '')
+            ->filter()
+            ->implode("\n");
+    }
+
+    public function callTool(string $name, array $arguments = []): string
+    {
+        $result  = $this->rpc('tools/call', ['name' => $name, 'arguments' => $arguments]);
+        $content = $result['content'] ?? [];
+        $isError = $result['isError'] ?? false;
+        $text = collect($content)
+            ->filter(fn($c) => ($c['type'] ?? '') === 'text')
+            ->map(fn($c) => $c['text'] ?? '')
+            ->implode("\n");
+        if ($isError) {
+            throw new \RuntimeException("MCP tool error [{$name}]: {$text}");
+        }
+        return $text ?: json_encode($result);
+    }
+
+    private function rpc(string $method, array $params = []): array
+    {
+        static $id = 0;
+        $response = Http::withToken($this->token)
+            ->withHeaders(['Accept' => 'application/json, text/event-stream'])
+            ->post($this->url, ['jsonrpc' => '2.0', 'id' => ++$id, 'method' => $method, 'params' => $params]);
+        $data = $response->json();
+        if (isset($data['error'])) {
+            throw new \RuntimeException("MCP error [{$method}]: " . ($data['error']['message'] ?? ''));
+        }
+        return $data['result'] ?? [];
+    }
+}
+```
+
+```php
+// app/Ai/Mcp/HttpMcpTool.php
+class HttpMcpTool implements Tool
+{
+    public function __construct(
+        private readonly HttpMcpClient $client,
+        private readonly string $name,
+        private readonly string $toolDescription,
+        private readonly array $inputSchema,
+    ) {}
+
+    public function name(): string        { return $this->name; }
+    public function description(): string { return $this->toolDescription; }
+
+    public function handle(Request $request): string
+    {
+        return $this->client->callTool($this->name, $request->all());
+    }
+
+    public function schema(JsonSchema $schema): array
+    {
+        if (empty($this->inputSchema)) return [];
+        try {
+            $type = \Illuminate\JsonSchema\JsonSchema::fromArray(
+                \Laravel\Ai\Schema\SchemaNormalizer::normalize($this->inputSchema)
+            );
+        } catch (\Throwable) {
+            return [];
+        }
+        return $type instanceof \Illuminate\JsonSchema\Types\ObjectType
+            ? (fn(): array => $this->properties)->call($type)
+            : [];
+    }
+}
+```
+
+```php
+// Task that discovers and uses all tools from a remote MCP server
+class CrmTask extends AiTask
+{
+    private ?HttpMcpClient $mcpClient = null;
+
+    public function __construct(private readonly string $question) {}
+
+    public function tools(): array
+    {
+        $client = $this->client();
+        return collect($client->listTools())
+            ->map(fn(array $t) => new HttpMcpTool(
+                client:          $client,
+                name:            $t['name'],
+                toolDescription: $t['description'] ?? $t['name'],
+                inputSchema:     $t['inputSchema'] ?? [],
+            ))
+            ->all();
+    }
+
+    public function toPayload(): AiPayload
+    {
+        $me = $this->client()->readResource('crm://me');
+        return new AiPayload(
+            modality: 'text',
+            messages: [new UserMessage($this->question)],
+            systemPrompt: "Current user: {$me}\nUse provided tools to answer.",
+        );
+    }
+
+    private function client(): HttpMcpClient
+    {
+        return $this->mcpClient ??= new HttpMcpClient(
+            url:   config('services.crm_mcp.url'),
+            token: config('services.crm_mcp.token'),
+        );
+    }
+
+    public function modality(): string      { return 'text'; }
+    public function serializeForQueue(): array { return [$this->question]; }
+}
+```
+
+```php
+AI::send(new CrmTask('Show workload for all users'));
+AI::queue(new CrmTask('Create a task "Fix login bug" in project CRM, priority 3'));
+```
+
+## Job Timeout
+
+Override `jobTimeout()` on any task to control how long the queue job is allowed to run before Horizon kills it:
+
+```php
+class HeavyAnalysisTask extends AiTask
+{
+    // default is 300 seconds; raise for long multi-step tool chains
+    public function jobTimeout(): int { return 600; }
+}
+```
+
+The value is passed to `ProcessAiPayload` at dispatch time. Make sure the Horizon supervisor `timeout` is at least as large as your highest `jobTimeout()`.
+
 ## Driver Routing
 
 Tasks are routed to drivers via `config/ai-tasks.php`:
@@ -247,7 +453,7 @@ AI::send((new SummarizeTask($text))->viaDrivers('gemini'));
 The `TenantResolver` picks up tenant ID from `X-Tenant-Id` header, authenticated user, or config default. Override it by binding your own resolver in a service provider:
 
 ```php
-$this->app->singleton(\Fomvasss\AiTasks\Support\TenantResolver::class, fn() => new MyTenantResolver());
+$this->app->scoped(\Fomvasss\AiTasks\Support\TenantResolver::class, fn() => new MyTenantResolver());
 ```
 
 ## Cost Tracking
@@ -280,10 +486,10 @@ AiRun::where('tenant_id', $tenantId)
 
 ```php
 return new AiPayload(
-    modality:     'text',
-    messages:     [new UserMessage($prompt)],
+    modality: 'text',
+    messages: [new UserMessage($prompt)],
     systemPrompt: $longSystemPrompt,
-    options:      ['cache' => true], // caches systemPrompt on Anthropic
+    options: ['cache' => true], // caches systemPrompt on Anthropic
 );
 ```
 
@@ -338,6 +544,40 @@ class AnalyzeProductTask extends AiTask
 ```
 
 Useful when a queued task may become irrelevant by the time a worker picks it up (e.g. record deleted, status changed, result already computed).
+
+### Idempotency
+
+Every run is protected against duplicates via a unique `idempotency_key` stored in `ai_runs`. The default key is a hash of `[tenantId, taskName, modality, serializeForQueue()]` — so tasks with different input parameters produce different keys automatically.
+
+Override `idempotencyKey()` when you need custom deduplication logic:
+
+```php
+class ChatTask extends AiTask
+{
+    public function __construct(
+        private readonly string $question,
+        private readonly string $messageId, // unique per message from the chat system
+        private readonly array  $history = [],
+    ) {}
+
+    public function serializeForQueue(): array
+    {
+        return [$this->question, $this->messageId, $this->history];
+    }
+    // idempotencyKey() default is sufficient — messageId makes each turn unique
+}
+```
+
+For chat/assistant integrations where the same question can be asked multiple times: as long as the conversation history (or a `messageId`) is part of `serializeForQueue()`, each turn produces a different key and idempotency works correctly — it only blocks genuine technical duplicates (double-send, queue retry).
+
+## Laravel Octane
+
+No configuration needed. The package handles Octane automatically:
+
+- `TenantResolver` is bound as `scoped` — new instance per request/job
+- `AiManager` driver cache is flushed on every `RequestReceived` and `TaskReceived` Octane event
+
+If you provide a custom `TenantResolver` that holds per-request state, the `scoped` binding ensures it is reset correctly between requests.
 
 ## Testing
 
@@ -612,7 +852,7 @@ The following providers are pre-configured in `config/ai-tasks.php` (just add th
 
 `laravel/ai` reads API keys from `config/ai.php` (published via `vendor:publish --provider="Laravel\Ai\AiServiceProvider"`). The `api_key` is **not** stored in `config/ai-tasks.php` — that file only contains model names, pricing, and routing config.
 
-To check what `.env` variables each provider needs, see:
+To check what `.env` key each provider expects, see:
 
 ```
 vendor/laravel/ai/config/ai.php

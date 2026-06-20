@@ -17,6 +17,8 @@ abstract class AiTask
 
     protected ?string $customName = null;
 
+    private ?AiContext $cachedContext = null;
+
     abstract public function modality(): string;
 
     abstract public function toPayload(): AiPayload;
@@ -42,13 +44,23 @@ abstract class AiTask
 
     public function context(): AiContext
     {
-        return new AiContext(
-            tenantId:    app(TenantResolver::class)->id(),
-            taskName:    $this->name(),
+        return $this->cachedContext ??= new AiContext(
+            tenantId: app(TenantResolver::class)->id(),
+            taskName: $this->name(),
             subjectType: null,
-            subjectId:   null,
-            meta:        $this->defaultMeta(),
+            subjectId: null,
+            meta: $this->defaultMeta(),
         );
+    }
+
+    public function tools(): array
+    {
+        return [];
+    }
+
+    public function jobTimeout(): int
+    {
+        return 300;
     }
 
     public function shouldRun(): bool
@@ -63,7 +75,12 @@ abstract class AiTask
 
     public function idempotencyKey(): string
     {
-        return hash('xxh3', json_encode([$this->name(), $this->modality(), $this->context()->meta]));
+        return hash('xxh3', json_encode([
+            $this->context()->tenantId,
+            $this->name(),
+            $this->modality(),
+            $this->serializeForQueue(),
+        ]));
     }
 
     public function serializeForQueue(): array

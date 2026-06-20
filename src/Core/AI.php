@@ -6,6 +6,7 @@ namespace Fomvasss\AiTasks\Core;
 
 use Fomvasss\AiTasks\Contracts\ShouldQueueAi;
 use Fomvasss\AiTasks\DTO\AiContext;
+use Fomvasss\AiTasks\DTO\AiPayload;
 use Fomvasss\AiTasks\DTO\AiResponse;
 use Fomvasss\AiTasks\Events\AiTaskCompleted;
 use Fomvasss\AiTasks\Events\AiTaskFailed;
@@ -28,7 +29,7 @@ class AI
 
     public function send(AiTask $task, array|string $drivers = []): AiResponse
     {
-        $payload = $task->toPayload();
+        $payload = $this->payloadWithTools($task);
         $ctx     = $task->context();
 
         app(Budget::class)->ensureNotExceeded($ctx->tenantId);
@@ -76,7 +77,7 @@ class AI
 
     public function queue(AiTask $task, array|string $drivers = [], \DateTimeInterface|\DateInterval|int|null $delay = null): string
     {
-        $payload = $task->toPayload();
+        $payload = $this->payloadWithTools($task);
         $ctx     = $task->context();
 
         $driverName = $this->resolveFirstConfiguredDriver($task, $drivers);
@@ -84,12 +85,13 @@ class AI
         $run = AiRun::startAsQueue($driverName, $payload, $ctx, $task);
 
         $job = new ProcessAiPayload(
-            driverName:   $driverName,
-            payload:      $payload,
-            context:      $ctx,
-            runId:        $run->id,
-            taskClass:    $task::class,
+            driverName: $driverName,
+            payload: $payload,
+            context: $ctx,
+            runId: $run->id,
+            taskClass: $task::class,
             taskCtorArgs: $task->serializeForQueue(),
+            timeout: $task->jobTimeout(),
         );
 
         if ($task instanceof ShouldQueueAi) {
@@ -114,7 +116,7 @@ class AI
 
     public function stream(AiTask $task, callable $onChunk, array|string $drivers = []): AiResponse
     {
-        $payload = $task->toPayload();
+        $payload = $this->payloadWithTools($task);
         $ctx     = $task->context();
 
         app(Budget::class)->ensureNotExceeded($ctx->tenantId);
@@ -182,6 +184,25 @@ class AI
             ?? config("ai.providers.{$driverName}.access_key_id"); // bedrock
 
         return $key && trim((string) $key) !== '';
+    }
+
+    private function payloadWithTools(AiTask $task): AiPayload
+    {
+        $payload = $task->toPayload();
+        $tools   = $task->tools();
+
+        if (empty($tools)) {
+            return $payload;
+        }
+
+        return new AiPayload(
+            modality: $payload->modality,
+            messages: $payload->messages,
+            systemPrompt: $payload->systemPrompt,
+            options: $payload->options,
+            meta: $payload->meta,
+            tools: $tools,
+        );
     }
 
     private function runPostprocess(AiResponse $resp): AiResponse

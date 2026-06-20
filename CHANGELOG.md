@@ -4,6 +4,35 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [3.3.0] — 2026-06-20
+
+### Added
+- `AiTask::tools(): array` — declare `Laravel\Ai\Contracts\Tool[]` on a task; tools are merged into `AiPayload` and forwarded to the `AnonymousAgent` before every `send()`, `stream()`, and `queue()` call
+- `AiPayload::$tools` — new constructor field (default `[]`) that carries tool instances through the pipeline
+- `AiTask::jobTimeout(): int` — per-task queue job timeout in seconds (default `300`); overrides the hardcoded value that was previously fixed at 120 s; `AI::queue()` reads it and passes it to `ProcessAiPayload`
+- MCP over Streamable HTTP — tools from any remote MCP server (JSON-RPC 2.0, Bearer auth) can be used without installing `laravel/mcp`; see the **MCP Tools** section in the README
+
+### Changed
+- `ProcessAiPayload::$timeout` default raised from `120` to `300` seconds
+- `ProcessAiPayload::__construct()` accepts an explicit `int $timeout` argument (set automatically by `AI::queue()` from `$task->jobTimeout()`)
+- `LaravelAiDriver::sendText()` and `streamText()` now pass `$p->tools` to `AnonymousAgent` instead of `[]`
+- Dashboard pagination switched from `paginate` (full count query) to `simplePaginate` (Prev/Next only, no `COUNT(*)`)
+- `config('ai-tasks.dashboard.per_page')` — configurable rows per page (`AI_DASHBOARD_PER_PAGE`, default `50`)
+- Dashboard now uses `pagination::simple-tailwind` view (compatible with `simplePaginate`)
+
+### Fixed
+- `AiTask::idempotencyKey()` default now hashes `[tenantId, name, modality, serializeForQueue()]` instead of `[name, modality, meta]` — previously tasks with input parameters produced the same key on every call, causing `UniqueConstraintViolationException` on repeat runs
+- `AiTask::context()` result cached on the instance (`$cachedContext`) — `TenantResolver` is called once per task instance instead of on every method that reads the context
+
+### Tests
+- Added `ToolsTest` (8 cases): `AiTask::tools()` default, override, `AiPayload::tools` storage, tools forwarded to driver on `send()` / `stream()`, empty-tools path, multiple tools
+
+### Octane
+- `TenantResolver` binding changed from `singleton` to `scoped` — new instance per request/job, safe for stateful custom resolver implementations
+- `AiManager` driver cache is flushed on `RequestReceived` and `TaskReceived` Octane events — prevents stale driver instances accumulating across requests
+
+---
+
 ## [3.2.0] — 2026-06-19
 
 ### Added

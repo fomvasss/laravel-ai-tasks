@@ -37,7 +37,8 @@ return [
         'poll_interval' => env('AI_DASHBOARD_POLL', 3),
         // Default theme: 'light' | 'dark' | 'system' (follows OS preference).
         // User's manual toggle is always saved to localStorage and takes priority.
-        'theme' => env('AI_DASHBOARD_THEME', 'system'),
+        'theme'    => env('AI_DASHBOARD_THEME', 'system'),
+        'per_page' => env('AI_DASHBOARD_PER_PAGE', 50),
     ],
 
     /*

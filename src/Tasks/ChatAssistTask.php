@@ -37,18 +37,18 @@ class ChatAssistTask extends AiTask
         }, $this->history);
 
         return new AiPayload(
-            modality:     $this->modality(),
-            messages:     $messages,
+            modality: $this->modality(),
+            messages: $messages,
             systemPrompt: "You are a support assistant. Answer briefly in locale: {$this->locale}.",
-            options:      ['temperature' => 0.2, 'tools' => $this->tools],
+            options: ['temperature' => 0.2, 'tools' => $this->tools],
         );
     }
 
     public function context(): AiContext
     {
         return new AiContext(
-            tenantId:    app(\Fomvasss\AiTasks\Support\TenantResolver::class)->id(),
-            taskName:    $this->name(),
+            tenantId: app(\Fomvasss\AiTasks\Support\TenantResolver::class)->id(),
+            taskName: $this->name(),
             subjectType: 'conversation',
         );
     }

@@ -23,14 +23,18 @@ class AiServiceProvider extends ServiceProvider
 
         $this->app->singleton(AiManager::class, fn($app) => new AiManager($app));
         $this->app->singleton(Router::class, fn() => new Router());
-        $this->app->singleton(TenantResolver::class, fn() => new TenantResolver());
         $this->app->singleton(Budget::class, fn() => new Budget());
         $this->app->singleton(WebhookRegistry::class, fn() => new WebhookRegistry());
+
+        // scoped: new instance per request/job — safe for Octane and custom stateful resolvers
+        $this->app->scoped(TenantResolver::class, fn() => new TenantResolver());
 
         $this->app->singleton(AI::class, fn($app) => new AI(
             $app->make(AiManager::class),
             $app->make(Router::class),
         ));
+
+        $this->registerOctaneListeners();
 
         $this->registerWebhookHandlers();
     }
@@ -82,6 +86,21 @@ class AiServiceProvider extends ServiceProvider
         }
     }
 
+    private function registerOctaneListeners(): void
+    {
+        if (! class_exists(\Laravel\Octane\Events\RequestReceived::class)) {
+            return;
+        }
+
+        $this->app['events']->listen(\Laravel\Octane\Events\RequestReceived::class, function () {
+            $this->app->make(AiManager::class)->forgetDrivers();
+        });
+
+        $this->app['events']->listen(\Laravel\Octane\Events\TaskReceived::class, function () {
+            $this->app->make(AiManager::class)->forgetDrivers();
+        });
+    }
+
     private function registerWebhookHandlers(): void
     {
         $this->app->afterResolving(WebhookRegistry::class, function (WebhookRegistry $registry) {
@@ -100,10 +119,10 @@ class AiServiceProvider extends ServiceProvider
 
                     return new \Fomvasss\AiTasks\DTO\WebhookPayload(
                         providerRunId: (string) (data_get($event, 'data.id') ?? data_get($event, 'id')),
-                        status:        data_get($event, 'data.status', 'succeeded'),
-                        content:       data_get($event, 'data.output'),
-                        usage:         (array) data_get($event, 'data.usage', []),
-                        error:         data_get($event, 'data.error.message'),
+                        status: data_get($event, 'data.status', 'succeeded'),
+                        content: data_get($event, 'data.output'),
+                        usage: (array) data_get($event, 'data.usage', []),
+                        error: data_get($event, 'data.error.message'),
                     );
                 });
             }
