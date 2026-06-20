@@ -68,6 +68,7 @@ class HttpMcpClient
     public function __construct(
         private readonly string $url,
         private readonly string $token = '',
+        private readonly array $headers = [],
     ) {}
 
     public function listTools(): array
@@ -101,7 +102,10 @@ class HttpMcpClient
 
     private function rpc(string $method, array $params = []): array
     {
-        $http = Http::withHeaders(['Accept' => 'application/json, text/event-stream']);
+        $http = Http::withHeaders(array_merge(
+            ['Accept' => 'application/json, text/event-stream'],
+            $this->headers,
+        ));
         if ($this->token !== '') {
             $http = $http->withToken($this->token);
         }
@@ -136,6 +140,25 @@ class HttpMcpClient
         return $data['result'] ?? [];
     }
 }
+```
+
+Usage examples with different auth schemes:
+
+```php
+// Bearer token (Apify, most hosted servers)
+new HttpMcpClient(url: '...', token: env('APIFY_TOKEN'));
+
+// Custom header key (Firecrawl, xquik, mcp-proxy)
+new HttpMcpClient(url: '...', headers: ['x-api-key' => env('FIRECRAWL_API_KEY')]);
+
+// Multiple headers
+new HttpMcpClient(url: '...', headers: [
+    'x-api-key'    => env('SERVICE_API_KEY'),
+    'x-account-id' => env('SERVICE_ACCOUNT_ID'),
+]);
+
+// No auth (context7)
+new HttpMcpClient(url: 'http://localhost:8808/mcp');
 ```
 
 ### HttpMcpTool
