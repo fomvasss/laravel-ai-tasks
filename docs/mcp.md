@@ -1,6 +1,6 @@
 # Tools & MCP
 
-[← Back to README](../README.md) · [Українська](mcp.uk.md)
+[← Back to README](../README.md)
 
 ## Local Tools
 

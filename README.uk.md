@@ -371,7 +371,7 @@ class ChatTask extends AiTask
 
 Підтримуються локальні анонімні інструменти, віддалені MCP-сервери через Streamable HTTP, а також stdio-пакети (npx) через supergateway-проксі (наприклад `@upstash/context7-mcp`).
 
-**→ [Повна документація: docs/mcp.uk.md](docs/mcp.uk.md)**
+**→ [Повна документація: docs/mcp.md](docs/mcp.md)**
 
 ## Таймаут завдань черги
 
