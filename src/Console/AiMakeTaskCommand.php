@@ -88,10 +88,10 @@ class {$class} extends AiTask{$implements}
     public function toPayload(): AiPayload
     {
         return new AiPayload(
-            modality:     \$this->modality(),
-            messages:     [new UserMessage('Your prompt here')],
+            modality: \$this->modality(),
+            messages: [new UserMessage('Your prompt here')],
             systemPrompt: null,
-            options:      ['temperature' => 0.3],
+            options: ['temperature' => 0.3],
         );
     }
 

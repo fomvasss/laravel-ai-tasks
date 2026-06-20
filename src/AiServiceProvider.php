@@ -100,10 +100,10 @@ class AiServiceProvider extends ServiceProvider
 
                     return new \Fomvasss\AiTasks\DTO\WebhookPayload(
                         providerRunId: (string) (data_get($event, 'data.id') ?? data_get($event, 'id')),
-                        status:        data_get($event, 'data.status', 'succeeded'),
-                        content:       data_get($event, 'data.output'),
-                        usage:         (array) data_get($event, 'data.usage', []),
-                        error:         data_get($event, 'data.error.message'),
+                        status: data_get($event, 'data.status', 'succeeded'),
+                        content: data_get($event, 'data.output'),
+                        usage: (array) data_get($event, 'data.usage', []),
+                        error: data_get($event, 'data.error.message'),
                     );
                 });
             }

@@ -43,11 +43,11 @@ abstract class AiTask
     public function context(): AiContext
     {
         return new AiContext(
-            tenantId:    app(TenantResolver::class)->id(),
-            taskName:    $this->name(),
+            tenantId: app(TenantResolver::class)->id(),
+            taskName: $this->name(),
             subjectType: null,
-            subjectId:   null,
-            meta:        $this->defaultMeta(),
+            subjectId: null,
+            meta: $this->defaultMeta(),
         );
     }
 

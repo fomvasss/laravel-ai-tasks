@@ -67,7 +67,7 @@ class AiRequestCommand extends Command
                 return new AiPayload(
                     modality: $this->modality(),
                     messages: [new UserMessage($this->prompt)],
-                    options:  ['temperature' => $this->temperature],
+                    options: ['temperature' => $this->temperature],
                 );
             }
         };
