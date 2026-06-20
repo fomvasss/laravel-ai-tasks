@@ -547,6 +547,40 @@ class AnalyzeProductTask extends AiTask
 
 Useful when a queued task may become irrelevant by the time a worker picks it up (e.g. record deleted, status changed, result already computed).
 
+### Idempotency
+
+Every run is protected against duplicates via a unique `idempotency_key` stored in `ai_runs`. The default key is a hash of `[tenantId, taskName, modality, serializeForQueue()]` — so tasks with different input parameters produce different keys automatically.
+
+Override `idempotencyKey()` when you need custom deduplication logic:
+
+```php
+class ChatTask extends AiTask
+{
+    public function __construct(
+        private readonly string $question,
+        private readonly string $messageId, // unique per message from the chat system
+        private readonly array  $history = [],
+    ) {}
+
+    public function serializeForQueue(): array
+    {
+        return [$this->question, $this->messageId, $this->history];
+    }
+    // idempotencyKey() default is sufficient — messageId makes each turn unique
+}
+```
+
+For chat/assistant integrations where the same question can be asked multiple times: as long as the conversation history (or a `messageId`) is part of `serializeForQueue()`, each turn produces a different key and idempotency works correctly — it only blocks genuine technical duplicates (double-send, queue retry).
+
+## Laravel Octane
+
+No configuration needed. The package handles Octane automatically:
+
+- `TenantResolver` is bound as `scoped` — new instance per request/job
+- `AiManager` driver cache is flushed on every `RequestReceived` and `TaskReceived` Octane event
+
+If you provide a custom `TenantResolver` that holds per-request state, the `scoped` binding ensures it is reset correctly between requests.
+
 ## Testing
 
 Use `AI::fake()` in tests to avoid real API calls. The fake records all calls and provides assertion helpers.

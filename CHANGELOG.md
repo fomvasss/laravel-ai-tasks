@@ -20,8 +20,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `config('ai-tasks.dashboard.per_page')` — configurable rows per page (`AI_DASHBOARD_PER_PAGE`, default `50`)
 - Dashboard now uses `pagination::simple-tailwind` view (compatible with `simplePaginate`)
 
+### Fixed
+- `AiTask::idempotencyKey()` default now hashes `[tenantId, name, modality, serializeForQueue()]` instead of `[name, modality, meta]` — previously tasks with input parameters produced the same key on every call, causing `UniqueConstraintViolationException` on repeat runs
+- `AiTask::context()` result cached on the instance (`$cachedContext`) — `TenantResolver` is called once per task instance instead of on every method that reads the context
+
 ### Tests
 - Added `ToolsTest` (8 cases): `AiTask::tools()` default, override, `AiPayload::tools` storage, tools forwarded to driver on `send()` / `stream()`, empty-tools path, multiple tools
+
+### Octane
+- `TenantResolver` binding changed from `singleton` to `scoped` — new instance per request/job, safe for stateful custom resolver implementations
+- `AiManager` driver cache is flushed on `RequestReceived` and `TaskReceived` Octane events — prevents stale driver instances accumulating across requests
 
 ---
 
