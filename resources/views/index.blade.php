@@ -152,7 +152,7 @@
 </div>
 
 <div class="mt-4">
-    {{ $runs->links('pagination::tailwind') }}
+    {{ $runs->links('pagination::simple-tailwind') }}
 </div>
 
 <script>

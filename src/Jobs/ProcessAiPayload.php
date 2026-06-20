@@ -26,7 +26,7 @@ class ProcessAiPayload implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int   $timeout = 120;
+    public int   $timeout = 300;
     public int   $tries   = 3;
     public array $backoff = [10, 30, 120];
 
@@ -37,7 +37,10 @@ class ProcessAiPayload implements ShouldQueue
         public readonly string    $runId,
         public readonly string    $taskClass,
         public readonly array     $taskCtorArgs = [],
-    ) {}
+        int                       $timeout = 300,
+    ) {
+        $this->timeout = $timeout;
+    }
 
     public function middleware(): array
     {

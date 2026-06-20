@@ -55,7 +55,7 @@ final class LaravelAiDriver implements AiDriver
         $model = $p->options['model'] ?? $this->cfg['model'];
         [$history, $prompt] = $this->splitMessages($p->messages);
 
-        $response = (new AnonymousAgent($p->systemPrompt ?? '', $history, []))
+        $response = (new AnonymousAgent($p->systemPrompt ?? '', $history, $p->tools))
             ->prompt(
                 prompt: $prompt,
                 attachments: $p->options['attachments'] ?? [],
@@ -75,7 +75,7 @@ final class LaravelAiDriver implements AiDriver
         $model = $p->options['model'] ?? $this->cfg['model'];
         [$history, $prompt] = $this->splitMessages($p->messages);
 
-        $streamable = (new AnonymousAgent($p->systemPrompt ?? '', $history, []))
+        $streamable = (new AnonymousAgent($p->systemPrompt ?? '', $history, $p->tools))
             ->stream(
                 prompt: $prompt,
                 attachments: $p->options['attachments'] ?? [],

@@ -12,5 +12,6 @@ final class AiPayload
         public readonly ?string $systemPrompt = null,
         public readonly array   $options = [],
         public readonly array   $meta = [],
+        public readonly array   $tools = [],
     ) {}
 }

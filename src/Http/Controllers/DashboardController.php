@@ -15,7 +15,7 @@ class DashboardController extends Controller
 {
     public function index(Request $request): View
     {
-        $runs = $this->buildQuery($request)->paginate(50)->withQueryString();
+        $runs = $this->buildQuery($request)->simplePaginate((int) config('ai-tasks.dashboard.per_page', 50))->withQueryString();
 
         $drivers = AiRun::distinct()->orderBy('driver')->pluck('driver');
         $tenants = AiRun::distinct()->orderBy('tenant_id')->pluck('tenant_id');
@@ -27,7 +27,7 @@ class DashboardController extends Controller
 
     public function data(Request $request): JsonResponse
     {
-        $runs = $this->buildQuery($request)->paginate(50)->withQueryString();
+        $runs = $this->buildQuery($request)->simplePaginate((int) config('ai-tasks.dashboard.per_page', 50))->withQueryString();
 
         return response()->json([
             'stats' => $this->stats(),

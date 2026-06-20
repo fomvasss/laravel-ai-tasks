@@ -51,6 +51,16 @@ abstract class AiTask
         );
     }
 
+    public function tools(): array
+    {
+        return [];
+    }
+
+    public function jobTimeout(): int
+    {
+        return 300;
+    }
+
     public function shouldRun(): bool
     {
         return true;
