@@ -370,6 +370,10 @@ class ChatTask extends AiTask
 Перевизнач `tools()` у будь-якому таску, щоб передати `Laravel\Ai\Contracts\Tool[]` в `AnonymousAgent`. Інструменти автоматично передаються при `send()`, `stream()` і `queue()`.
 
 ```php
+use Illuminate\Contracts\JsonSchema\JsonSchema;
+use Laravel\Ai\Contracts\Tool;
+use Laravel\Ai\Tools\Request;
+
 class ResearchTask extends AiTask
 {
     public function tools(): array
@@ -381,7 +385,9 @@ class ResearchTask extends AiTask
 
                 public function handle(Request $request): string
                 {
-                    return json_encode(['results' => ['Result for: ' . ($request['query'] ?? '')]]);
+                    $query = $request['query'] ?? '';
+                    // call your search API here
+                    return json_encode(['results' => ["Result for: {$query}"]]);
                 }
 
                 public function schema(JsonSchema $schema): array
@@ -391,25 +397,127 @@ class ResearchTask extends AiTask
             },
         ];
     }
+
+    public function modality(): string { return 'text'; }
+
+    public function toPayload(): AiPayload
+    {
+        return new AiPayload(
+            modality: 'text',
+            messages: [new UserMessage('What happened in tech this week?')],
+        );
+    }
 }
 ```
 
 **Важливо:** анонімний клас, що реалізує `Tool`, повинен мати метод `name()` — без нього `ToolNameResolver` генерує невалідну назву для OpenAI API.
 
+Агент сам вирішує коли і як викликати інструменти. Кожен виклик виконується локально і результат повертається моделі для наступного кроку.
+
 ## MCP-інструменти
 
-Підключення до зовнішнього MCP-сервера (Streamable HTTP, JSON-RPC 2.0) без встановлення `laravel/mcp`:
+Підключення до будь-якого MCP-сервера (Streamable HTTP, JSON-RPC 2.0) без встановлення `laravel/mcp`. Реалізуйте тонкий HTTP-клієнт і загорніть кожен знайдений інструмент:
 
 ```php
+// app/Ai/Mcp/HttpMcpClient.php
+class HttpMcpClient
+{
+    public function __construct(
+        private readonly string $url,
+        private readonly string $token,
+    ) {}
+
+    public function listTools(): array
+    {
+        return $this->rpc('tools/list')['tools'] ?? [];
+    }
+
+    public function readResource(string $uri): string
+    {
+        $result = $this->rpc('resources/read', ['uri' => $uri]);
+        return collect($result['contents'] ?? [])
+            ->map(fn($c) => $c['text'] ?? '')
+            ->filter()
+            ->implode("\n");
+    }
+
+    public function callTool(string $name, array $arguments = []): string
+    {
+        $result  = $this->rpc('tools/call', ['name' => $name, 'arguments' => $arguments]);
+        $content = $result['content'] ?? [];
+        $isError = $result['isError'] ?? false;
+        $text = collect($content)
+            ->filter(fn($c) => ($c['type'] ?? '') === 'text')
+            ->map(fn($c) => $c['text'] ?? '')
+            ->implode("\n");
+        if ($isError) {
+            throw new \RuntimeException("MCP tool error [{$name}]: {$text}");
+        }
+        return $text ?: json_encode($result);
+    }
+
+    private function rpc(string $method, array $params = []): array
+    {
+        static $id = 0;
+        $response = Http::withToken($this->token)
+            ->withHeaders(['Accept' => 'application/json, text/event-stream'])
+            ->post($this->url, ['jsonrpc' => '2.0', 'id' => ++$id, 'method' => $method, 'params' => $params]);
+        $data = $response->json();
+        if (isset($data['error'])) {
+            throw new \RuntimeException("MCP error [{$method}]: " . ($data['error']['message'] ?? ''));
+        }
+        return $data['result'] ?? [];
+    }
+}
+```
+
+```php
+// app/Ai/Mcp/HttpMcpTool.php
+class HttpMcpTool implements Tool
+{
+    public function __construct(
+        private readonly HttpMcpClient $client,
+        private readonly string $name,
+        private readonly string $toolDescription,
+        private readonly array $inputSchema,
+    ) {}
+
+    public function name(): string        { return $this->name; }
+    public function description(): string { return $this->toolDescription; }
+
+    public function handle(Request $request): string
+    {
+        return $this->client->callTool($this->name, $request->all());
+    }
+
+    public function schema(JsonSchema $schema): array
+    {
+        if (empty($this->inputSchema)) return [];
+        try {
+            $type = \Illuminate\JsonSchema\JsonSchema::fromArray(
+                \Laravel\Ai\Schema\SchemaNormalizer::normalize($this->inputSchema)
+            );
+        } catch (\Throwable) {
+            return [];
+        }
+        return $type instanceof \Illuminate\JsonSchema\Types\ObjectType
+            ? (fn(): array => $this->properties)->call($type)
+            : [];
+    }
+}
+```
+
+```php
+// Таск, що підключає всі інструменти з MCP-сервера
 class CrmTask extends AiTask
 {
+    private ?HttpMcpClient $mcpClient = null;
+
+    public function __construct(private readonly string $question) {}
+
     public function tools(): array
     {
-        $client = new HttpMcpClient(
-            url: config('services.crm_mcp.url'),
-            token: config('services.crm_mcp.token'),
-        );
-
+        $client = $this->client();
         return collect($client->listTools())
             ->map(fn(array $t) => new HttpMcpTool(
                 client: $client,
@@ -419,10 +527,34 @@ class CrmTask extends AiTask
             ))
             ->all();
     }
+
+    public function toPayload(): AiPayload
+    {
+        $me = $this->client()->readResource('crm://me');
+        return new AiPayload(
+            modality: 'text',
+            messages: [new UserMessage($this->question)],
+            systemPrompt: "Поточний користувач: {$me}\nВикористовуй надані інструменти для відповіді.",
+        );
+    }
+
+    private function client(): HttpMcpClient
+    {
+        return $this->mcpClient ??= new HttpMcpClient(
+            url: config('services.crm_mcp.url'),
+            token: config('services.crm_mcp.token'),
+        );
+    }
+
+    public function modality(): string        { return 'text'; }
+    public function serializeForQueue(): array { return [$this->question]; }
 }
 ```
 
-Повний приклад реалізації `HttpMcpClient` і `HttpMcpTool` — у розділі **MCP Tools** англомовного README.
+```php
+AI::send(new CrmTask('Показати завантаженість всіх користувачів'));
+AI::queue(new CrmTask('Створи задачу "Виправити баг входу" в проекті CRM, пріоритет 3'));
+```
 
 ## Таймаут завдань черги
 
@@ -696,6 +828,8 @@ php artisan ai:models anthropic --detail
 
 Будь-який провайдер підтримуваний [laravel/ai](https://laravel.com/docs/ai-sdk) працює автоматично — достатньо додати секцію до `config/ai.php` (ключ) і `config/ai-tasks.php` (модель, ціна). Зміни в коді не потрібні.
 
+Наступні провайдери вже прописані в `config/ai-tasks.php` (достатньо додати `.env` ключ):
+
 | Провайдер | Ключ драйвера | В конфігу |
 |---|---|---|
 | OpenAI | `openai` | ✅ |
@@ -706,14 +840,22 @@ php artisan ai:models anthropic --detail
 | Mistral | `mistral` | ✅ |
 | xAI (Grok) | `xai` | ✅ |
 | Ollama (локально) | `ollama` | ✅ |
-| ElevenLabs | `eleven` | ✅ (audio/tts) |
+| VoyageAI | `voyageai` | додати вручну |
 | AWS Bedrock | `bedrock` | додати вручну |
 | OpenRouter | `openrouter` | додати вручну |
+| Perplexity | `perplexity` | додати вручну |
+| ElevenLabs | `eleven` | ✅ (audio/tts) |
 | будь-який laravel/ai провайдер | — | додати вручну |
 
 ### Як працюють credentials
 
-`laravel/ai` читає API-ключі з `config/ai.php` (публікується через `vendor:publish --provider="Laravel\Ai\AiServiceProvider"`). У `config/ai-tasks.php` зберігаються лише назви моделей і ціни — без `api_key`.
+`laravel/ai` читає API-ключі з `config/ai.php` (публікується через `vendor:publish --provider="Laravel\Ai\AiServiceProvider"`). `api_key` **не** зберігається в `config/ai-tasks.php` — там лише назви моделей, ціни і маршрутизація.
+
+Щоб дізнатися, які `.env` змінні потрібні кожному провайдеру, перегляньте:
+
+```
+vendor/laravel/ai/config/ai.php
+```
 
 **Додавання нового провайдера** (наприклад Mistral):
 

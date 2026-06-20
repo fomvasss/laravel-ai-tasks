@@ -146,10 +146,10 @@ class SummarizeTask extends AiTask
     public function toPayload(): AiPayload
     {
         return new AiPayload(
-            modality:     $this->modality(),
-            messages:     [new UserMessage("Summarize: {$this->text}")],
+            modality: $this->modality(),
+            messages: [new UserMessage("Summarize: {$this->text}")],
             systemPrompt: 'You are a concise summarizer. Reply in 3 sentences max.',
-            options:      ['temperature' => 0.3],
+            options: ['temperature' => 0.3],
         );
     }
 
@@ -233,23 +233,19 @@ class ResearchTask extends AiTask
     {
         return [
             new class implements Tool {
-                public function description(): string
-                {
-                    return 'Search the web for current information.';
-                }
+                public function name(): string        { return 'web_search'; }
+                public function description(): string { return 'Search the web for current information.'; }
 
                 public function handle(Request $request): string
                 {
-                    $query = $request->get('query', '');
+                    $query = $request['query'] ?? '';
                     // call your search API here
                     return json_encode(['results' => ["Result for: {$query}"]]);
                 }
 
                 public function schema(JsonSchema $schema): array
                 {
-                    return [
-                        'query' => $schema->string('The search query'),
-                    ];
+                    return ['query' => $schema->string('The search query')];
                 }
             },
         ];
@@ -266,6 +262,8 @@ class ResearchTask extends AiTask
     }
 }
 ```
+
+**Note:** anonymous classes implementing `Tool` must define `name()` — without it the tool name resolver falls back to `class_basename()`, which produces an invalid identifier for OpenAI.
 
 The agent decides when and how to invoke tools. Each tool call is executed locally and the result is returned to the model for the next step.
 
@@ -301,7 +299,7 @@ class HttpMcpClient
         $result  = $this->rpc('tools/call', ['name' => $name, 'arguments' => $arguments]);
         $content = $result['content'] ?? [];
         $isError = $result['isError'] ?? false;
-        $text    = collect($content)
+        $text = collect($content)
             ->filter(fn($c) => ($c['type'] ?? '') === 'text')
             ->map(fn($c) => $c['text'] ?? '')
             ->implode("\n");
@@ -332,9 +330,9 @@ class HttpMcpTool implements Tool
 {
     public function __construct(
         private readonly HttpMcpClient $client,
-        private readonly string        $name,
-        private readonly string        $toolDescription,
-        private readonly array         $inputSchema,
+        private readonly string $name,
+        private readonly string $toolDescription,
+        private readonly array $inputSchema,
     ) {}
 
     public function name(): string        { return $this->name; }
@@ -387,8 +385,8 @@ class CrmTask extends AiTask
     {
         $me = $this->client()->readResource('crm://me');
         return new AiPayload(
-            modality:     'text',
-            messages:     [new UserMessage($this->question)],
+            modality: 'text',
+            messages: [new UserMessage($this->question)],
             systemPrompt: "Current user: {$me}\nUse provided tools to answer.",
         );
     }
@@ -455,7 +453,7 @@ AI::send((new SummarizeTask($text))->viaDrivers('gemini'));
 The `TenantResolver` picks up tenant ID from `X-Tenant-Id` header, authenticated user, or config default. Override it by binding your own resolver in a service provider:
 
 ```php
-$this->app->singleton(\Fomvasss\AiTasks\Support\TenantResolver::class, fn() => new MyTenantResolver());
+$this->app->scoped(\Fomvasss\AiTasks\Support\TenantResolver::class, fn() => new MyTenantResolver());
 ```
 
 ## Cost Tracking
@@ -488,10 +486,10 @@ AiRun::where('tenant_id', $tenantId)
 
 ```php
 return new AiPayload(
-    modality:     'text',
-    messages:     [new UserMessage($prompt)],
+    modality: 'text',
+    messages: [new UserMessage($prompt)],
     systemPrompt: $longSystemPrompt,
-    options:      ['cache' => true], // caches systemPrompt on Anthropic
+    options: ['cache' => true], // caches systemPrompt on Anthropic
 );
 ```
 
@@ -854,7 +852,7 @@ The following providers are pre-configured in `config/ai-tasks.php` (just add th
 
 `laravel/ai` reads API keys from `config/ai.php` (published via `vendor:publish --provider="Laravel\Ai\AiServiceProvider"`). The `api_key` is **not** stored in `config/ai-tasks.php` — that file only contains model names, pricing, and routing config.
 
-To check what `.env` variables each provider needs, see:
+To check what `.env` key each provider expects, see:
 
 ```
 vendor/laravel/ai/config/ai.php
