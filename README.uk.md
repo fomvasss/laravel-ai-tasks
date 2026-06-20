@@ -28,9 +28,12 @@
 
 ```php
 'dashboard' => [
-    'enabled'    => env('AI_DASHBOARD_ENABLED', true),
-    'path'       => env('AI_DASHBOARD_PATH', 'ai-tasks'),
-    'middleware' => ['web'],
+    'enabled'       => env('AI_DASHBOARD_ENABLED', true),
+    'path'          => env('AI_DASHBOARD_PATH', 'ai-tasks'),
+    'middleware'    => ['web'],
+    'poll_interval' => env('AI_DASHBOARD_POLL', 3),        // секунди; 0 = вимкнути
+    'theme'         => env('AI_DASHBOARD_THEME', 'system'), // light|dark|system
+    'per_page'      => env('AI_DASHBOARD_PER_PAGE', 50),
 ],
 ```
 
@@ -97,7 +100,7 @@ AI_QUEUE_POST=ai-post
     'minProcesses' => 2,
     'maxProcesses' => 20,
     'tries'        => 3,
-    'timeout'      => 120,
+    'timeout'      => 300,
 ],
 'supervisor-ai-post' => [
     'connection'   => 'redis',
@@ -143,10 +146,10 @@ class SummarizeTask extends AiTask
     public function toPayload(): AiPayload
     {
         return new AiPayload(
-            modality:     $this->modality(),
-            messages:     [new UserMessage("Стисни текст: {$this->text}")],
+            modality: $this->modality(),
+            messages: [new UserMessage("Стисни текст: {$this->text}")],
             systemPrompt: 'Ти помічник-редактор. Відповідай максимум 3 реченнями.',
-            options:      ['temperature' => 0.3],
+            options: ['temperature' => 0.3],
         );
     }
 
@@ -245,7 +248,7 @@ AI::send((new SummarizeTask($text))->viaDrivers('gemini'));
 `TenantResolver` визначає `tenant_id` з заголовка `X-Tenant-Id`, авторизованого користувача або конфігу. Щоб замінити — збіндити власний клас:
 
 ```php
-$this->app->singleton(\Fomvasss\AiTasks\Support\TenantResolver::class, fn() => new MyTenantResolver());
+$this->app->scoped(\Fomvasss\AiTasks\Support\TenantResolver::class, fn() => new MyTenantResolver());
 ```
 
 ## Відстеження витрат
@@ -254,13 +257,12 @@ $this->app->singleton(\Fomvasss\AiTasks\Support\TenantResolver::class, fn() => n
 
 ```php
 'anthropic' => [
-    'api_key' => env('ANTHROPIC_API_KEY'),
-    'model'   => 'claude-sonnet-4-6',
-    'price'   => [
+    'model' => 'claude-sonnet-4-6',
+    'price' => [
         'in'          => 3.00,
         'out'         => 15.00,
-        'cache_write' => 3.75,  // запис у кеш промпту
-        'cache_read'  => 0.30,  // читання з кешу промпту
+        'cache_write' => 3.75,
+        'cache_read'  => 0.30,
     ],
 ],
 ```
@@ -337,6 +339,112 @@ class AnalyzeProductTask extends AiTask
 ```
 
 Корисно коли задача в черзі може втратити актуальність до того, як воркер її підхопить (запис видалено, статус змінився, результат вже є).
+
+### Ідемпотентність
+
+Кожен run захищений від дублів через унікальний `idempotency_key` в `ai_runs`. Дефолтний ключ — хеш від `[tenantId, taskName, modality, serializeForQueue()]`, тому задачі з різними вхідними параметрами автоматично отримують різні ключі.
+
+Перевизнач `idempotencyKey()` для власної логіки дедублікації:
+
+```php
+class ChatTask extends AiTask
+{
+    public function __construct(
+        private readonly string $question,
+        private readonly string $messageId, // унікальний ID повідомлення з чат-системи
+        private readonly array  $history = [],
+    ) {}
+
+    public function serializeForQueue(): array
+    {
+        return [$this->question, $this->messageId, $this->history];
+    }
+    // idempotencyKey() за замовчуванням — включає messageId, кожен turn унікальний
+}
+```
+
+Для чат/асистент-інтеграцій, де одне й те саме питання може задаватись кілька разів: поки в `serializeForQueue()` є `messageId` або повна історія чату — кожен turn дає унікальний ключ, і idempotency захищає тільки від технічних дублів (double-send, retry черги).
+
+## Інструменти (Tools)
+
+Перевизнач `tools()` у будь-якому таску, щоб передати `Laravel\Ai\Contracts\Tool[]` в `AnonymousAgent`. Інструменти автоматично передаються при `send()`, `stream()` і `queue()`.
+
+```php
+class ResearchTask extends AiTask
+{
+    public function tools(): array
+    {
+        return [
+            new class implements Tool {
+                public function name(): string        { return 'web_search'; }
+                public function description(): string { return 'Search the web for current information.'; }
+
+                public function handle(Request $request): string
+                {
+                    return json_encode(['results' => ['Result for: ' . ($request['query'] ?? '')]]);
+                }
+
+                public function schema(JsonSchema $schema): array
+                {
+                    return ['query' => $schema->string('The search query')];
+                }
+            },
+        ];
+    }
+}
+```
+
+**Важливо:** анонімний клас, що реалізує `Tool`, повинен мати метод `name()` — без нього `ToolNameResolver` генерує невалідну назву для OpenAI API.
+
+## MCP-інструменти
+
+Підключення до зовнішнього MCP-сервера (Streamable HTTP, JSON-RPC 2.0) без встановлення `laravel/mcp`:
+
+```php
+class CrmTask extends AiTask
+{
+    public function tools(): array
+    {
+        $client = new HttpMcpClient(
+            url: config('services.crm_mcp.url'),
+            token: config('services.crm_mcp.token'),
+        );
+
+        return collect($client->listTools())
+            ->map(fn(array $t) => new HttpMcpTool(
+                client: $client,
+                name: $t['name'],
+                toolDescription: $t['description'] ?? $t['name'],
+                inputSchema: $t['inputSchema'] ?? [],
+            ))
+            ->all();
+    }
+}
+```
+
+Повний приклад реалізації `HttpMcpClient` і `HttpMcpTool` — у розділі **MCP Tools** англомовного README.
+
+## Таймаут завдань черги
+
+Перевизнач `jobTimeout()` для контролю максимального часу виконання job-а в черзі:
+
+```php
+class HeavyTask extends AiTask
+{
+    public function jobTimeout(): int { return 600; } // секунди, дефолт 300
+}
+```
+
+Значення передається в `ProcessAiPayload` при диспетчеризації. Supervisor Horizon повинен мати `timeout` не менший за максимальний `jobTimeout()` у ваших задачах.
+
+## Laravel Octane
+
+Додаткова конфігурація не потрібна. Пакет підтримує Octane автоматично:
+
+- `TenantResolver` збіндений як `scoped` — новий інстанс на кожен запит/job
+- Кеш драйверів `AiManager` скидається при кожній події `RequestReceived` і `TaskReceived`
+
+Якщо ти надаєш власний `TenantResolver` зі станом — `scoped` гарантує коректне скидання між запитами.
 
 ## Тестування
 
