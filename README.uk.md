@@ -29,7 +29,7 @@
 ```php
 'dashboard' => [
     'enabled'       => env('AI_DASHBOARD_ENABLED', true),
-    'path'          => env('AI_DASHBOARD_PATH', 'ai-tasks'),
+    'path'          => env('AI_DASHBOARD_PATH', '/ai-tasks'),
     'middleware'    => ['web'],
     'poll_interval' => env('AI_DASHBOARD_POLL', 3),        // секунди; 0 = вимкнути
     'theme'         => env('AI_DASHBOARD_THEME', 'system'), // light|dark|system
@@ -310,6 +310,8 @@ class AnalyzeTask extends AiTask implements ShouldQueueAi
     }
 }
 ```
+
+> **Увага:** `serializeForQueue()` повинен повертати тільки скалярні значення (рядки, числа, масиви скалярів). Масив JSON-кодується і зберігається в Redis; на стороні воркера він передається назад у конструктор через `new static(...$args)`. Не передавай Eloquent-моделі — вони серіалізуються у звичайний масив, і конструктор отримає `array` замість екземпляра моделі. Передавай ID і завантажуй модель всередині `toPayload()`.
 
 ### Відкладений запуск (delay)
 
