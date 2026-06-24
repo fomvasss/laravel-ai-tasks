@@ -333,6 +333,8 @@ class AnalyzeTask extends AiTask implements ShouldQueueAi
 }
 ```
 
+> **Note:** `serializeForQueue()` must return only scalar values (strings, ints, arrays of scalars). The array is JSON-encoded and stored in Redis; on the worker side it is passed back into the constructor via `new static(...$args)`. Do not pass Eloquent models — they will be JSON-serialized into a plain array and the constructor will receive an `array` instead of a model instance. Pass IDs instead and load the model inside `toPayload()`.
+
 ### Delayed dispatch
 
 Pass a `delay` to `AI::queue()` to defer execution:
