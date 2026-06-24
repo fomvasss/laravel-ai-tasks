@@ -32,6 +32,9 @@
     "illuminate/http": "^12.0|^13.0",
     "laravel/ai": "^0.8"
   },
+  "suggest": {
+    "laravel/mcp": "Native MCP client support (recommended over HttpMcpClient for production use)"
+  },
   "require-dev": {
     "orchestra/testbench": "^10.0|^11.0",
     "phpunit/phpunit": "^11.0"

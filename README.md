@@ -220,9 +220,13 @@ $response->content; // full accumulated text
 
 ## Tools & MCP
 
-Override `tools()` on any task to pass `Laravel\Ai\Contracts\Tool[]` to the underlying `AnonymousAgent`. Tools are forwarded automatically on `send()`, `stream()`, and `queue()`.
+Override `tools()` on any task to pass tools to the underlying `AnonymousAgent`. Tools are forwarded automatically on `send()`, `stream()`, and `queue()`.
 
-Supports local anonymous tools, remote MCP servers over Streamable HTTP, and stdio-based npx packages via a supergateway proxy (e.g. `@upstash/context7-mcp`).
+Three approaches are supported:
+
+- **Local tools** — PHP classes implementing `Laravel\Ai\Contracts\Tool`
+- **Native MCP** (recommended) — install [`laravel/mcp`](https://github.com/laravel/mcp) and use `Client::web()` or `Client::local()` for HTTP and stdio servers; `laravel/ai` wraps the tool primitives automatically, no supergateway proxy needed
+- **HttpMcpClient** — zero-dependency fallback for Streamable HTTP servers when `laravel/mcp` is not installed
 
 **→ [Full documentation: docs/mcp.md](docs/mcp.md)**
 

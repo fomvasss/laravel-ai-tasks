@@ -53,9 +53,147 @@ The agent decides when and how to invoke tools. Each tool call is executed local
 
 ---
 
-## Remote MCP Tools (Streamable HTTP)
+## Native MCP via laravel/mcp (recommended)
 
-Connect to any MCP server that exposes a **Streamable HTTP** endpoint (JSON-RPC 2.0) without installing `laravel/mcp`.
+Since `laravel/ai` >= 0.9, MCP is supported natively through [`laravel/mcp`](https://github.com/laravel/mcp). The package handles the full MCP protocol (handshake, transport negotiation, auth) and `laravel/ai` automatically wraps the returned tool primitives — no manual adapter needed.
+
+**Install:**
+
+```bash
+composer require laravel/mcp
+```
+
+### Register clients
+
+Register named clients in a service provider:
+
+```php
+use Laravel\Mcp\Client;
+use Laravel\Mcp\Facades\Mcp;
+
+// AppServiceProvider::boot()
+
+// Remote HTTP server with bearer token
+Mcp::registerClient('nightwatch', fn () =>
+    Client::web(env('NIGHTWATCH_MCP_URL'))
+          ->withToken(env('NIGHTWATCH_TOKEN'))
+);
+
+// Remote HTTP server with custom header
+Mcp::registerClient('firecrawl', fn () =>
+    Client::web(env('FIRECRAWL_MCP_URL'))
+          ->withHeaders(['x-api-key' => env('FIRECRAWL_API_KEY')])
+);
+
+// Local stdio server — no supergateway proxy needed
+Mcp::registerClient('filesystem', fn () =>
+    Client::local('npx', ['-y', '@modelcontextprotocol/server-filesystem', storage_path()])
+);
+```
+
+### Task example
+
+Return the client's tools directly from `tools()` — `laravel/ai` auto-wraps them into `McpTool` instances:
+
+```php
+use Laravel\Mcp\Facades\Mcp;
+use Laravel\Ai\Messages\UserMessage;
+
+class NightwatchTask extends AiTask
+{
+    public function __construct(private readonly string $question) {}
+
+    public function modality(): string { return 'text'; }
+
+    public function tools(): array
+    {
+        return Mcp::client('nightwatch')->tools();
+    }
+
+    public function toPayload(): AiPayload
+    {
+        return new AiPayload(
+            modality: 'text',
+            messages: [new UserMessage($this->question)],
+            systemPrompt: 'You are a monitoring assistant. Use the provided tools to inspect application state.',
+        );
+    }
+
+    public function serializeForQueue(): array { return [$this->question]; }
+}
+```
+
+```php
+AI::send(new NightwatchTask('What exceptions occurred in the last hour?'));
+```
+
+### Mix MCP and local tools
+
+Tools from different sources — local, HTTP server, stdio server — go in the same array:
+
+```php
+public function tools(): array
+{
+    return [
+        ...Mcp::client('nightwatch')->tools(),
+        ...Mcp::client('filesystem')->tools(),
+        new SendSlackNotification(),
+    ];
+}
+```
+
+### Reuse server tools in agents
+
+If you expose tools via `laravel/mcp` server, the same classes can be passed directly to an agent — no client connection needed:
+
+```php
+use App\Mcp\Tools\SearchIssuesTool;
+
+public function tools(): array
+{
+    return [new SearchIssuesTool()];
+}
+```
+
+`laravel/ai` wraps them via `McpServerTool` automatically.
+
+### Caching the tool list
+
+Listing tools makes a round trip to the server. Cache the result to avoid paying that cost on every prompt:
+
+```php
+public function tools(): array
+{
+    return cache()->remember('mcp.nightwatch.tools', 300, fn () =>
+        Mcp::client('nightwatch')->tools()
+    );
+}
+```
+
+### Tool name prefix
+
+MCP tools registered via `laravel/mcp` are exposed to the model with the prefix `mcp_tools_`. A tool named `search_issues` becomes `mcp_tools_search_issues`. Keep this in mind when writing system prompts or checking `AI::fake()` assertions.
+
+### Testing
+
+```php
+AI::fake([
+    new AssistantMessage('Let me check.', [
+        new ToolCall(id: '1', name: 'mcp_tools_list_issues', arguments: []),
+    ]),
+    new AssistantMessage('Found 3 open issues.'),
+]);
+
+$response = AI::send(new NightwatchTask('List open issues'));
+
+expect($response->content)->toContain('3 open issues');
+```
+
+---
+
+## Remote MCP Tools via HttpMcpClient (zero-dependency fallback)
+
+If you cannot or do not want to install `laravel/mcp`, use the `HttpMcpClient` + `HttpMcpTool` helper classes below. They implement the same Streamable HTTP transport manually with no extra packages required — only `laravel/ai` (already a dependency).
 
 ### HttpMcpClient
 
@@ -255,9 +393,11 @@ AI::queue(new CrmTask('Create a task "Fix login bug" in project CRM, priority 3'
 
 Most community MCP servers (e.g. `@upstash/context7-mcp`, `@modelcontextprotocol/server-filesystem`) use **stdio transport** — they communicate over stdin/stdout, not HTTP.
 
-Use [supergateway](https://github.com/supermaven-inc/supergateway) to expose any stdio server as a Streamable HTTP endpoint, then point `HttpMcpClient` at it.
+**With `laravel/mcp`:** use `connectViaStdio()` directly (see [Register clients](#register-clients) above) — no proxy needed.
 
-### Setup
+**Without `laravel/mcp`:** use [supergateway](https://github.com/supermaven-inc/supergateway) to expose any stdio server as a Streamable HTTP endpoint, then point `HttpMcpClient` at it.
+
+### Setup (supergateway)
 
 ```bash
 # Start proxy (run once; restarts needed after container/machine reboot)

@@ -369,9 +369,13 @@ class ChatTask extends AiTask
 
 ## Інструменти та MCP
 
-Перевизнач `tools()` у будь-якому таску, щоб передати `Laravel\Ai\Contracts\Tool[]` в `AnonymousAgent`. Інструменти автоматично передаються при `send()`, `stream()` і `queue()`.
+Перевизнач `tools()` у будь-якому таску, щоб передати інструменти в `AnonymousAgent`. Інструменти автоматично передаються при `send()`, `stream()` і `queue()`.
 
-Підтримуються локальні анонімні інструменти, віддалені MCP-сервери через Streamable HTTP, а також stdio-пакети (npx) через supergateway-проксі (наприклад `@upstash/context7-mcp`).
+Підтримуються три підходи:
+
+- **Локальні інструменти** — PHP-класи, що реалізують `Laravel\Ai\Contracts\Tool`
+- **Нативний MCP** (рекомендовано) — встанови [`laravel/mcp`](https://github.com/laravel/mcp) і використовуй `Client::web()` або `Client::local()` для HTTP та stdio-серверів; `laravel/ai` обгортає tool primitives автоматично, supergateway-проксі не потрібен
+- **HttpMcpClient** — fallback без залежностей для Streamable HTTP серверів, якщо `laravel/mcp` не встановлений
 
 **→ [Повна документація: docs/mcp.md](docs/mcp.md)**
 
