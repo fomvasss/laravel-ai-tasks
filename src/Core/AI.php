@@ -18,6 +18,7 @@ use Fomvasss\AiTasks\Jobs\ProcessAiPayload;
 use Fomvasss\AiTasks\Models\AiRun;
 use Fomvasss\AiTasks\Support\Budget;
 use Fomvasss\AiTasks\Tasks\AiTask;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Pipeline\Pipeline;
 
 class AI
@@ -82,7 +83,11 @@ class AI
 
         $driverName = $this->resolveFirstConfiguredDriver($task, $drivers);
 
-        $run = AiRun::startAsQueue($driverName, $payload, $ctx, $task);
+        try {
+            $run = AiRun::startAsQueue($driverName, $payload, $ctx, $task);
+        } catch (UniqueConstraintViolationException) {
+            return AiRun::where('idempotency_key', $task->idempotencyKey())->value('id');
+        }
 
         $job = new ProcessAiPayload(
             driverName: $driverName,

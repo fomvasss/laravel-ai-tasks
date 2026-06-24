@@ -6,6 +6,7 @@ namespace Fomvasss\AiTasks\Tests;
 
 use Fomvasss\AiTasks\AiServiceProvider;
 use Fomvasss\AiTasks\DTO\AiPayload;
+use Fomvasss\AiTasks\Facades\AI;
 use Fomvasss\AiTasks\Models\AiRun;
 use Fomvasss\AiTasks\Tasks\AiTask;
 use Orchestra\Testbench\TestCase;
@@ -65,5 +66,21 @@ class AiTaskTest extends TestCase
         $run->refresh();
 
         $this->assertSame('skipped', $run->status);
+    }
+
+    public function test_queue_duplicate_returns_same_run_id_without_exception(): void
+    {
+        config(['ai-tasks.drivers.null' => []]);
+
+        $task = new class extends AiTask {
+            public function modality(): string { return 'text'; }
+            public function toPayload(): AiPayload { return new AiPayload('text'); }
+        };
+
+        $id1 = AI::queue($task, 'null');
+        $id2 = AI::queue($task, 'null');
+
+        $this->assertSame($id1, $id2);
+        $this->assertSame(1, AiRun::where('idempotency_key', $task->idempotencyKey())->count());
     }
 }
