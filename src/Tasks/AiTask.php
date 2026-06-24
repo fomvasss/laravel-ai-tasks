@@ -73,13 +73,19 @@ abstract class AiTask
         return $response;
     }
 
-    public function idempotencyKey(): string
+    public function idempotencyKey(): ?string
     {
+        $args = $this->serializeForQueue();
+
+        if (empty($args)) {
+            return null;
+        }
+
         return hash('xxh3', json_encode([
             $this->context()->tenantId,
             $this->name(),
             $this->modality(),
-            $this->serializeForQueue(),
+            $args,
         ]));
     }
 

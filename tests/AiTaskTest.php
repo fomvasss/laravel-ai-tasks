@@ -72,9 +72,11 @@ class AiTaskTest extends TestCase
     {
         config(['ai-tasks.drivers.null' => []]);
 
-        $task = new class extends AiTask {
+        $task = new class('hello') extends AiTask {
+            public function __construct(private string $text) {}
             public function modality(): string { return 'text'; }
             public function toPayload(): AiPayload { return new AiPayload('text'); }
+            public function serializeForQueue(): array { return [$this->text]; }
         };
 
         $id1 = AI::queue($task, 'null');
@@ -82,5 +84,49 @@ class AiTaskTest extends TestCase
 
         $this->assertSame($id1, $id2);
         $this->assertSame(1, AiRun::where('idempotency_key', $task->idempotencyKey())->count());
+    }
+
+    public function test_send_always_creates_new_run(): void
+    {
+        config(['ai-tasks.drivers.null' => []]);
+
+        $task = new class('hello') extends AiTask {
+            public function __construct(private string $text) {}
+            public function modality(): string { return 'text'; }
+            public function toPayload(): AiPayload { return new AiPayload('text'); }
+            public function serializeForQueue(): array { return [$this->text]; }
+        };
+
+        AI::send($task, 'null');
+        AI::send($task, 'null');
+
+        $this->assertSame(2, AiRun::where('dispatch', 'sync')->where('idempotency_key', null)->count());
+    }
+
+    public function test_no_idempotency_key_when_serialize_returns_empty(): void
+    {
+        $task = new class extends AiTask {
+            public function modality(): string { return 'text'; }
+            public function toPayload(): AiPayload { return new AiPayload('text'); }
+        };
+
+        $this->assertNull($task->idempotencyKey());
+    }
+
+    public function test_queue_throws_when_constructor_params_but_no_serialize(): void
+    {
+        config(['ai-tasks.drivers.null' => []]);
+
+        $task = new class('hello') extends AiTask {
+            public function __construct(private string $text) {}
+            public function modality(): string { return 'text'; }
+            public function toPayload(): AiPayload { return new AiPayload('text'); }
+            // serializeForQueue() not implemented — returns []
+        };
+
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessageMatches('/serializeForQueue/');
+
+        AI::queue($task, 'null');
     }
 }

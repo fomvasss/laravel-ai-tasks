@@ -44,7 +44,7 @@ class AiRun extends Model
             'subject_id'      => $ctx->subjectId,
             'dispatch'        => 'sync',
             'status'          => 'running',
-            'idempotency_key' => $task->idempotencyKey(),
+            'idempotency_key' => null,
             'request'         => static::minifyRequest($p),
             'started_at'      => now(),
         ]);

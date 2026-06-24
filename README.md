@@ -338,6 +338,8 @@ class AnalyzeTask extends AiTask implements ShouldQueueAi
 ```
 
 > **Note:** `serializeForQueue()` must return only scalar values (strings, ints, arrays of scalars). The array is JSON-encoded and stored in Redis; on the worker side it is passed back into the constructor via `new static(...$args)`. Do not pass Eloquent models — they will be JSON-serialized into a plain array and the constructor will receive an `array` instead of a model instance. Pass IDs instead and load the model inside `toPayload()`.
+>
+> `serializeForQueue()` also drives idempotency: if it returns `[]` (the default), no deduplication is applied for `AI::queue()`. Any task that accepts constructor parameters influencing the prompt must implement `serializeForQueue()` — `AI::queue()` will throw a `LogicException` at dispatch time if it detects constructor parameters but `serializeForQueue()` returns `[]`.
 
 ### Delayed dispatch
 
@@ -370,7 +372,13 @@ Useful when a queued task may become irrelevant by the time a worker picks it up
 
 ### Idempotency
 
-Every run is protected against duplicates via a unique `idempotency_key` stored in `ai_runs`. The default key is a hash of `[tenantId, taskName, modality, serializeForQueue()]` — so tasks with different input parameters produce different keys automatically.
+Every run is protected against duplicates via a unique `idempotency_key` stored in `ai_runs`. The key is a hash of `[tenantId, taskName, modality, serializeForQueue()]`.
+
+**Deduplication is active only when `serializeForQueue()` returns a non-empty array.** If it returns `[]` (the default), `idempotencyKey()` returns `null` and no deduplication is applied — multiple runs with the same task can coexist. This means: for any task with variable inputs, implementing `serializeForQueue()` is required both for queue reconstruction and for correct idempotency behavior.
+
+**Collision behavior (when a non-null key already exists in `ai_runs`):**
+- `AI::queue()` — returns the existing `run_id`; no duplicate job is dispatched.
+- `AI::send()` — always makes a fresh API call; `idempotency_key` is not stored for sync runs.
 
 Override `idempotencyKey()` when you need custom deduplication logic:
 

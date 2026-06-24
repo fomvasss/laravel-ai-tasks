@@ -78,6 +78,14 @@ class AI
 
     public function queue(AiTask $task, array|string $drivers = [], \DateTimeInterface|\DateInterval|int|null $delay = null): string
     {
+        $ctor = (new \ReflectionClass($task))->getConstructor();
+        if ($ctor && $ctor->getNumberOfRequiredParameters() > 0 && empty($task->serializeForQueue())) {
+            throw new \LogicException(
+                $task::class . ' has constructor parameters but serializeForQueue() returns []. ' .
+                'Implement serializeForQueue() to enable queue reconstruction and idempotency.'
+            );
+        }
+
         $payload = $this->payloadWithTools($task);
         $ctx     = $task->context();
 
