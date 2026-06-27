@@ -52,7 +52,9 @@ final class LaravelAiDriver implements AiDriver
 
     private function sendText(AiPayload $p): AiResponse
     {
-        $model = $p->options['model'] ?? $this->cfg['model'];
+        $provider        = $this->resolveProvider($p);
+        $displayProvider = $p->providerOverride['driver'] ?? $provider;
+        $model           = $p->options['model'] ?? $p->providerOverride['model'] ?? $this->cfg['model'];
         [$history, $prompt] = $this->splitMessages($p->messages);
 
         $agent = $p->jsonMode
@@ -62,27 +64,29 @@ final class LaravelAiDriver implements AiDriver
         $response = $agent->prompt(
             prompt: $prompt,
             attachments: $p->options['attachments'] ?? [],
-            provider: $this->provider,
+            provider: $provider,
             model: $model,
             timeout: $p->options['timeout'] ?? 60,
         );
 
-        $usage         = $this->mapUsage($response->usage);
-        $usage['cost'] = Cost::calc($this->provider, $usage, $this->cfg);
+        $usage         = $this->mapUsage($response->usage, $displayProvider);
+        $usage['cost'] = Cost::calc($displayProvider, $usage, $this->cfg);
 
         return new AiResponse(ok: true, content: $response->text, usage: $usage);
     }
 
     private function streamText(AiPayload $p, callable $onChunk): AiResponse
     {
-        $model = $p->options['model'] ?? $this->cfg['model'];
+        $provider        = $this->resolveProvider($p);
+        $displayProvider = $p->providerOverride['driver'] ?? $provider;
+        $model           = $p->options['model'] ?? $p->providerOverride['model'] ?? $this->cfg['model'];
         [$history, $prompt] = $this->splitMessages($p->messages);
 
         $streamable = (new AnonymousAgent($p->systemPrompt ?? '', $history, $p->tools))
             ->stream(
                 prompt: $prompt,
                 attachments: $p->options['attachments'] ?? [],
-                provider: $this->provider,
+                provider: $provider,
                 model: $model,
                 timeout: $p->options['timeout'] ?? null,
             );
@@ -90,10 +94,10 @@ final class LaravelAiDriver implements AiDriver
         $text  = '';
         $usage = [];
 
-        $streamable->then(function ($streamed) use (&$text, &$usage) {
+        $streamable->then(function ($streamed) use (&$text, &$usage, $displayProvider) {
             $text          = $streamed->text ?? '';
-            $usage         = $this->mapUsage($streamed->usage);
-            $usage['cost'] = Cost::calc($this->provider, $usage, $this->cfg);
+            $usage         = $this->mapUsage($streamed->usage, $displayProvider);
+            $usage['cost'] = Cost::calc($displayProvider, $usage, $this->cfg);
         });
 
         foreach ($streamable as $event) {
@@ -109,18 +113,20 @@ final class LaravelAiDriver implements AiDriver
 
     private function sendEmbed(AiPayload $p): AiResponse
     {
-        $model = $p->options['embed_model'] ?? $this->cfg['embed_model'] ?? null;
-        $input = $p->messages[0] ?? null;
+        $provider        = $this->resolveProvider($p);
+        $displayProvider = $p->providerOverride['driver'] ?? $provider;
+        $model           = $p->options['embed_model'] ?? $this->cfg['embed_model'] ?? null;
+        $input           = $p->messages[0] ?? null;
 
         if ($input === null) {
             return new AiResponse(false, null, [], [], 'embed_input_missing');
         }
 
         $response = Embeddings::for([$this->messageToText($input)])
-            ->generate($this->provider, $model);
+            ->generate($provider, $model);
 
-        $usage         = ['driver' => $this->provider, 'tokens_in' => $response->tokens ?: null];
-        $usage['cost'] = Cost::calc($this->provider, $usage, $this->cfg);
+        $usage         = ['driver' => $displayProvider, 'tokens_in' => $response->tokens ?: null];
+        $usage['cost'] = Cost::calc($displayProvider, $usage, $this->cfg);
 
         return new AiResponse(ok: true, content: json_encode($response->first()), usage: $usage);
     }
@@ -129,9 +135,11 @@ final class LaravelAiDriver implements AiDriver
 
     private function sendImage(AiPayload $p): AiResponse
     {
-        $model   = $p->options['model'] ?? $this->cfg['image_model'] ?? null;
-        $prompt  = $this->messageToText($p->messages[0] ?? '');
-        $pending = Image::of($prompt);
+        $provider        = $this->resolveProvider($p);
+        $displayProvider = $p->providerOverride['driver'] ?? $provider;
+        $model           = $p->options['model'] ?? $this->cfg['image_model'] ?? null;
+        $prompt   = $this->messageToText($p->messages[0] ?? '');
+        $pending  = Image::of($prompt);
 
         if ($quality = $p->options['quality'] ?? null) {
             $pending->quality($quality);
@@ -145,10 +153,10 @@ final class LaravelAiDriver implements AiDriver
             $pending->timeout($timeout);
         }
 
-        $response      = $pending->generate($this->provider, $model);
+        $response      = $pending->generate($provider, $model);
         $image         = $response->firstImage();
-        $usage         = $this->mapUsage($response->usage);
-        $usage['cost'] = Cost::calc($this->provider, $usage, $this->cfg);
+        $usage         = $this->mapUsage($response->usage, $displayProvider);
+        $usage['cost'] = Cost::calc($displayProvider, $usage, $this->cfg);
 
         return new AiResponse(true, $image->image, $usage);
     }
@@ -157,9 +165,11 @@ final class LaravelAiDriver implements AiDriver
 
     private function sendAudio(AiPayload $p): AiResponse
     {
-        $model   = $p->options['model'] ?? $this->cfg['audio_model'] ?? null;
-        $text    = $this->messageToText($p->messages[0] ?? '');
-        $pending = Audio::of($text);
+        $provider        = $this->resolveProvider($p);
+        $displayProvider = $p->providerOverride['driver'] ?? $provider;
+        $model           = $p->options['model'] ?? $this->cfg['audio_model'] ?? null;
+        $text     = $this->messageToText($p->messages[0] ?? '');
+        $pending  = Audio::of($text);
 
         if ($voice = $p->options['voice'] ?? null) {
             $pending->voice($voice);
@@ -170,19 +180,21 @@ final class LaravelAiDriver implements AiDriver
             $pending->instructions($instructions);
         }
 
-        $response = $pending->generate($this->provider, $model);
+        $response = $pending->generate($provider, $model);
 
-        return new AiResponse(true, $response->audio, ['driver' => $this->provider]);
+        return new AiResponse(true, $response->audio, ['driver' => $displayProvider]);
     }
 
     // ── Transcription (STT) ───────────────────────────────────────────────
 
     private function sendTranscription(AiPayload $p): AiResponse
     {
-        $model   = $p->options['model'] ?? null;
-        $path    = $p->options['path'] ?? null;
-        $storage = $p->options['storage'] ?? null;
-        $disk    = $p->options['disk'] ?? null;
+        $provider        = $this->resolveProvider($p);
+        $displayProvider = $p->providerOverride['driver'] ?? $provider;
+        $model           = $p->options['model'] ?? null;
+        $path     = $p->options['path'] ?? null;
+        $storage  = $p->options['storage'] ?? null;
+        $disk     = $p->options['disk'] ?? null;
 
         $pending = match (true) {
             $path !== null    => Transcription::fromPath($path),
@@ -194,14 +206,40 @@ final class LaravelAiDriver implements AiDriver
             $pending->diarize();
         }
 
-        $response      = $pending->generate($this->provider, $model);
-        $usage         = $this->mapUsage($response->usage);
-        $usage['cost'] = Cost::calc($this->provider, $usage, $this->cfg);
+        $response      = $pending->generate($provider, $model);
+        $usage         = $this->mapUsage($response->usage, $displayProvider);
+        $usage['cost'] = Cost::calc($displayProvider, $usage, $this->cfg);
 
         return new AiResponse(true, $response->text, $usage);
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────
+
+    /**
+     * Повертає назву провайдера для laravel/ai. Якщо payload містить providerOverride —
+     * реєструє кастомний провайдер у config під унікальним аліасом і повертає його.
+     * laravel/ai::AiManager читає config динамічно при першому зверненні і кешує інстанс,
+     * тому встановлення config перед викликом prompt() безпечне.
+     */
+    private function resolveProvider(AiPayload $p): string
+    {
+        $o = $p->providerOverride;
+
+        if (!$o || empty($o['key'])) {
+            return $this->provider;
+        }
+
+        $alias = 'custom_' . hash('xxh3', ($o['driver'] ?? '') . ':' . $o['key']);
+
+        config(["ai.providers.{$alias}" => array_filter([
+            'driver'       => $o['driver'],
+            'key'          => $o['key'],
+            'organization' => $o['organization'] ?? null,
+            'url'          => $o['url'] ?? null,
+        ])]);
+
+        return $alias;
+    }
 
     private function splitMessages(array $messages): array
     {
@@ -262,14 +300,14 @@ final class LaravelAiDriver implements AiDriver
         return '';
     }
 
-    private function mapUsage(?Usage $usage): array
+    private function mapUsage(?Usage $usage, string $provider): array
     {
         if ($usage === null) {
-            return ['driver' => $this->provider];
+            return ['driver' => $provider];
         }
 
         return [
-            'driver'             => $this->provider,
+            'driver'             => $provider,
             'tokens_in'          => $usage->promptTokens ?: null,
             'tokens_out'         => $usage->completionTokens ?: null,
             'cache_read_tokens'  => $usage->cacheReadInputTokens ?: null,

@@ -41,7 +41,7 @@ class AI
         foreach ($list as $driverName) {
             $run = AiRun::start($driverName, $payload, $ctx, $task);
 
-            if (! $this->isConfigured($driverName)) {
+            if (! $this->isConfigured($driverName) && ! ($payload->providerOverride['key'] ?? null)) {
                 $run->skip("driver_not_configured: {$driverName}");
                 continue;
             }
@@ -89,7 +89,7 @@ class AI
         $payload = $this->payloadWithTools($task);
         $ctx     = $task->context();
 
-        $driverName = $this->resolveFirstConfiguredDriver($task, $drivers);
+        $driverName = $this->resolveFirstConfiguredDriver($task, $drivers, $payload);
 
         try {
             $run = AiRun::startAsQueue($driverName, $payload, $ctx, $task);
@@ -138,7 +138,7 @@ class AI
         $errors = [];
 
         foreach ($list as $driverName) {
-            if (! $this->isConfigured($driverName)) {
+            if (! $this->isConfigured($driverName) && ! ($payload->providerOverride['key'] ?? null)) {
                 $errors[] = "driver_not_configured: {$driverName}";
                 continue;
             }
@@ -173,12 +173,13 @@ class AI
         return $this->router->choose($task);
     }
 
-    private function resolveFirstConfiguredDriver(AiTask $task, array|string $drivers): string
+    private function resolveFirstConfiguredDriver(AiTask $task, array|string $drivers, ?AiPayload $payload = null): string
     {
         $list = $this->resolveDrivers($task, $drivers);
+        $hasCustomKey = (bool) ($payload?->providerOverride['key'] ?? null);
 
         foreach ($list as $name) {
-            if ($this->isConfigured($name)) {
+            if ($this->isConfigured($name) || $hasCustomKey) {
                 return $name;
             }
         }
@@ -215,6 +216,8 @@ class AI
             options: $payload->options,
             meta: $payload->meta,
             tools: $tools,
+            jsonMode: $payload->jsonMode,
+            providerOverride: $payload->providerOverride,
         );
     }
 

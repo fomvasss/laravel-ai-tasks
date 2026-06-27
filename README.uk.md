@@ -306,6 +306,42 @@ return new AiPayload(
 
 > **Порада:** Завжди описуй очікувану JSON-структуру в `systemPrompt`. `jsonMode` гарантує синтаксичну валідність JSON; форма об'єкта залишається на відповідальності промпту.
 
+## Кастомні credentials на рівні запиту (providerOverride)
+
+`AiPayload::providerOverride` дозволяє передати власні API-credentials для одного запиту — без зміни системного конфігу або `.env`. Корисно коли застосунок керує per-tenant або per-user ключами.
+
+```php
+return new AiPayload(
+    modality: 'text',
+    messages: [new UserMessage($this->prompt)],
+    systemPrompt: $this->instructions,
+    providerOverride: [
+        'driver' => 'deepseek',      // будь-який драйвер laravel/ai
+        'key'    => $this->apiKey,   // ключ від користувача
+        'model'  => 'deepseek-chat', // опціонально; перекриває дефолт драйвера
+        // 'url'          => '...',  // опціонально; кастомний base URL
+        // 'organization' => '...',  // опціонально; OpenAI org
+    ],
+);
+```
+
+Як це працює:
+
+- Тимчасова конфігурація провайдера реєструється під детермінованим аліасом (`custom_<hash>`) від `driver + key`. Ті самі credentials завжди дають той самий аліас, тому instance-кеш `laravel/ai` перевикористовується в межах одного процесу (безпечно з Horizon).
+- Читабельне ім'я `driver` (напр. `deepseek`) записується в `ai_runs` — не внутрішній аліас.
+- Якщо `key` порожній або `providerOverride` рівний `null` — задача переходить на системного провайдера.
+- Якщо системного драйвера немає в конфізі, але `providerOverride` містить ключ — `isConfigured()` оминається і запит виконується з кастомними credentials.
+
+**Поля `providerOverride`:**
+
+| Поле | Тип | Обов'язкове | Опис |
+|---|---|---|---|
+| `driver` | `string` | так | Назва провайдера (`openai`, `deepseek`, `anthropic`, …) |
+| `key` | `string` | так | API-ключ |
+| `model` | `string` | ні | Назва моделі (fallback: `options['model']`, потім дефолт драйвера) |
+| `url` | `string` | ні | Кастомний base URL (для OpenAI-сумісних endpoint-ів) |
+| `organization` | `string` | ні | OpenAI organization ID |
+
 ## Задачі в черзі
 
 Реалізуй `ShouldQueueAi` і визнач `serializeForQueue()`:
