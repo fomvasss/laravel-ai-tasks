@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [3.3.2] — 2026-06-27
+
+### Added
+- `AiPayload::$jsonMode` (`bool`, default `false`) — set to `true` to request JSON output from the model
+- `JsonModeAgent` — internal agent class implementing `HasProviderOptions`; when `jsonMode: true`, it is used instead of `AnonymousAgent` and injects `response_format: {type: json_object}` for providers that support it natively: DeepSeek, Groq, OpenRouter, xAI, Mistral
+- OpenAI and other providers that use a different structured-output mechanism are not affected — `jsonMode: true` still works for them via system-prompt instructions without a provider-level `response_format` parameter
+
+### Tests
+- Added `JsonModeTest` (14 cases): `AiPayload.jsonMode` default and override, `JsonModeAgent` inheritance, `HasProviderOptions` implementation, correct `response_format` for supported providers, empty options for unsupported providers, string-provider fallback
+
+---
+
 ## [3.3.0] — 2026-06-20
 
 ### Added

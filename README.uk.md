@@ -288,6 +288,24 @@ return new AiPayload(
 );
 ```
 
+## JSON-режим
+
+Виставте `jsonMode: true` в `AiPayload`, щоб модель завжди повертала валідний JSON — без markdown-обгорток і тексту поза об'єктом.
+
+```php
+return new AiPayload(
+    modality: 'text',
+    messages: [new UserMessage($this->text)],
+    systemPrompt: 'Класифікуй текст. Відповідай у форматі {"category": "...", "confidence": 0.0-1.0}.',
+    options: ['temperature' => 0.0],
+    jsonMode: true,
+);
+```
+
+Для провайдерів з нативним JSON-режимом (`DeepSeek`, `Groq`, `OpenRouter`, `xAI`, `Mistral`) пакет автоматично додає `response_format: {type: json_object}` до запиту. Для інших провайдерів (`OpenAI`, `Gemini`, `Anthropic`) прапорець не впливає на рівень транспорту — формат відповіді контролюється через системний промпт.
+
+> **Порада:** Завжди описуй очікувану JSON-структуру в `systemPrompt`. `jsonMode` гарантує синтаксичну валідність JSON; форма об'єкта залишається на відповідальності промпту.
+
 ## Задачі в черзі
 
 Реалізуй `ShouldQueueAi` і визнач `serializeForQueue()`:
