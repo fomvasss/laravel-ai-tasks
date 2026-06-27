@@ -66,6 +66,39 @@ class JsonModeTest extends TestCase
         $this->assertInstanceOf(HasProviderOptions::class, $agent);
     }
 
+    // OpenAI і xAI — Responses API, text.format
+
+    public function test_json_mode_agent_returns_text_format_for_openai(): void
+    {
+        $agent = new JsonModeAgent('', [], []);
+
+        $options = $agent->providerOptions(Lab::OpenAI);
+
+        $this->assertSame(['text' => ['format' => ['type' => 'json_object']]], $options);
+    }
+
+    public function test_json_mode_agent_returns_text_format_for_xai(): void
+    {
+        $agent = new JsonModeAgent('', [], []);
+
+        $options = $agent->providerOptions(Lab::xAI);
+
+        $this->assertSame(['text' => ['format' => ['type' => 'json_object']]], $options);
+    }
+
+    // Gemini — response_mime_type у generationConfig
+
+    public function test_json_mode_agent_returns_mime_type_for_gemini(): void
+    {
+        $agent = new JsonModeAgent('', [], []);
+
+        $options = $agent->providerOptions(Lab::Gemini);
+
+        $this->assertSame(['response_mime_type' => 'application/json'], $options);
+    }
+
+    // Chat Completions-сумісні провайдери — response_format
+
     public function test_json_mode_agent_returns_response_format_for_deepseek(): void
     {
         $agent = new JsonModeAgent('', [], []);
@@ -84,11 +117,11 @@ class JsonModeTest extends TestCase
         $this->assertSame(['response_format' => ['type' => 'json_object']], $options);
     }
 
-    public function test_json_mode_agent_returns_response_format_for_xai(): void
+    public function test_json_mode_agent_returns_response_format_for_mistral(): void
     {
         $agent = new JsonModeAgent('', [], []);
 
-        $options = $agent->providerOptions(Lab::xAI);
+        $options = $agent->providerOptions(Lab::Mistral);
 
         $this->assertSame(['response_format' => ['type' => 'json_object']], $options);
     }
@@ -102,32 +135,7 @@ class JsonModeTest extends TestCase
         $this->assertSame(['response_format' => ['type' => 'json_object']], $options);
     }
 
-    public function test_json_mode_agent_returns_response_format_for_mistral(): void
-    {
-        $agent = new JsonModeAgent('', [], []);
-
-        $options = $agent->providerOptions(Lab::Mistral);
-
-        $this->assertSame(['response_format' => ['type' => 'json_object']], $options);
-    }
-
-    public function test_json_mode_agent_returns_empty_for_openai(): void
-    {
-        $agent = new JsonModeAgent('', [], []);
-
-        $options = $agent->providerOptions(Lab::OpenAI);
-
-        $this->assertSame([], $options);
-    }
-
-    public function test_json_mode_agent_returns_empty_for_gemini(): void
-    {
-        $agent = new JsonModeAgent('', [], []);
-
-        $options = $agent->providerOptions(Lab::Gemini);
-
-        $this->assertSame([], $options);
-    }
+    // Anthropic — немає підтримки json_object mode
 
     public function test_json_mode_agent_returns_empty_for_anthropic(): void
     {
@@ -138,12 +146,26 @@ class JsonModeTest extends TestCase
         $this->assertSame([], $options);
     }
 
+    // Невідомий провайдер
+
+    public function test_json_mode_agent_returns_empty_for_unknown_provider(): void
+    {
+        $agent = new JsonModeAgent('', [], []);
+
+        $this->assertSame([], $agent->providerOptions('unknown'));
+    }
+
+    // String provider variants
+
     public function test_json_mode_agent_accepts_string_provider(): void
     {
         $agent = new JsonModeAgent('', [], []);
 
+        $this->assertSame(['text' => ['format' => ['type' => 'json_object']]], $agent->providerOptions('openai'));
+        $this->assertSame(['text' => ['format' => ['type' => 'json_object']]], $agent->providerOptions('xai'));
+        $this->assertSame(['response_mime_type' => 'application/json'], $agent->providerOptions('gemini'));
         $this->assertSame(['response_format' => ['type' => 'json_object']], $agent->providerOptions('deepseek'));
-        $this->assertSame([], $agent->providerOptions('openai'));
+        $this->assertSame([], $agent->providerOptions('anthropic'));
         $this->assertSame([], $agent->providerOptions('unknown'));
     }
 }

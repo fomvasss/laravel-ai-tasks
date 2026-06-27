@@ -328,7 +328,15 @@ return new AiPayload(
 );
 ```
 
-For providers that expose a native JSON mode (`DeepSeek`, `Groq`, `OpenRouter`, `xAI`, `Mistral`), the package automatically injects `response_format: {type: json_object}` into the request. For other providers (`OpenAI`, `Gemini`, `Anthropic`), the flag has no effect at the transport level — use clear system-prompt instructions to guide the output format.
+The package translates `jsonMode: true` into the correct provider-specific parameter automatically:
+
+| Provider | Mechanism |
+|---|---|
+| OpenAI | `text.format: {type: json_object}` (Responses API) |
+| xAI | `text.format: {type: json_object}` (Responses API) |
+| Gemini | `generationConfig.response_mime_type: application/json` |
+| DeepSeek, Groq, Mistral, OpenRouter | `response_format: {type: json_object}` (Chat Completions) |
+| Anthropic | no native JSON mode — rely on system-prompt instructions |
 
 > **Tip:** Always describe the expected JSON structure in your `systemPrompt`. `jsonMode` guarantees valid JSON syntax; the shape is still controlled by the prompt.
 

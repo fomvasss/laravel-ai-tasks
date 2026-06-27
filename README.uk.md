@@ -302,7 +302,15 @@ return new AiPayload(
 );
 ```
 
-Для провайдерів з нативним JSON-режимом (`DeepSeek`, `Groq`, `OpenRouter`, `xAI`, `Mistral`) пакет автоматично додає `response_format: {type: json_object}` до запиту. Для інших провайдерів (`OpenAI`, `Gemini`, `Anthropic`) прапорець не впливає на рівень транспорту — формат відповіді контролюється через системний промпт.
+Пакет автоматично перекладає `jsonMode: true` у правильний параметр для кожного провайдера:
+
+| Провайдер | Механізм |
+|---|---|
+| OpenAI | `text.format: {type: json_object}` (Responses API) |
+| xAI | `text.format: {type: json_object}` (Responses API) |
+| Gemini | `generationConfig.response_mime_type: application/json` |
+| DeepSeek, Groq, Mistral, OpenRouter | `response_format: {type: json_object}` (Chat Completions) |
+| Anthropic | нативного JSON-режиму немає — покладайся на інструкції в системному промпті |
 
 > **Порада:** Завжди описуй очікувану JSON-структуру в `systemPrompt`. `jsonMode` гарантує синтаксичну валідність JSON; форма об'єкта залишається на відповідальності промпту.
 
