@@ -10,7 +10,6 @@ use Fomvasss\AiTasks\DTO\AiPayload;
 use Fomvasss\AiTasks\DTO\AiResponse;
 use Fomvasss\AiTasks\Support\Cost;
 use Laravel\Ai\AnonymousAgent;
-use Laravel\Ai\StructuredAnonymousAgent;
 use Laravel\Ai\Audio;
 use Laravel\Ai\Embeddings;
 use Laravel\Ai\Image;
@@ -57,7 +56,7 @@ final class LaravelAiDriver implements AiDriver
         [$history, $prompt] = $this->splitMessages($p->messages);
 
         $agent = $p->jsonMode
-            ? new StructuredAnonymousAgent($p->systemPrompt ?? '', $history, $p->tools, fn($s) => ['type' => 'object'])
+            ? new JsonModeAgent($p->systemPrompt ?? '', $history, $p->tools)
             : new AnonymousAgent($p->systemPrompt ?? '', $history, $p->tools);
 
         $response = $agent->prompt(
