@@ -13,5 +13,6 @@ final class AiPayload
         public readonly array   $options = [],
         public readonly array   $meta = [],
         public readonly array   $tools = [],
+        public readonly bool    $jsonMode = false,
     ) {}
 }

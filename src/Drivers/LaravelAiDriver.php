@@ -10,6 +10,7 @@ use Fomvasss\AiTasks\DTO\AiPayload;
 use Fomvasss\AiTasks\DTO\AiResponse;
 use Fomvasss\AiTasks\Support\Cost;
 use Laravel\Ai\AnonymousAgent;
+use Laravel\Ai\StructuredAnonymousAgent;
 use Laravel\Ai\Audio;
 use Laravel\Ai\Embeddings;
 use Laravel\Ai\Image;
@@ -55,14 +56,17 @@ final class LaravelAiDriver implements AiDriver
         $model = $p->options['model'] ?? $this->cfg['model'];
         [$history, $prompt] = $this->splitMessages($p->messages);
 
-        $response = (new AnonymousAgent($p->systemPrompt ?? '', $history, $p->tools))
-            ->prompt(
-                prompt: $prompt,
-                attachments: $p->options['attachments'] ?? [],
-                provider: $this->provider,
-                model: $model,
-                timeout: $p->options['timeout'] ?? 60,
-            );
+        $agent = $p->jsonMode
+            ? new StructuredAnonymousAgent($p->systemPrompt ?? '', $history, $p->tools, fn($s) => ['type' => 'object'])
+            : new AnonymousAgent($p->systemPrompt ?? '', $history, $p->tools);
+
+        $response = $agent->prompt(
+            prompt: $prompt,
+            attachments: $p->options['attachments'] ?? [],
+            provider: $this->provider,
+            model: $model,
+            timeout: $p->options['timeout'] ?? 60,
+        );
 
         $usage         = $this->mapUsage($response->usage);
         $usage['cost'] = Cost::calc($this->provider, $usage, $this->cfg);
