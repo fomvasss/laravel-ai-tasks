@@ -332,6 +332,42 @@ For providers that expose a native JSON mode (`DeepSeek`, `Groq`, `OpenRouter`, 
 
 > **Tip:** Always describe the expected JSON structure in your `systemPrompt`. `jsonMode` guarantees valid JSON syntax; the shape is still controlled by the prompt.
 
+## Per-request Provider Override
+
+`AiPayload::providerOverride` lets you supply custom API credentials for a single task execution without touching system config or `.env`. Useful when the application manages per-tenant or per-user API keys.
+
+```php
+return new AiPayload(
+    modality: 'text',
+    messages: [new UserMessage($this->prompt)],
+    systemPrompt: $this->instructions,
+    providerOverride: [
+        'driver' => 'deepseek',      // any driver supported by laravel/ai
+        'key'    => $this->apiKey,   // user-supplied API key
+        'model'  => 'deepseek-chat', // optional; overrides driver default
+        // 'url'          => '...',  // optional; custom base URL
+        // 'organization' => '...',  // optional; OpenAI org scoping
+    ],
+);
+```
+
+How it works:
+
+- A temporary provider config is registered under a deterministic alias (`custom_<hash>`) derived from `driver + key`. The same credentials always resolve to the same alias, so `laravel/ai`'s instance cache is reused within the same process (safe with Horizon).
+- The readable `driver` name (e.g. `deepseek`) is recorded in `ai_runs` — not the internal alias.
+- If `key` is empty or `providerOverride` is `null`, the task falls back to the system provider.
+- If no system driver is configured but `providerOverride` supplies a key, `isConfigured()` is bypassed and the request proceeds with the custom credentials.
+
+**`providerOverride` shape:**
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `driver` | `string` | yes | Provider name (`openai`, `deepseek`, `anthropic`, …) |
+| `key` | `string` | yes | API key |
+| `model` | `string` | no | Model name (falls back to `options['model']`, then driver default) |
+| `url` | `string` | no | Custom base URL (for OpenAI-compatible endpoints) |
+| `organization` | `string` | no | OpenAI organization ID |
+
 ## Queued Tasks
 
 Implement `ShouldQueueAi` and define `serializeForQueue()`:
