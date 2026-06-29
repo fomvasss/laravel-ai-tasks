@@ -21,8 +21,9 @@ class DashboardController extends Controller
         $tenants = AiRun::distinct()->orderBy('tenant_id')->pluck('tenant_id');
 
         $stats = $this->stats();
+        $filteredStats = $this->filteredStats($request);
 
-        return view('ai-tasks::index', compact('runs', 'stats', 'drivers', 'tenants'));
+        return view('ai-tasks::index', compact('runs', 'stats', 'filteredStats', 'drivers', 'tenants'));
     }
 
     public function data(Request $request): JsonResponse
@@ -31,6 +32,7 @@ class DashboardController extends Controller
 
         return response()->json([
             'stats' => $this->stats(),
+            'filtered_stats' => $this->filteredStats($request),
             'runs' => $runs->map(fn($r) => [
                 'id' => $r->id,
                 'task' => $r->task,
@@ -80,6 +82,24 @@ class DashboardController extends Controller
             'month_cost' => round((float) AiRun::where('status', 'ok')
                 ->whereBetween('started_at', [now()->startOfMonth(), now()->endOfMonth()])
                 ->sum('cost'), 6),
+        ];
+    }
+
+    private function filteredStats(Request $request): array
+    {
+        $row = $this->buildQuery($request)
+            ->reorder()
+            ->select(\DB::raw('count(*) as total, sum(status = "ok") as ok, sum(status in ("error","dead")) as errors, sum(tokens_in) as tokens_in, sum(tokens_out) as tokens_out, sum(cost) as cost'))
+            ->toBase()
+            ->first();
+
+        return [
+            'total' => (int) $row->total,
+            'ok' => (int) $row->ok,
+            'errors' => (int) $row->errors,
+            'tokens_in' => (int) $row->tokens_in,
+            'tokens_out' => (int) $row->tokens_out,
+            'cost' => round((float) $row->cost, 6),
         ];
     }
 

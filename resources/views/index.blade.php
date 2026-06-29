@@ -79,6 +79,27 @@
     <a href="{{ route('ai-tasks.index') }}" class="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 py-1.5">Reset</a>
 </form>
 
+{{-- Filtered stats --}}
+@php $hasFilter = request()->hasAny(['status','driver','tenant','dispatch','task','from','to']); @endphp
+<div class="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 px-4 py-3 mb-4">
+    <div class="text-xs text-gray-400 dark:text-gray-500 mb-2 uppercase tracking-wider">{{ $hasFilter ? 'Filtered' : 'All time' }}</div>
+    <div class="grid grid-cols-3 md:grid-cols-6 gap-4">
+        @foreach([
+            ['label' => 'Total', 'value' => $filteredStats['total'], 'color' => '', 'key' => 'f_total'],
+            ['label' => 'OK', 'value' => $filteredStats['ok'], 'color' => 'text-green-600', 'key' => 'f_ok'],
+            ['label' => 'Errors', 'value' => $filteredStats['errors'], 'color' => 'text-red-600', 'key' => 'f_errors'],
+            ['label' => 'Tokens in', 'value' => number_format($filteredStats['tokens_in']), 'color' => '', 'key' => 'f_tokens_in'],
+            ['label' => 'Tokens out', 'value' => number_format($filteredStats['tokens_out']), 'color' => '', 'key' => 'f_tokens_out'],
+            ['label' => 'Cost', 'value' => '$' . $filteredStats['cost'], 'color' => '', 'key' => 'f_cost'],
+        ] as $s)
+        <div>
+            <div class="text-xs text-gray-500 dark:text-gray-400 mb-0.5">{{ $s['label'] }}</div>
+            <div class="text-lg font-semibold {{ $s['color'] }} dark:text-gray-100" data-stat="{{ $s['key'] }}">{{ $s['value'] }}</div>
+        </div>
+        @endforeach
+    </div>
+</div>
+
 {{-- Table --}}
 <div class="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 overflow-x-auto">
     <table class="min-w-full text-sm">
@@ -210,7 +231,21 @@
             .then(data => {
                 document.querySelectorAll('[data-stat]').forEach(el => {
                     const k = el.dataset.stat;
-                    el.textContent = k === 'month_cost' ? '$' + data.stats[k] : data.stats[k];
+                    if (k === 'month_cost') {
+                        el.textContent = '$' + data.stats[k];
+                    } else if (k.startsWith('f_')) {
+                        const fk = k.slice(2);
+                        const v = data.filtered_stats[fk];
+                        if (k === 'f_cost') {
+                            el.textContent = '$' + v;
+                        } else if (k === 'f_tokens_in' || k === 'f_tokens_out') {
+                            el.textContent = parseInt(v).toLocaleString();
+                        } else {
+                            el.textContent = v;
+                        }
+                    } else {
+                        el.textContent = data.stats[k];
+                    }
                 });
 
                 const tbody = document.getElementById('ai-runs-tbody');
