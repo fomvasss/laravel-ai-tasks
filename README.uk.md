@@ -62,6 +62,18 @@ php artisan vendor:publish --tag=ai-migrations
 php artisan migrate
 ```
 
+За замовчуванням запуски зберігаються в таблиці `ai_runs`. Щоб використати іншу назву таблиці, задай її перед запуском міграції — через `.env`:
+
+```env
+AI_TASKS_TABLE=my_ai_runs
+```
+
+або в `config/ai-tasks.php`:
+
+```php
+'table' => 'my_ai_runs',
+```
+
 Додай ключі до `.env` — credentials читає `laravel/ai`:
 
 ```env

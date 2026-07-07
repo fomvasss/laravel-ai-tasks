@@ -62,6 +62,18 @@ php artisan vendor:publish --tag=ai-migrations
 php artisan migrate
 ```
 
+By default runs are stored in the `ai_runs` table. To use a different table name, set it before running the migration — via `.env`:
+
+```env
+AI_TASKS_TABLE=my_ai_runs
+```
+
+or in `config/ai-tasks.php`:
+
+```php
+'table' => 'my_ai_runs',
+```
+
 Add API keys to `.env` — credentials are read by `laravel/ai`:
 
 ```env

@@ -10,7 +10,7 @@ return new class extends Migration {
 
     public function up(): void
     {
-        Schema::create('ai_runs', function (Blueprint $t) {
+        Schema::create(config('ai-tasks.table', 'ai_runs'), function (Blueprint $t) {
             $t->uuid('id')->primary();
             $t->string('tenant_id')->index();
             $t->string('task')->index();
@@ -39,6 +39,6 @@ return new class extends Migration {
 
     public function down(): void
     {
-        Schema::dropIfExists('ai_runs');
+        Schema::dropIfExists(config('ai-tasks.table', 'ai_runs'));
     }
 };
