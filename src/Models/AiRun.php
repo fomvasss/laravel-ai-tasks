@@ -17,8 +17,6 @@ class AiRun extends Model
 {
     use HasUuids;
 
-    protected $table = 'ai_runs';
-
     public $incrementing = false;
 
     protected $keyType = 'string';
@@ -32,6 +30,13 @@ class AiRun extends Model
         'finished_at'=> 'datetime',
         'cost'       => 'float',
     ];
+
+    public function __construct(array $attributes = [])
+    {
+        parent::__construct($attributes);
+
+        $this->table = config('ai-tasks.table', 'ai_runs');
+    }
 
     public static function start(string $driver, AiPayload $p, AiContext $ctx, AiTask $task): self
     {

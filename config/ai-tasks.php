@@ -14,6 +14,9 @@ return [
     // Tenant ID used when the request cannot be resolved to a specific tenant.
     'default_tenant' => env('AI_DEFAULT_TENANT', 'default'),
 
+    // Database table used to store AI run records.
+    'table' => env('AI_TASKS_TABLE', 'ai_runs'),
+
     // Whether to persist messages and system prompt in ai_runs.request.
     // Disable in production if prompts contain sensitive data.
     'store_request' => env('AI_STORE_REQUEST', false),
