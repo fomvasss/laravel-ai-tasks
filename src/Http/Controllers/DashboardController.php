@@ -89,7 +89,7 @@ class DashboardController extends Controller
     {
         $row = $this->buildQuery($request)
             ->reorder()
-            ->select(\DB::raw('count(*) as total, sum(status = "ok") as ok, sum(status in ("error","dead")) as errors, sum(tokens_in) as tokens_in, sum(tokens_out) as tokens_out, sum(cost) as cost'))
+            ->select(\DB::raw("count(*) as total, sum(case when status = 'ok' then 1 else 0 end) as ok, sum(case when status in ('error','dead') then 1 else 0 end) as errors, sum(tokens_in) as tokens_in, sum(tokens_out) as tokens_out, sum(cost) as cost"))
             ->toBase()
             ->first();
 
