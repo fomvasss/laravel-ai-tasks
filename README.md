@@ -289,6 +289,8 @@ The `TenantResolver` picks up tenant ID from `X-Tenant-Id` header, authenticated
 $this->app->scoped(\Fomvasss\AiTasks\Support\TenantResolver::class, fn() => new MyTenantResolver());
 ```
 
+`Fomvasss\AiTasks\Exceptions\BudgetExceededException` is thrown once a tenant's monthly spend would exceed `monthly_usd` — checked both pre-flight (before the provider call, using prior spend) and post-call (after, using the actual cost of the response) on `send()`, `stream()`, and the queued job. If the exception fires post-call, the response was already billed, so the run is still recorded as `ok` with its real `cost` — otherwise that spend would vanish from future budget checks.
+
 ## Cost Tracking
 
 Set pricing per driver in `config/ai-tasks.php` (per 1M tokens):

@@ -55,10 +55,10 @@ class Budget
             return;
         }
 
-        $remaining = $this->getMonthlyRemaining($tenantId);
-        if ($remaining !== null && $remaining < $expectedCost) {
+        $spent = $this->getMonthlySpent($tenantId);
+        if (round($spent + $expectedCost, 8) > $limit) {
             throw new BudgetExceededException(
-                "Budget exceeded for tenant [{$tenantId}]: remaining \${$remaining}, expected \${$expectedCost}"
+                "Budget exceeded for tenant [{$tenantId}]: spent \${$spent} of \${$limit} limit, expected additional \${$expectedCost}"
             );
         }
     }

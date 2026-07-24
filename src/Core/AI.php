@@ -60,7 +60,9 @@ class AI
 
                 app(Budget::class)->ensureNotExceeded($ctx->tenantId, (float) ($resp->usage['cost'] ?? 0.0));
             } catch (BudgetExceededException $e) {
-                $run->fail($e->getMessage());
+                // Виклик провайдера вже відбувся й оплачений — зберігаємо cost через finish(),
+                // інакше витрата випадає з майбутніх підрахунків бюджету (issue #7).
+                $run->finish($resp);
                 event(new AiTaskFailed($task, $e->getMessage(), $run));
                 throw $e;
             } catch (\Throwable $e) {
@@ -160,6 +162,12 @@ class AI
 
             try {
                 $resp = $this->manager->driver($driverName)->stream($payload, $ctx, $onChunk);
+
+                app(Budget::class)->ensureNotExceeded($ctx->tenantId, (float) ($resp->usage['cost'] ?? 0.0));
+            } catch (BudgetExceededException $e) {
+                $run->finish($resp);
+                event(new AiTaskFailed($task, $e->getMessage(), $run));
+                throw $e;
             } catch (\Throwable $e) {
                 $run->fail($e->getMessage());
                 event(new AiTaskFailed($task, $e->getMessage(), $run));

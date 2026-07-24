@@ -84,7 +84,13 @@ class ProcessAiPayload implements ShouldQueue
                 ->onQueue(config('ai-tasks.queues.post'));
 
         } catch (BudgetExceededException $e) {
-            $run->fail($e->getMessage());
+            // Якщо $resp вже відомий — виклик провайдера відбувся й оплачений, зберігаємо cost
+            // через finish() замість fail(), інакше витрата випадає з майбутніх підрахунків (issue #7).
+            if (isset($resp) && $resp->ok) {
+                $run->finish($resp);
+            } else {
+                $run->fail($e->getMessage());
+            }
             event(new AiTaskFailed($task, $e->getMessage(), $run));
 
         } catch (\Throwable $e) {

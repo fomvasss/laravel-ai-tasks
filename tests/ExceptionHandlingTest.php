@@ -126,7 +126,7 @@ class ExceptionHandlingTest extends TestCase
         $this->assertSame('ok', $runs[1]->status);
     }
 
-    public function test_send_rethrows_and_marks_failed_on_budget_exceeded(): void
+    public function test_send_rethrows_on_budget_exceeded_but_keeps_run_ok_with_cost(): void
     {
         config(['ai-tasks.budgets.default.monthly_usd' => 0.0]);
 
@@ -138,9 +138,37 @@ class ExceptionHandlingTest extends TestCase
             AIFacade::send($this->makeTask(), 'driverA');
         } finally {
             $run = AiRun::query()->latest('created_at')->first();
-            $this->assertSame('error', $run->status);
+            // Виклик провайдера реально відбувся й був оплачений — run лишається 'ok' з cost,
+            // інакше витрата стає невидимою для наступних підрахунків бюджету (issue #7).
+            $this->assertSame('ok', $run->status);
+            $this->assertSame(10.0, $run->cost);
             $this->assertNotNull($run->finished_at);
         }
+    }
+
+    public function test_send_preflight_blocks_before_any_driver_call_when_already_over_budget(): void
+    {
+        AiRun::create([
+            'tenant_id'   => 'default',
+            'task'        => 'prior',
+            'driver'      => 'driverA',
+            'modality'    => 'text',
+            'dispatch'    => 'sync',
+            'status'      => 'ok',
+            'cost'        => 5.0,
+            'request'     => ['modality' => 'text'],
+            'finished_at' => now(),
+        ]);
+
+        config(['ai-tasks.budgets.default.monthly_usd' => 1.0]);
+
+        // Драйвер, що падає, якщо його реально викличуть — доводить, що pre-flight
+        // блокує ще до звернення до провайдера (issue #7, п.1).
+        $this->swapDriverMap(['driverA' => $this->throwingDriver(new \RuntimeException('should not be called'))]);
+
+        $this->expectException(\Fomvasss\AiTasks\Exceptions\BudgetExceededException::class);
+
+        AIFacade::send($this->makeTask(), 'driverA');
     }
 
     // ── stream() ──────────────────────────────────────────────────────────
@@ -161,5 +189,91 @@ class ExceptionHandlingTest extends TestCase
         $this->assertSame('error', $run->status);
         $this->assertSame('stream boom', $run->error);
         $this->assertNotNull($run->finished_at);
+    }
+
+    public function test_stream_enforces_budget_after_call_and_keeps_run_ok_with_cost(): void
+    {
+        config(['ai-tasks.budgets.default.monthly_usd' => 0.0]);
+
+        $this->swapDriverMap(['driverA' => $this->okDriver(cost: 10.0)]);
+
+        $this->expectException(\Fomvasss\AiTasks\Exceptions\BudgetExceededException::class);
+
+        try {
+            AIFacade::stream($this->makeTask(), fn ($c) => null, 'driverA');
+        } finally {
+            $run = AiRun::query()->latest('created_at')->first();
+            $this->assertSame('ok', $run->status);
+            $this->assertSame(10.0, $run->cost);
+        }
+    }
+
+    // ── queue() / ProcessAiPayload ──────────────────────────────────────────
+
+    public function test_queued_job_fails_run_when_preflight_budget_already_exceeded(): void
+    {
+        AiRun::create([
+            'tenant_id'   => 'default',
+            'task'        => 'prior',
+            'driver'      => 'driverA',
+            'modality'    => 'text',
+            'dispatch'    => 'sync',
+            'status'      => 'ok',
+            'cost'        => 5.0,
+            'request'     => ['modality' => 'text'],
+            'finished_at' => now(),
+        ]);
+
+        config(['ai-tasks.budgets.default.monthly_usd' => 1.0]);
+
+        $this->swapDriverMap(['driverA' => $this->throwingDriver(new \RuntimeException('should not be called'))]);
+
+        $task    = $this->makeTask();
+        $payload = $task->toPayload();
+        $ctx     = $task->context();
+        $run     = AiRun::startAsQueue('driverA', $payload, $ctx, $task);
+
+        $job = new \Fomvasss\AiTasks\Jobs\ProcessAiPayload(
+            driverName: 'driverA',
+            payload: $payload,
+            context: $ctx,
+            runId: $run->id,
+            taskClass: $task::class,
+            taskCtorArgs: $task->serializeForQueue(),
+        );
+
+        $job->handle(app(AiManager::class));
+
+        $run->refresh();
+        // Run вже мав статус 'running' до pre-flight — не повинен зависати там (issue #7).
+        $this->assertSame('error', $run->status);
+        $this->assertNotNull($run->finished_at);
+    }
+
+    public function test_queued_job_keeps_run_ok_with_cost_when_postcall_budget_exceeded(): void
+    {
+        config(['ai-tasks.budgets.default.monthly_usd' => 0.0]);
+
+        $this->swapDriverMap(['driverA' => $this->okDriver(cost: 10.0)]);
+
+        $task    = $this->makeTask();
+        $payload = $task->toPayload();
+        $ctx     = $task->context();
+        $run     = AiRun::startAsQueue('driverA', $payload, $ctx, $task);
+
+        $job = new \Fomvasss\AiTasks\Jobs\ProcessAiPayload(
+            driverName: 'driverA',
+            payload: $payload,
+            context: $ctx,
+            runId: $run->id,
+            taskClass: $task::class,
+            taskCtorArgs: $task->serializeForQueue(),
+        );
+
+        $job->handle(app(AiManager::class));
+
+        $run->refresh();
+        $this->assertSame('ok', $run->status);
+        $this->assertSame(10.0, $run->cost);
     }
 }

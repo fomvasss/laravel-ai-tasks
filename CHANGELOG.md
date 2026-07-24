@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [3.11.0] — 2026-07-24
+
+### Fixed
+- `Budget::ensureNotExceeded()` pre-flight check was a no-op: `getMonthlyRemaining()` clamps to `max(0.0, ...)`, so a pre-flight call with the default `$expectedCost = 0.0` compared `0.0 < 0.0`, which is never true — a tenant could be arbitrarily far over budget and the check would still pass. It now compares raw `spent + expectedCost` against the limit, unclamped (issue #7)
+- `BudgetExceededException` raised after a successful, billed provider call (`send()`, `stream()`, and the queued `ProcessAiPayload::handle()`) no longer discards the run via `fail()` — it's recorded via `finish()` instead, so `cost`/`status = ok` are persisted. Previously the real spend became invisible to `getSpentBetween()` (`status = 'ok' AND cost IS NOT NULL`), silently resetting the tenant's tracked spend on every overage
+- `AI::stream()` had no budget check at all after the call completed — streaming requests could spend without limit even with a `monthly_usd` cap configured. It now runs the same post-call check as `send()`
+- The queued path still distinguishes a pre-flight throw (run has no response yet — marked `error`, same as before) from a post-call throw (run already has a billed response — marked `ok` with cost, per above)
+
+### Tests
+- Added 4 cases to `ExceptionHandlingTest`: `send()` pre-flight blocks before any driver call once already over budget, `send()`/`stream()` keep the run `ok` with cost on post-call overage, queued job fails cleanly (not stuck `running`) on pre-flight overage, queued job keeps the run `ok` with cost on post-call overage
+
 ## [3.9.0] — 2026-07-24
 
 ### Fixed
