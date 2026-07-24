@@ -17,7 +17,9 @@ use Laravel\Ai\Messages\AssistantMessage;
 use Laravel\Ai\Messages\Message;
 use Laravel\Ai\Messages\UserMessage;
 use Laravel\Ai\Responses\Data\Usage;
+use Laravel\Ai\Responses\StructuredAgentResponse;
 use Laravel\Ai\Streaming\Events\TextDelta;
+use Laravel\Ai\StructuredAnonymousAgent;
 use Laravel\Ai\Transcription;
 
 final class LaravelAiDriver implements AiDriver
@@ -57,9 +59,7 @@ final class LaravelAiDriver implements AiDriver
         $model           = $p->options['model'] ?? $p->providerOverride['model'] ?? $this->cfg['model'];
         [$history, $prompt] = $this->splitMessages($p->messages);
 
-        $agent = $p->jsonMode
-            ? new JsonModeAgent($p->systemPrompt ?? '', $history, $p->tools)
-            : new AnonymousAgent($p->systemPrompt ?? '', $history, $p->tools);
+        $agent = $this->makeAgent($p, $history);
 
         $response = $agent->prompt(
             prompt: $prompt,
@@ -71,8 +71,20 @@ final class LaravelAiDriver implements AiDriver
 
         $usage         = $this->mapUsage($response->usage, $displayProvider);
         $usage['cost'] = Cost::calc($displayProvider, $usage, $this->cfg);
+        $structured    = $response instanceof StructuredAgentResponse ? $response->structured : null;
 
-        return new AiResponse(ok: true, content: $response->text, usage: $usage);
+        return new AiResponse(ok: true, content: $response->text, usage: $usage, structured: $structured);
+    }
+
+    private function makeAgent(AiPayload $p, array $history): AnonymousAgent
+    {
+        if ($p->schema !== null) {
+            return new StructuredAnonymousAgent($p->systemPrompt ?? '', $history, $p->tools, $p->schema->getClosure());
+        }
+
+        return $p->jsonMode
+            ? new JsonModeAgent($p->systemPrompt ?? '', $history, $p->tools)
+            : new AnonymousAgent($p->systemPrompt ?? '', $history, $p->tools);
     }
 
     private function streamText(AiPayload $p, callable $onChunk): AiResponse

@@ -135,6 +135,15 @@ class JsonModeTest extends TestCase
         $this->assertSame(['response_format' => ['type' => 'json_object']], $options);
     }
 
+    public function test_json_mode_agent_returns_response_format_for_openai_compatible(): void
+    {
+        $agent = new JsonModeAgent('', [], []);
+
+        $options = $agent->providerOptions(Lab::OpenAICompatible);
+
+        $this->assertSame(['response_format' => ['type' => 'json_object']], $options);
+    }
+
     // Anthropic — немає підтримки json_object mode
 
     public function test_json_mode_agent_returns_empty_for_anthropic(): void
@@ -165,6 +174,7 @@ class JsonModeTest extends TestCase
         $this->assertSame(['text' => ['format' => ['type' => 'json_object']]], $agent->providerOptions('xai'));
         $this->assertSame(['response_mime_type' => 'application/json'], $agent->providerOptions('gemini'));
         $this->assertSame(['response_format' => ['type' => 'json_object']], $agent->providerOptions('deepseek'));
+        $this->assertSame(['response_format' => ['type' => 'json_object']], $agent->providerOptions('openai-compatible'));
         $this->assertSame([], $agent->providerOptions('anthropic'));
         $this->assertSame([], $agent->providerOptions('unknown'));
     }

@@ -48,16 +48,27 @@ class AI
 
             event(new AiTaskStarted($task, $ctx, $run));
 
-            $resp = $this->manager->driver($driverName)->send($payload, $ctx);
+            try {
+                $resp = $this->manager->driver($driverName)->send($payload, $ctx);
 
-            if (! $resp->ok) {
-                $run->fail($resp->error ?? 'unknown_error');
-                event(new AiTaskFailed($task, $resp->error ?? 'unknown_error', $run));
-                $errors[] = "{$driverName}: {$resp->error}";
+                if (! $resp->ok) {
+                    $run->fail($resp->error ?? 'unknown_error');
+                    event(new AiTaskFailed($task, $resp->error ?? 'unknown_error', $run));
+                    $errors[] = "{$driverName}: {$resp->error}";
+                    continue;
+                }
+
+                app(Budget::class)->ensureNotExceeded($ctx->tenantId, (float) ($resp->usage['cost'] ?? 0.0));
+            } catch (BudgetExceededException $e) {
+                $run->fail($e->getMessage());
+                event(new AiTaskFailed($task, $e->getMessage(), $run));
+                throw $e;
+            } catch (\Throwable $e) {
+                $run->fail($e->getMessage());
+                event(new AiTaskFailed($task, $e->getMessage(), $run));
+                $errors[] = "{$driverName}: {$e->getMessage()}";
                 continue;
             }
-
-            app(Budget::class)->ensureNotExceeded($ctx->tenantId, (float) ($resp->usage['cost'] ?? 0.0));
 
             $run->finish($resp);
 
@@ -147,7 +158,14 @@ class AI
 
             event(new AiTaskStarted($task, $ctx, $run));
 
-            $resp = $this->manager->driver($driverName)->stream($payload, $ctx, $onChunk);
+            try {
+                $resp = $this->manager->driver($driverName)->stream($payload, $ctx, $onChunk);
+            } catch (\Throwable $e) {
+                $run->fail($e->getMessage());
+                event(new AiTaskFailed($task, $e->getMessage(), $run));
+                $errors[] = "{$driverName}: {$e->getMessage()}";
+                continue;
+            }
 
             $run->finish($resp);
 
@@ -204,8 +222,9 @@ class AI
     {
         $payload = $task->toPayload();
         $tools   = $task->tools();
+        $schema  = $task->schema();
 
-        if (empty($tools)) {
+        if (empty($tools) && $schema === null) {
             return $payload;
         }
 
@@ -218,6 +237,7 @@ class AI
             tools: $tools,
             jsonMode: $payload->jsonMode,
             providerOverride: $payload->providerOverride,
+            schema: $schema,
         );
     }
 

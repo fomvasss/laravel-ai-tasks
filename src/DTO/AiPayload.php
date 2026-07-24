@@ -4,8 +4,15 @@ declare(strict_types=1);
 
 namespace Fomvasss\AiTasks\DTO;
 
+use Laravel\SerializableClosure\SerializableClosure;
+
 final class AiPayload
 {
+    public readonly ?SerializableClosure $schema;
+
+    /**
+     * @param \Closure(\Illuminate\Contracts\JsonSchema\JsonSchema): array<string, \Illuminate\JsonSchema\Types\Type>|null $schema
+     */
     public function __construct(
         public readonly string  $modality,
         public readonly array   $messages = [],
@@ -15,5 +22,8 @@ final class AiPayload
         public readonly array   $tools = [],
         public readonly bool    $jsonMode = false,
         public readonly ?array  $providerOverride = null,
-    ) {}
+        ?\Closure               $schema = null,
+    ) {
+        $this->schema = $schema !== null ? new SerializableClosure($schema) : null;
+    }
 }

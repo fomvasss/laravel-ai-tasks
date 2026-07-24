@@ -4,6 +4,32 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [3.8.0] — 2026-07-24
+
+### Fixed
+- `AI::send()` and `AI::stream()` no longer leave the `ai_runs` row stuck at `running` when the driver throws (rate limit, insufficient credits, network error, etc.) — the exception is now caught, the run is marked `error` with `finished_at` set, `AiTaskFailed` fires, and (for `send()`) the fallback chain tries the next configured driver, same as an `AiResponse::$ok === false` result
+- `BudgetExceededException` raised after a successful response (post-cost check) is now recorded on the run as `error` before being rethrown, instead of leaving the run orphaned at `running`
+- The queue path (`ProcessAiPayload::handle()`) already handled this correctly via `AiRun::markAsDead()`; this fix brings the sync `send()`/`stream()` path to parity
+
+### Added
+- `AiTask::schema(): ?\Closure` — declare a JSON Schema for the response; enforced natively by the provider via `laravel/ai`'s `StructuredAnonymousAgent` (Anthropic, OpenAI, and others), instead of relying on `jsonMode` + prompt instructions
+- `AiPayload::$schema` — carries the schema closure (wrapped in `Laravel\SerializableClosure\SerializableClosure` so it survives `AI::queue()`'s job serialization)
+- `AiResponse::$structured` — the already-decoded array matching the declared schema; no manual `json_decode()`/markdown-fence stripping needed in `postprocess()`
+- `schema()` takes precedence over `jsonMode` when both are set on the same task; supported by `send()` and `queue()`, not by `stream()`
+
+### Changed
+- `composer.json`: `laravel/ai` floor raised to `^0.10` (was `^0.8`) — tested against v0.10.1; the floor was previously widened to `^0.8|^0.9|^0.10` but our own `Lab::OpenAICompatible` test coverage already requires 0.9+, and 0.x releases carry no cross-minor API guarantee, so there's no real benefit to the wider range
+
+### Tests
+- Added `SchemaTest` (10 cases): `AiTask::schema()` default/override, `AiPayload::schema` wrapping, `LaravelAiDriver` agent selection (structured vs jsonMode vs plain, precedence), schema flow through `AI::send()`
+- Added `ExceptionHandlingTest` (4 cases): driver throws on `send()`/`stream()` marks the run `error` and rethrows `AiDriverException`, fallback to the next driver after the first throws, `BudgetExceededException` marks the run `error` and rethrows
+
+## [3.7.2] — 2026-07-24
+
+### Fixed
+- `JsonModeAgent` now returns `response_format: {type: json_object}` for the `openai-compatible` driver (added in `laravel/ai` 0.9.0), matching the same treatment as DeepSeek/Groq/Mistral/OpenRouter — previously it fell through to an empty provider-options array
+- README: `providerOverride` example now recommends `driver: 'openai-compatible'` (with `url`) for self-hosted/third-party endpoints instead of overloading `driver: 'openai'`
+
 ## [3.3.2] — 2026-06-27
 
 ### Added

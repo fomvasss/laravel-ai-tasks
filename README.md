@@ -326,9 +326,45 @@ return new AiPayload(
 );
 ```
 
+## Structured Output (Schema)
+
+Implement `AiTask::schema(): ?\Closure` to declare a JSON Schema for the response. Unlike `jsonMode`, the schema is enforced by the provider itself (native structured output on Anthropic, OpenAI, and others via `laravel/ai`'s `StructuredAnonymousAgent`) — the model can't return a shape you didn't ask for.
+
+```php
+use Illuminate\Contracts\JsonSchema\JsonSchema;
+
+class ClassifyContentTask extends AiTask
+{
+    // ...
+
+    public function schema(): ?\Closure
+    {
+        return fn (JsonSchema $schema): array => [
+            'category'   => $schema->string()->enum(['tech', 'science', 'politics', 'sport', 'culture', 'business', 'other']),
+            'confidence' => $schema->number(),
+        ];
+    }
+}
+```
+
+`AiResponse::$structured` is already the decoded array matching your schema — no manual `json_decode()` or markdown-fence stripping needed in `postprocess()`:
+
+```php
+public function postprocess(AiResponse $resp): array|AiResponse
+{
+    return [
+        'ok'         => $resp->ok,
+        'category'   => $resp->structured['category']   ?? null,
+        'confidence' => $resp->structured['confidence']  ?? null,
+    ];
+}
+```
+
+`schema()` takes precedence over `jsonMode` when both are set. It works with `send()` and `queue()` (the closure is wrapped in `Laravel\SerializableClosure\SerializableClosure` automatically, so it survives the queue payload) but is not applied to `stream()`.
+
 ## JSON Mode
 
-Set `jsonMode: true` on `AiPayload` to tell the model to always respond with valid JSON — no markdown fences, no prose outside the object.
+Set `jsonMode: true` on `AiPayload` to tell the model to always respond with valid JSON — no markdown fences, no prose outside the object. Prefer `schema()` above for new tasks; `jsonMode` remains for providers/cases where you don't need a strict shape, or for streaming.
 
 ```php
 return new AiPayload(
@@ -347,7 +383,7 @@ The package translates `jsonMode: true` into the correct provider-specific param
 | OpenAI | `text.format: {type: json_object}` (Responses API) |
 | xAI | `text.format: {type: json_object}` (Responses API) |
 | Gemini | `generationConfig.response_mime_type: application/json` |
-| DeepSeek, Groq, Mistral, OpenRouter | `response_format: {type: json_object}` (Chat Completions) |
+| DeepSeek, Groq, Mistral, OpenRouter, OpenAI-compatible | `response_format: {type: json_object}` (Chat Completions) |
 | Anthropic | no native JSON mode — rely on system-prompt instructions |
 
 > **Tip:** Always describe the expected JSON structure in your `systemPrompt`. `jsonMode` guarantees valid JSON syntax; the shape is still controlled by the prompt.
@@ -382,10 +418,10 @@ How it works:
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `driver` | `string` | yes | Provider name (`openai`, `deepseek`, `anthropic`, …) |
+| `driver` | `string` | yes | Provider name (`openai`, `deepseek`, `anthropic`, …). Use `openai-compatible` for self-hosted or third-party endpoints (LM Studio, vLLM, Together, …) instead of overloading `openai` |
 | `key` | `string` | yes | API key |
 | `model` | `string` | no | Model name (falls back to `options['model']`, then driver default) |
-| `url` | `string` | no | Custom base URL (for OpenAI-compatible endpoints) |
+| `url` | `string` | no | Custom base URL (required for `openai-compatible`) |
 | `organization` | `string` | no | OpenAI organization ID |
 
 ## Queued Tasks

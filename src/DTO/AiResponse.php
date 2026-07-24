@@ -13,5 +13,6 @@ final class AiResponse
         public readonly array   $raw       = [],
         public readonly ?string $error     = null,
         public readonly array   $toolCalls = [],
+        public readonly ?array  $structured = null,
     ) {}
 }

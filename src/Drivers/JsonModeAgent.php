@@ -11,7 +11,7 @@ use Laravel\Ai\Enums\Lab;
 final class JsonModeAgent extends AnonymousAgent implements HasProviderOptions
 {
     // Провайдери що використовують Chat Completions-сумісний response_format
-    private const RESPONSE_FORMAT_PROVIDERS = ['deepseek', 'groq', 'openrouter', 'mistral'];
+    private const RESPONSE_FORMAT_PROVIDERS = ['deepseek', 'groq', 'openrouter', 'mistral', 'openai-compatible'];
 
     public function providerOptions(Lab|string $provider): array
     {

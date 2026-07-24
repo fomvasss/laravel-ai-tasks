@@ -58,6 +58,18 @@ abstract class AiTask
         return [];
     }
 
+    /**
+     * Declare a JSON Schema for structured, provider-native output.
+     * When set, the model's response is validated/shaped against this schema
+     * instead of relying on jsonMode + prompt instructions.
+     *
+     * @return (\Closure(\Illuminate\Contracts\JsonSchema\JsonSchema): array<string, \Illuminate\JsonSchema\Types\Type>)|null
+     */
+    public function schema(): ?\Closure
+    {
+        return null;
+    }
+
     public function jobTimeout(): int
     {
         return 300;
