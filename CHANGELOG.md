@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [3.8.1] — 2026-07-24
+
+### Fixed
+- `config/ai-tasks.php`: default DeepSeek model changed from `deepseek-chat` to `deepseek-v4-flash` — DeepSeek's API no longer accepts the `deepseek-chat` alias ("The supported API model names are deepseek-v4-pro or deepseek-v4-flash"), so any consumer relying on the package default without an explicit `DEEPSEEK_MODEL` env var got a hard 400 on every DeepSeek request
+
 ## [3.8.0] — 2026-07-24
 
 ### Fixed

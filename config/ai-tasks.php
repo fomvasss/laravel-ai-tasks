@@ -111,7 +111,7 @@ return [
         ],
 
         'deepseek' => [
-            'model' => env('DEEPSEEK_MODEL', 'deepseek-chat'),
+            'model' => env('DEEPSEEK_MODEL', 'deepseek-v4-flash'),
             'price' => [
                 'in'  => 0.27,
                 'out' => 1.10,
