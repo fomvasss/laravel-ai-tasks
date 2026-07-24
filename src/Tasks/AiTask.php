@@ -70,6 +70,16 @@ abstract class AiTask
         return null;
     }
 
+    /**
+     * Force whether and which tool the model must call.
+     * Accepts a \Laravel\Ai\ToolChoice instance, a mode string ('auto'|'none'|'required'),
+     * or a tool name (forces that specific tool).
+     */
+    public function toolChoice(): \Laravel\Ai\ToolChoice|string|array|null
+    {
+        return null;
+    }
+
     public function jobTimeout(): int
     {
         return 300;

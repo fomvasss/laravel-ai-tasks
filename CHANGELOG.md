@@ -17,12 +17,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `AiResponse::$structured` — the already-decoded array matching the declared schema; no manual `json_decode()`/markdown-fence stripping needed in `postprocess()`
 - `schema()` takes precedence over `jsonMode` when both are set on the same task; supported by `send()` and `queue()`, not by `stream()`
 
+- `AiTask::toolChoice(): \Laravel\Ai\ToolChoice|string|array|null` — force whether and which tool the model must call (`auto`/`none`/`required`/a specific tool name), on top of `AiTask::tools()`; backed by `laravel/ai`'s `ToolChoice` (Gemini, OpenAI, Anthropic, 0.9.1+)
+- `AiPayload::$toolChoice` — coerced via `ToolChoice::from()`, accepts a `ToolChoice` instance, a mode string, or a `['tool' => 'name']` array
+- `Fomvasss\AiTasks\Drivers\Concerns\HasToolChoice` trait + `AnonymousToolChoiceAgent`/`StructuredToolChoiceAgent` — apply the forced tool choice regardless of which agent class (`AnonymousAgent`, `JsonModeAgent`, `StructuredAnonymousAgent`-based) ends up handling the request
+
 ### Changed
 - `composer.json`: `laravel/ai` floor raised to `^0.10` (was `^0.8`) — tested against v0.10.1; the floor was previously widened to `^0.8|^0.9|^0.10` but our own `Lab::OpenAICompatible` test coverage already requires 0.9+, and 0.x releases carry no cross-minor API guarantee, so there's no real benefit to the wider range
 
 ### Tests
 - Added `SchemaTest` (10 cases): `AiTask::schema()` default/override, `AiPayload::schema` wrapping, `LaravelAiDriver` agent selection (structured vs jsonMode vs plain, precedence), schema flow through `AI::send()`
 - Added `ExceptionHandlingTest` (4 cases): driver throws on `send()`/`stream()` marks the run `error` and rethrows `AiDriverException`, fallback to the next driver after the first throws, `BudgetExceededException` marks the run `error` and rethrows
+- Added `ToolChoiceTest` (11 cases): `AiTask::toolChoice()` default, `AiPayload::toolChoice` coercion (instance/string/array), `LaravelAiDriver` agent selection across the schema/jsonMode/plain branches, tool choice flow through `AI::send()`
 
 ## [3.7.2] — 2026-07-24
 

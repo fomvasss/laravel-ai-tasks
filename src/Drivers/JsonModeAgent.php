@@ -4,12 +4,15 @@ declare(strict_types=1);
 
 namespace Fomvasss\AiTasks\Drivers;
 
+use Fomvasss\AiTasks\Drivers\Concerns\HasToolChoice;
 use Laravel\Ai\AnonymousAgent;
 use Laravel\Ai\Contracts\HasProviderOptions;
 use Laravel\Ai\Enums\Lab;
 
 final class JsonModeAgent extends AnonymousAgent implements HasProviderOptions
 {
+    use HasToolChoice;
+
     // Провайдери що використовують Chat Completions-сумісний response_format
     private const RESPONSE_FORMAT_PROVIDERS = ['deepseek', 'groq', 'openrouter', 'mistral', 'openai-compatible'];
 

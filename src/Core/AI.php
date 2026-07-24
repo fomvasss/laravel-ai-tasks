@@ -220,11 +220,12 @@ class AI
 
     private function payloadWithTools(AiTask $task): AiPayload
     {
-        $payload = $task->toPayload();
-        $tools   = $task->tools();
-        $schema  = $task->schema();
+        $payload    = $task->toPayload();
+        $tools      = $task->tools();
+        $schema     = $task->schema();
+        $toolChoice = $task->toolChoice();
 
-        if (empty($tools) && $schema === null) {
+        if (empty($tools) && $schema === null && $toolChoice === null) {
             return $payload;
         }
 
@@ -238,6 +239,7 @@ class AI
             jsonMode: $payload->jsonMode,
             providerOverride: $payload->providerOverride,
             schema: $schema,
+            toolChoice: $toolChoice,
         );
     }
 

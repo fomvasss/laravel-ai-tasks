@@ -19,7 +19,6 @@ use Laravel\Ai\Messages\UserMessage;
 use Laravel\Ai\Responses\Data\Usage;
 use Laravel\Ai\Responses\StructuredAgentResponse;
 use Laravel\Ai\Streaming\Events\TextDelta;
-use Laravel\Ai\StructuredAnonymousAgent;
 use Laravel\Ai\Transcription;
 
 final class LaravelAiDriver implements AiDriver
@@ -79,12 +78,16 @@ final class LaravelAiDriver implements AiDriver
     private function makeAgent(AiPayload $p, array $history): AnonymousAgent
     {
         if ($p->schema !== null) {
-            return new StructuredAnonymousAgent($p->systemPrompt ?? '', $history, $p->tools, $p->schema->getClosure());
+            $agent = new StructuredToolChoiceAgent($p->systemPrompt ?? '', $history, $p->tools, $p->schema->getClosure());
+        } elseif ($p->jsonMode) {
+            $agent = new JsonModeAgent($p->systemPrompt ?? '', $history, $p->tools);
+        } elseif ($p->toolChoice !== null) {
+            $agent = new AnonymousToolChoiceAgent($p->systemPrompt ?? '', $history, $p->tools);
+        } else {
+            return new AnonymousAgent($p->systemPrompt ?? '', $history, $p->tools);
         }
 
-        return $p->jsonMode
-            ? new JsonModeAgent($p->systemPrompt ?? '', $history, $p->tools)
-            : new AnonymousAgent($p->systemPrompt ?? '', $history, $p->tools);
+        return $agent->withToolChoice($p->toolChoice);
     }
 
     private function streamText(AiPayload $p, callable $onChunk): AiResponse

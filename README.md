@@ -362,6 +362,24 @@ public function postprocess(AiResponse $resp): array|AiResponse
 
 `schema()` takes precedence over `jsonMode` when both are set. It works with `send()` and `queue()` (the closure is wrapped in `Laravel\SerializableClosure\SerializableClosure` automatically, so it survives the queue payload) but is not applied to `stream()`.
 
+## Tool Choice
+
+Implement `AiTask::toolChoice()` to force whether and which tool the model must call, on top of `AiTask::tools()`. Backed by `laravel/ai`'s `ToolChoice` (Gemini, OpenAI, Anthropic).
+
+```php
+use Laravel\Ai\ToolChoice;
+
+public function toolChoice(): ToolChoice|string|array|null
+{
+    return ToolChoice::required;      // model must call some tool
+    // return ToolChoice::none;       // model must not call any tool
+    // return ToolChoice::tool('current_date'); // model must call this specific tool
+    // return 'required';             // string modes are coerced too
+}
+```
+
+The forced choice is automatically released after the first step, so a forced tool call is still followed by a normal text answer using the tool's result. `toolChoice()` defaults to `null` (provider's own default, usually `auto`) and has no effect without `tools()`.
+
 ## JSON Mode
 
 Set `jsonMode: true` on `AiPayload` to tell the model to always respond with valid JSON — no markdown fences, no prose outside the object. Prefer `schema()` above for new tasks; `jsonMode` remains for providers/cases where you don't need a strict shape, or for streaming.
