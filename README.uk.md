@@ -300,9 +300,63 @@ return new AiPayload(
 );
 ```
 
+## Структурований вивід (Schema)
+
+Реалізуйте `AiTask::schema(): ?\Closure`, щоб оголосити JSON Schema для відповіді. На відміну від `jsonMode`, схему валідує сам провайдер (нативний structured output на Anthropic, OpenAI та інших через `StructuredAnonymousAgent` пакету `laravel/ai`) — модель фізично не може повернути іншу форму, ніж ви попросили.
+
+```php
+use Illuminate\Contracts\JsonSchema\JsonSchema;
+
+class ClassifyContentTask extends AiTask
+{
+    // ...
+
+    public function schema(): ?\Closure
+    {
+        return fn (JsonSchema $schema): array => [
+            'category'   => $schema->string()->enum(['tech', 'science', 'politics', 'sport', 'culture', 'business', 'other']),
+            'confidence' => $schema->number(),
+        ];
+    }
+}
+```
+
+`AiResponse::$structured` — це вже задекодований масив за вашою схемою, ручний `json_decode()` чи прибирання markdown-обгорток у `postprocess()` більше не потрібні:
+
+```php
+public function postprocess(AiResponse $resp): array|AiResponse
+{
+    return [
+        'ok'         => $resp->ok,
+        'category'   => $resp->structured['category']   ?? null,
+        'confidence' => $resp->structured['confidence']  ?? null,
+    ];
+}
+```
+
+`schema()` має пріоритет над `jsonMode`, якщо задано обидва. Працює з `send()` і `queue()` (замикання автоматично обгортається в `Laravel\SerializableClosure\SerializableClosure`, тому переживає серіалізацію job-у), але не застосовується до `stream()`.
+
+## Вибір тула (Tool Choice)
+
+Реалізуйте `AiTask::toolChoice()`, щоб примусити модель викликати (чи навпаки — не викликати) конкретний тул, на додачу до `AiTask::tools()`. Працює через `ToolChoice` пакету `laravel/ai` (Gemini, OpenAI, Anthropic).
+
+```php
+use Laravel\Ai\ToolChoice;
+
+public function toolChoice(): ToolChoice|string|array|null
+{
+    return ToolChoice::required;      // модель має викликати якийсь тул
+    // return ToolChoice::none;       // модель не повинна викликати жоден тул
+    // return ToolChoice::tool('current_date'); // модель має викликати саме цей тул
+    // return 'required';             // рядкові режими теж приймаються
+}
+```
+
+Примусовий вибір автоматично знімається після першого кроку, тому за примусовим tool-викликом все одно йде звичайна текстова відповідь із результатом тула. `toolChoice()` за замовчуванням `null` (дефолт провайдера, зазвичай `auto`) і не має ефекту без `tools()`.
+
 ## JSON-режим
 
-Виставте `jsonMode: true` в `AiPayload`, щоб модель завжди повертала валідний JSON — без markdown-обгорток і тексту поза об'єктом.
+Виставте `jsonMode: true` в `AiPayload`, щоб модель завжди повертала валідний JSON — без markdown-обгорток і тексту поза об'єктом. Для нових задач надавайте перевагу `schema()` вище; `jsonMode` лишається для випадків, де сувора форма не потрібна, або для стрімінгу.
 
 ```php
 return new AiPayload(
@@ -321,7 +375,7 @@ return new AiPayload(
 | OpenAI | `text.format: {type: json_object}` (Responses API) |
 | xAI | `text.format: {type: json_object}` (Responses API) |
 | Gemini | `generationConfig.response_mime_type: application/json` |
-| DeepSeek, Groq, Mistral, OpenRouter | `response_format: {type: json_object}` (Chat Completions) |
+| DeepSeek, Groq, Mistral, OpenRouter, OpenAI-сумісний | `response_format: {type: json_object}` (Chat Completions) |
 | Anthropic | нативного JSON-режиму немає — покладайся на інструкції в системному промпті |
 
 > **Порада:** Завжди описуй очікувану JSON-структуру в `systemPrompt`. `jsonMode` гарантує синтаксичну валідність JSON; форма об'єкта залишається на відповідальності промпту.
@@ -338,7 +392,7 @@ return new AiPayload(
     providerOverride: [
         'driver' => 'deepseek',      // будь-який драйвер laravel/ai
         'key'    => $this->apiKey,   // ключ від користувача
-        'model'  => 'deepseek-chat', // опціонально; перекриває дефолт драйвера
+        'model'  => 'deepseek-v4-flash', // опціонально; перекриває дефолт драйвера
         // 'url'          => '...',  // опціонально; кастомний base URL
         // 'organization' => '...',  // опціонально; OpenAI org
     ],
@@ -356,10 +410,10 @@ return new AiPayload(
 
 | Поле | Тип | Обов'язкове | Опис |
 |---|---|---|---|
-| `driver` | `string` | так | Назва провайдера (`openai`, `deepseek`, `anthropic`, …) |
+| `driver` | `string` | так | Назва провайдера (`openai`, `deepseek`, `anthropic`, …). Для self-hosted/сторонніх endpoint-ів (LM Studio, vLLM, Together, …) використовуйте `openai-compatible` замість перевикористання `openai` |
 | `key` | `string` | так | API-ключ |
 | `model` | `string` | ні | Назва моделі (fallback: `options['model']`, потім дефолт драйвера) |
-| `url` | `string` | ні | Кастомний base URL (для OpenAI-сумісних endpoint-ів) |
+| `url` | `string` | ні | Кастомний base URL (обов'язковий для `openai-compatible`) |
 | `organization` | `string` | ні | OpenAI organization ID |
 
 ## Задачі в черзі

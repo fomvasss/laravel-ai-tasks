@@ -418,7 +418,7 @@ return new AiPayload(
     providerOverride: [
         'driver' => 'deepseek',      // any driver supported by laravel/ai
         'key'    => $this->apiKey,   // user-supplied API key
-        'model'  => 'deepseek-chat', // optional; overrides driver default
+        'model'  => 'deepseek-v4-flash', // optional; overrides driver default
         // 'url'          => '...',  // optional; custom base URL
         // 'organization' => '...',  // optional; OpenAI org scoping
     ],
