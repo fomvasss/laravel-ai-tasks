@@ -41,7 +41,7 @@ Configurable via `config/ai-tasks.php`:
 
 - PHP ^8.3
 - Laravel ^12 | ^13
-- [laravel/ai](https://laravel.com/docs/ai-sdk) ^0.8
+- [laravel/ai](https://laravel.com/docs/ai-sdk) ^0.10
 
 ## Installation
 
