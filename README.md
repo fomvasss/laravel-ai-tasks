@@ -354,6 +354,26 @@ public function postprocess(AiResponse $resp): array|AiResponse
 
 `schema()` takes precedence over `jsonMode` when both are set. It works with `send()` and `queue()` (the closure is wrapped in `Laravel\SerializableClosure\SerializableClosure` automatically, so it survives the queue payload) but is not applied to `stream()`.
 
+### Provider-Specific Options
+
+For schema-based tasks, pass provider-specific request fields via `AiPayload::$options['provider_options']` — an array keyed by driver name. Only the matching driver receives its entry; every other provider's request is left untouched.
+
+```php
+return new AiPayload(
+    modality: 'text',
+    messages: [new UserMessage($this->text)],
+    systemPrompt: $this->instructions,
+    options: [
+        'temperature' => 0.3,
+        'provider_options' => [
+            'deepseek' => ['thinking' => ['type' => 'disabled']], // DeepSeek-only, ignored by other drivers
+        ],
+    ],
+);
+```
+
+Backed by `laravel/ai`'s `HasProviderOptions` contract — `StructuredToolChoiceAgent::providerOptions(Lab|string $provider)` returns the array set for the resolved driver, or `[]` if nothing was configured for it. Useful for provider-native knobs the package doesn't wrap explicitly (DeepSeek `thinking`, Anthropic extended-thinking budgets, Gemini `thinkingConfig`, …). Only applies when `schema()` is used (`StructuredToolChoiceAgent`); has no effect with `jsonMode` or plain-text tasks.
+
 ## Tool Choice
 
 Implement `AiTask::toolChoice()` to force whether and which tool the model must call, on top of `AiTask::tools()`. Backed by `laravel/ai`'s `ToolChoice` (Gemini, OpenAI, Anthropic).

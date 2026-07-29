@@ -78,7 +78,7 @@ final class LaravelAiDriver implements AiDriver
     private function makeAgent(AiPayload $p, array $history): AnonymousAgent
     {
         if ($p->schema !== null) {
-            $agent = new StructuredToolChoiceAgent($p->systemPrompt ?? '', $history, $p->tools, $p->schema->getClosure());
+            $agent = new StructuredToolChoiceAgent($p->systemPrompt ?? '', $history, $p->tools, $p->schema->getClosure(), $p->options['provider_options'] ?? []);
         } elseif ($p->jsonMode) {
             $agent = new JsonModeAgent($p->systemPrompt ?? '', $history, $p->tools);
         } elseif ($p->toolChoice !== null) {

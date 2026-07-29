@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [3.13.0] — 2026-07-29
+
+### Added
+- `StructuredToolChoiceAgent` now implements `Laravel\Ai\Contracts\HasProviderOptions`, and `AiPayload::$options['provider_options']` (array keyed by driver name, e.g. `['deepseek' => ['thinking' => ['type' => 'disabled']]]`) flows through `LaravelAiDriver::makeAgent()` into it. Previously a schema-based task (`schema()` set) had no way to pass provider-specific request body fields — `AiPayload` only exposed `model`/`attachments`/`timeout` to the driver, everything else was fixed by the agent class. Scoped per-driver by design (`providerOptions(Lab|string $provider)` returns `[]` for any driver key not present), so setting DeepSeek-only options never leaks into OpenAI/Anthropic/etc. requests — verified both in this package's test suite and against real DeepSeek + OpenAI API calls in a downstream project. Motivated by DeepSeek's `thinking` toggle (`{"type": "disabled"}`), though in practice disabling `thinking` did **not** fix DeepSeek's occasional empty-`content` responses (confirmed via live testing — content came back blank even with `reasoning_tokens: 0`), so no default is applied; the mechanism is kept as general-purpose infrastructure for callers who need provider-specific tuning (e.g. Anthropic extended-thinking budgets, Gemini `thinkingConfig`)
+
 ## [3.12.0] — 2026-07-29
 
 > ⚠️ **Action required before deploying this version:** run

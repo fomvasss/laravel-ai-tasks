@@ -328,6 +328,26 @@ public function postprocess(AiResponse $resp): array|AiResponse
 
 `schema()` має пріоритет над `jsonMode`, якщо задано обидва. Працює з `send()` і `queue()` (замикання автоматично обгортається в `Laravel\SerializableClosure\SerializableClosure`, тому переживає серіалізацію job-у), але не застосовується до `stream()`.
 
+### Провайдер-специфічні опції
+
+Для schema-задач можна передати провайдер-специфічні поля запиту через `AiPayload::$options['provider_options']` — масив, ключований назвою драйвера. Дійде лише до відповідного драйвера; на запити інших провайдерів не впливає.
+
+```php
+return new AiPayload(
+    modality: 'text',
+    messages: [new UserMessage($this->text)],
+    systemPrompt: $this->instructions,
+    options: [
+        'temperature' => 0.3,
+        'provider_options' => [
+            'deepseek' => ['thinking' => ['type' => 'disabled']], // тільки для DeepSeek, інші драйвери ігнорують
+        ],
+    ],
+);
+```
+
+Реалізовано через контракт `HasProviderOptions` пакету `laravel/ai` — `StructuredToolChoiceAgent::providerOptions(Lab|string $provider)` повертає масив, заданий для резолвленого драйвера, або `[]`, якщо для нього нічого не налаштовано. Корисно для нативних параметрів провайдера, які пакет не обгортає явно (DeepSeek `thinking`, Anthropic extended-thinking бюджети, Gemini `thinkingConfig` тощо). Працює лише коли використовується `schema()` (`StructuredToolChoiceAgent`); на `jsonMode` чи звичайні text-задачі не впливає.
+
 ## Вибір тула (Tool Choice)
 
 Реалізуйте `AiTask::toolChoice()`, щоб примусити модель викликати (чи навпаки — не викликати) конкретний тул, на додачу до `AiTask::tools()`. Працює через `ToolChoice` пакету `laravel/ai` (Gemini, OpenAI, Anthropic).
