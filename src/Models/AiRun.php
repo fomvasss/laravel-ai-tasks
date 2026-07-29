@@ -55,7 +55,7 @@ class AiRun extends Model
         ]);
     }
 
-    public static function startAsQueue(string $driver, AiPayload $p, AiContext $ctx, AiTask $task): self
+    public static function startAsQueue(string $driver, AiPayload $p, AiContext $ctx, AiTask $task, ?string $idempotencyKey = null): self
     {
         return static::create([
             'tenant_id'       => $ctx->tenantId,
@@ -66,7 +66,7 @@ class AiRun extends Model
             'subject_id'      => $ctx->subjectId,
             'dispatch'        => 'queue',
             'status'          => 'queued',
-            'idempotency_key' => $task->idempotencyKey(),
+            'idempotency_key' => $idempotencyKey ?? $task->idempotencyKey(),
             'request'         => static::minifyRequest($p),
         ]);
     }

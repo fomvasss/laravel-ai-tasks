@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [3.14.0] — 2026-07-29
+
+### Added
+- `AiTask::maxRetries(): int` (default `0`) and `AiTask::isAcceptable(AiResponse|array $result): bool` (default `true`) — opt-in retry for the queued path (`AI::queue()`) when a provider responds "successfully" (`ok: true`, no exception) but the postprocessed result is still unusable — e.g. a reasoning model (DeepSeek, Gemini thinking, ...) spending its whole token budget on internal reasoning and returning blank/whitespace content. Previously the only way to handle this was manual, duplicated per-task boilerplate: an `$attempt` constructor param plus hand-rolled `idempotencyKey()`/`serializeForQueue()` changes to dodge the idempotency-key dedup on re-dispatch (see two real instances of this in the itschats project this was extracted from). Task authors now implement two small methods and nothing else — `PostprocessAiResult` owns all retry bookkeeping: it derives the retry idempotency key itself (`$task->idempotencyKey() . '-retry' . $n`, computed outside the task) and dispatches a fresh `ProcessAiPayload`/`PostprocessAiResult` pair reusing the original run's driver. The task class never sees or tracks its own attempt number. Does not apply to `AI::send()`/`AI::stream()` (synchronous paths only fire once, as before)
+- `AiTaskCompleted::$attemptsExhausted` (bool, default `false`) — `true` only when `isAcceptable()` rejected the result and `maxRetries()` attempts were already used up. Lets a listener tell "final, exhausted failure" apart from a normal accepted result without re-deriving the task's own `isAcceptable()` check
+- `Core\AI::payloadWithTools()` is now `public static` (was `private`) so `PostprocessAiResult` can rebuild the payload for a retry dispatch without duplicating agent/schema/tool-choice wiring
+- `AiRun::startAsQueue()` accepts an optional `$idempotencyKey` param to override `$task->idempotencyKey()` — used internally for retry-generation keys
+- `ProcessAiPayload`/`PostprocessAiResult` gained an `$attempt` constructor param (default `0`, internal bookkeeping only — never surfaced to task authors)
+
+Covered by 5 new tests (`tests/RetryTest.php`, `Queue::fake()`/`Event::fake()`) plus live end-to-end verification against a real queue (Horizon) and real provider (OpenAI) in a downstream project — including a stale-worker gotcha worth knowing: long-running queue workers keep old bytecode in memory, so a code change to this package during local development needs a worker restart (`horizon:terminate`) to take effect, same as any other Laravel queue worker.
+
+**Known limitation:** the attempt number is not persisted to `ai_runs` — a deliberate trade-off to avoid another "action required" migration release (see 3.12.0 above). It's only recoverable from the `idempotency_key` suffix (`...-retry1`, `...-retry2`, ...); there's no `attempt` column or `retry_of_run_id` link between a run and its retries, so the dashboard doesn't show the chain structurally. No migration is needed for this release — if that ever becomes a real need (reporting/analytics on retry frequency), it's a separate future migration.
+
 ## [3.13.0] — 2026-07-29
 
 ### Added

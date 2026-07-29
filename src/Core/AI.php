@@ -30,7 +30,7 @@ class AI
 
     public function send(AiTask $task, array|string $drivers = []): AiResponse
     {
-        $payload = $this->payloadWithTools($task);
+        $payload = self::payloadWithTools($task);
         $ctx     = $task->context();
 
         app(Budget::class)->ensureNotExceeded($ctx->tenantId);
@@ -99,7 +99,7 @@ class AI
             );
         }
 
-        $payload = $this->payloadWithTools($task);
+        $payload = self::payloadWithTools($task);
         $ctx     = $task->context();
 
         $driverName = $this->resolveFirstConfiguredDriver($task, $drivers, $payload);
@@ -142,7 +142,7 @@ class AI
 
     public function stream(AiTask $task, callable $onChunk, array|string $drivers = []): AiResponse
     {
-        $payload = $this->payloadWithTools($task);
+        $payload = self::payloadWithTools($task);
         $ctx     = $task->context();
 
         app(Budget::class)->ensureNotExceeded($ctx->tenantId);
@@ -226,7 +226,7 @@ class AI
         return $key && trim((string) $key) !== '';
     }
 
-    private function payloadWithTools(AiTask $task): AiPayload
+    public static function payloadWithTools(AiTask $task): AiPayload
     {
         $payload    = $task->toPayload();
         $tools      = $task->tools();

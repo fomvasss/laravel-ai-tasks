@@ -541,6 +541,50 @@ class ChatTask extends AiTask
 
 For chat/assistant integrations where the same question can be asked multiple times: as long as the conversation history (or a `messageId`) is part of `serializeForQueue()`, each turn produces a different key and idempotency works correctly — it only blocks genuine technical duplicates (double-send, queue retry).
 
+### Retrying an Unacceptable Result
+
+A provider can respond "successfully" (`ok: true`, no exception) with a result that's still unusable — most commonly a reasoning model (DeepSeek, Gemini thinking, ...) spending its whole token budget on internal reasoning and returning blank/whitespace content. Implement `maxRetries()` and `isAcceptable()` to retry automatically before giving up:
+
+```php
+class ChatReplyTask extends AiTask implements ShouldQueueAi
+{
+    // ...
+
+    public function maxRetries(): int
+    {
+        return 1;
+    }
+
+    public function isAcceptable(AiResponse|array $result): bool
+    {
+        return !empty($result['ok']) && trim(strip_tags($result['message'] ?? '')) !== '';
+    }
+}
+```
+
+`isAcceptable()` receives whatever `postprocess()` returned. No other change is needed — no `$attempt` constructor param, no `idempotencyKey()`/`serializeForQueue()` changes. `PostprocessAiResult` owns all the retry bookkeeping: it derives the retry's idempotency key itself (`idempotencyKey() . '-retry' . $n`) and dispatches a fresh `ProcessAiPayload`/`PostprocessAiResult` pair on the same driver as the original run. The task class never sees or tracks its own attempt number.
+
+Once retries are exhausted (or immediately, if `maxRetries()` is `0`, the default), `AiTaskCompleted` fires as usual — check `$event->attemptsExhausted` to tell a final, unresolved failure apart from a normal accepted result, without re-deriving `isAcceptable()` yourself:
+
+```php
+class ChatReplyCompletedListener
+{
+    public function handle(AiTaskCompleted $event): void
+    {
+        if ($event->attemptsExhausted) {
+            // escalate to a human, mark as failed — whatever fits your domain
+            return;
+        }
+
+        // normal handling — $event->response is an accepted result
+    }
+}
+```
+
+Only applies to the queued path (`AI::queue()`); `AI::send()`/`AI::stream()` are synchronous and always fire once.
+
+> **Note:** the attempt number is not persisted to `ai_runs` — only recoverable from the `idempotency_key` suffix (`...-retry1`, `...-retry2`, ...). There is no `attempt` column or a link between a run and its retries, so the dashboard doesn't show the retry chain structurally.
+
 ## Laravel Octane
 
 No configuration needed. The package handles Octane automatically:

@@ -38,6 +38,7 @@ class ProcessAiPayload implements ShouldQueue
         public readonly string    $taskClass,
         public readonly array     $taskCtorArgs = [],
         int                       $timeout = 300,
+        public readonly int       $attempt = 0,
     ) {
         $this->timeout = $timeout;
     }
@@ -80,7 +81,7 @@ class ProcessAiPayload implements ShouldQueue
 
             $resp = $this->runPostprocess($resp);
 
-            dispatch(new PostprocessAiResult($run->id, $this->taskClass, $this->taskCtorArgs))
+            dispatch(new PostprocessAiResult($run->id, $this->taskClass, $this->taskCtorArgs, $this->attempt))
                 ->onQueue(config('ai-tasks.queues.post'));
 
         } catch (BudgetExceededException $e) {

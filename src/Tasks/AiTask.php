@@ -95,6 +95,30 @@ abstract class AiTask
         return $response;
     }
 
+    /**
+     * Maximum number of automatic retries when isAcceptable() rejects the postprocessed result —
+     * a response the provider returned "successfully" (ok=true, no exception) but that is still
+     * unusable (e.g. blank/whitespace content from a reasoning model that spent its whole token
+     * budget on internal reasoning). Only applies to the queued path (AI::queue()); AI::send()/
+     * stream() do not retry. Retries reuse the original run's driver and dispatch fresh
+     * ProcessAiPayload/PostprocessAiResult jobs — the task itself never sees or tracks the attempt
+     * number, and serializeForQueue()/idempotencyKey() need no changes to support this.
+     */
+    public function maxRetries(): int
+    {
+        return 0;
+    }
+
+    /**
+     * Whether the postprocessed result is usable. Return false for a result that came back
+     * "successfully" from the provider but is still semantically unusable — see maxRetries().
+     * Only consulted when maxRetries() > 0.
+     */
+    public function isAcceptable(AiResponse|array $result): bool
+    {
+        return true;
+    }
+
     public function idempotencyKey(): ?string
     {
         $args = $this->serializeForQueue();

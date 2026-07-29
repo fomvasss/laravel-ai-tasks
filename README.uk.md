@@ -515,6 +515,50 @@ class ChatTask extends AiTask
 
 Для чат/асистент-інтеграцій, де одне й те саме питання може задаватись кілька разів: поки в `serializeForQueue()` є `messageId` або повна історія чату — кожен turn дає унікальний ключ, і idempotency захищає тільки від технічних дублів (double-send, retry черги).
 
+### Повторна спроба при непридатному результаті
+
+Провайдер може відповісти "успішно" (`ok: true`, без винятку), але результат все одно непридатний — найчастіше reasoning-модель (DeepSeek, Gemini thinking тощо) витрачає весь token-бюджет на внутрішнє reasoning і повертає порожній/пробільний content. Реалізуй `maxRetries()` і `isAcceptable()`, щоб автоматично повторити спробу перш ніж здатись:
+
+```php
+class ChatReplyTask extends AiTask implements ShouldQueueAi
+{
+    // ...
+
+    public function maxRetries(): int
+    {
+        return 1;
+    }
+
+    public function isAcceptable(AiResponse|array $result): bool
+    {
+        return !empty($result['ok']) && trim(strip_tags($result['message'] ?? '')) !== '';
+    }
+}
+```
+
+`isAcceptable()` отримує те, що повернув `postprocess()`. Більше нічого міняти не треба — ні конструкторного `$attempt`, ні змін у `idempotencyKey()`/`serializeForQueue()`. Всю бухгалтерію ретраю бере на себе `PostprocessAiResult`: сам рахує idempotency-ключ ретраю (`idempotencyKey() . '-retry' . $n`) і диспетчить нову пару `ProcessAiPayload`/`PostprocessAiResult` на тому ж драйвері, що й оригінальний run. Task-клас взагалі не бачить і не тримає власний номер спроби.
+
+Коли спроби вичерпані (або одразу, якщо `maxRetries()` — `0` за замовчуванням), `AiTaskCompleted` фаєриться як завжди — перевір `$event->attemptsExhausted`, щоб відрізнити фінальну невдачу від звичайного прийнятого результату, не дублюючи власну перевірку `isAcceptable()`:
+
+```php
+class ChatReplyCompletedListener
+{
+    public function handle(AiTaskCompleted $event): void
+    {
+        if ($event->attemptsExhausted) {
+            // ескалація на людину, позначити як провалене — що підходить твоїй логіці
+            return;
+        }
+
+        // звичайна обробка — $event->response це прийнятий результат
+    }
+}
+```
+
+Працює лише на queue-шляху (`AI::queue()`); `AI::send()`/`AI::stream()` синхронні і завжди фаєряться один раз.
+
+> **Примітка:** номер спроби не зберігається в `ai_runs` — відновити можна тільки з суфікса `idempotency_key` (`...-retry1`, `...-retry2`, ...). Немає колонки `attempt` чи зв'язку run з його ретраями, тому дашборд не показує ланцюжок структуровано.
+
 ## Інструменти та MCP
 
 Перевизнач `tools()` у будь-якому таску, щоб передати інструменти в `AnonymousAgent`. Інструменти автоматично передаються при `send()`, `stream()` і `queue()`.
