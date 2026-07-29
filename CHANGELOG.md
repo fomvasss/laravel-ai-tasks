@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [3.14.1] — 2026-07-29
+
+### Added
+- `PostprocessAiResult::retry()` now logs (`Log::info`, "AiTask result rejected by isAcceptable(), retrying") each time a retry from 3.14.0 is dispatched — task name, attempt number, both run ids, driver. Without this, a retry was invisible to the consuming app: the retry mechanism dispatches the next attempt internally and only fires `AiTaskCompleted` once, on the final (accepted or exhausted) result, so a listener never sees the intermediate rejections that triggered a retry
+
 ## [3.14.0] — 2026-07-29
 
 ### Added

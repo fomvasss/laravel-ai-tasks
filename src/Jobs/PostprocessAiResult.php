@@ -15,6 +15,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Log;
 
 class PostprocessAiResult implements ShouldQueue
 {
@@ -86,6 +87,14 @@ class PostprocessAiResult implements ShouldQueue
             // this retry generation was already dispatched (e.g. re-processed job) — nothing to do
             return;
         }
+
+        Log::info('AiTask result rejected by isAcceptable(), retrying', [
+            'task' => $task->name(),
+            'attempt' => $nextAttempt,
+            'run_id' => $newRun->id,
+            'retried_run_id' => $run->id,
+            'driver' => $run->driver,
+        ]);
 
         $job = new ProcessAiPayload(
             driverName: $run->driver,
