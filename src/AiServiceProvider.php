@@ -51,11 +51,16 @@ class AiServiceProvider extends ServiceProvider
             __DIR__ . '/../resources/views' => resource_path('views/vendor/ai-tasks'),
         ], 'ai-views');
 
-        if (! class_exists('CreateAiRunsTable')) {
-            $this->publishes([
-                __DIR__ . '/../database/migrations/2025_10_19_000000_create_ai_runs_table.php'
-                    => database_path('migrations/' . date('Y_m_d_His') . '_create_ai_runs_table.php'),
-            ], 'ai-migrations');
+        if ($this->app->runningInConsole()) {
+            $this->publishMigrationOnceMissing(
+                __DIR__ . '/../database/migrations/2025_10_19_000000_create_ai_runs_table.php',
+                'create_ai_runs_table',
+            );
+
+            $this->publishMigrationOnceMissing(
+                __DIR__ . '/../database/migrations/2026_07_29_000000_add_model_to_ai_runs_table.php',
+                'add_model_to_ai_runs_table',
+            );
         }
 
         if (config('ai-tasks.dashboard.enabled', true)) {
@@ -84,6 +89,22 @@ class AiServiceProvider extends ServiceProvider
                 Console\AiRequestCommand::class,
             ]);
         }
+    }
+
+    /**
+     * Publishes a package migration under a fresh timestamp, unless a file for it
+     * (matched by its base name, regardless of the timestamp prefix used when it was
+     * originally published) already exists in the app's migrations directory.
+     */
+    private function publishMigrationOnceMissing(string $source, string $baseName): void
+    {
+        if (glob(database_path("migrations/*_{$baseName}.php")) !== []) {
+            return;
+        }
+
+        $this->publishes([
+            $source => database_path('migrations/' . date('Y_m_d_His') . "_{$baseName}.php"),
+        ], 'ai-migrations');
     }
 
     private function registerOctaneListeners(): void

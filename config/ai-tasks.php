@@ -72,6 +72,9 @@ return [
     | audio_model — model for 'audio' (TTS) modality
     | price       — per 1M tokens in USD; null = cost not tracked
     |               anthropic supports: in, out, cache_write, cache_read
+    |               per_char — per 1M input characters, for 'audio' (TTS) modality only —
+    |               OpenAI's TTS endpoint returns no usage data, so cost is an approximation
+    |               based on input text length; verify the rate against current OpenAI pricing
     */
     'drivers' => [
 
@@ -81,8 +84,9 @@ return [
             'image_model' => env('OPENAI_IMAGE_MODEL', 'gpt-image-1'),
             'audio_model' => env('OPENAI_AUDIO_MODEL', 'gpt-4o-mini-tts'),
             'price' => [
-                'in'  => 0.15,
-                'out' => 0.60,
+                'in'       => 0.15,
+                'out'      => 0.60,
+                'per_char' => env('OPENAI_TTS_PRICE_PER_CHAR', 15.0), // approximate, verify against current pricing
             ],
             // Webhook signature verification (optional)
             'webhook' => [

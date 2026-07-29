@@ -37,6 +37,7 @@ class DashboardController extends Controller
                 'id' => $r->id,
                 'task' => $r->task,
                 'driver' => $r->driver,
+                'model' => $r->model,
                 'tenant_id' => $r->tenant_id,
                 'dispatch' => $r->dispatch,
                 'status' => $r->status,
@@ -55,7 +56,7 @@ class DashboardController extends Controller
     private function buildQuery(Request $request): Builder
     {
         $query = AiRun::query()->latest('started_at')->select([
-            'id', 'tenant_id', 'task', 'driver', 'modality', 'dispatch', 'status',
+            'id', 'tenant_id', 'task', 'driver', 'model', 'modality', 'dispatch', 'status',
             'subject_type', 'subject_id', 'tokens_in', 'tokens_out', 'cost',
             'started_at', 'finished_at', 'duration_ms',
         ]);

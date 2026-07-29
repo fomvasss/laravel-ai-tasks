@@ -68,7 +68,7 @@ final class LaravelAiDriver implements AiDriver
             timeout: $p->options['timeout'] ?? 60,
         );
 
-        $usage         = $this->mapUsage($response->usage, $displayProvider);
+        $usage         = $this->mapUsage($response->usage, $displayProvider, $model);
         $usage['cost'] = Cost::calc($displayProvider, $usage, $this->cfg);
         $structured    = $response instanceof StructuredAgentResponse ? $response->structured : null;
 
@@ -109,9 +109,9 @@ final class LaravelAiDriver implements AiDriver
         $text  = '';
         $usage = [];
 
-        $streamable->then(function ($streamed) use (&$text, &$usage, $displayProvider) {
+        $streamable->then(function ($streamed) use (&$text, &$usage, $displayProvider, $model) {
             $text          = $streamed->text ?? '';
-            $usage         = $this->mapUsage($streamed->usage, $displayProvider);
+            $usage         = $this->mapUsage($streamed->usage, $displayProvider, $model);
             $usage['cost'] = Cost::calc($displayProvider, $usage, $this->cfg);
         });
 
@@ -140,7 +140,7 @@ final class LaravelAiDriver implements AiDriver
         $response = Embeddings::for([$this->messageToText($input)])
             ->generate($provider, $model);
 
-        $usage         = ['driver' => $displayProvider, 'tokens_in' => $response->tokens ?: null];
+        $usage         = ['driver' => $displayProvider, 'model' => $model, 'tokens_in' => $response->tokens ?: null];
         $usage['cost'] = Cost::calc($displayProvider, $usage, $this->cfg);
 
         return new AiResponse(ok: true, content: json_encode($response->first()), usage: $usage);
@@ -168,7 +168,7 @@ final class LaravelAiDriver implements AiDriver
 
         $response      = $pending->generate($provider, $model);
         $image         = $response->firstImage();
-        $usage         = $this->mapUsage($response->usage, $displayProvider);
+        $usage         = $this->mapUsage($response->usage, $displayProvider, $model);
         $usage['cost'] = Cost::calc($displayProvider, $usage, $this->cfg);
 
         return new AiResponse(true, $image->image, $usage);
@@ -195,7 +195,10 @@ final class LaravelAiDriver implements AiDriver
 
         $response = $pending->generate($provider, $model);
 
-        return new AiResponse(true, $response->audio, ['driver' => $displayProvider]);
+        $usage         = ['driver' => $displayProvider, 'model' => $model];
+        $usage['cost'] = Cost::calcByChars($displayProvider, mb_strlen($text), $this->cfg);
+
+        return new AiResponse(true, $response->audio, $usage);
     }
 
     // ── Transcription (STT) ───────────────────────────────────────────────
@@ -220,7 +223,7 @@ final class LaravelAiDriver implements AiDriver
         }
 
         $response      = $pending->generate($provider, $model);
-        $usage         = $this->mapUsage($response->usage, $displayProvider);
+        $usage         = $this->mapUsage($response->usage, $displayProvider, $model);
         $usage['cost'] = Cost::calc($displayProvider, $usage, $this->cfg);
 
         return new AiResponse(true, $response->text, $usage);
@@ -313,14 +316,15 @@ final class LaravelAiDriver implements AiDriver
         return '';
     }
 
-    private function mapUsage(?Usage $usage, string $provider): array
+    private function mapUsage(?Usage $usage, string $provider, ?string $model = null): array
     {
         if ($usage === null) {
-            return ['driver' => $provider];
+            return ['driver' => $provider, 'model' => $model];
         }
 
         return [
             'driver'             => $provider,
+            'model'              => $model,
             'tokens_in'          => $usage->promptTokens ?: null,
             'tokens_out'         => $usage->completionTokens ?: null,
             'cache_read_tokens'  => $usage->cacheReadInputTokens ?: null,

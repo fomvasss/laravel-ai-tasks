@@ -95,6 +95,7 @@ class AiRun extends Model
 
         $this->update([
             'status'            => 'ok',
+            'model'             => $resp->usage['model'] ?? null,
             'response'          => ['content' => $resp->content],
             'tokens_in'         => $resp->usage['tokens_in']          ?? null,
             'tokens_out'        => $resp->usage['tokens_out']         ?? null,

@@ -105,7 +105,7 @@
     <table class="min-w-full text-sm">
         <thead class="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
             <tr>
-                @foreach(['Task','Driver','Tenant','Dispatch','Status','Tok in','Tok out','Cost','Duration','Started'] as $col)
+                @foreach(['Task','Driver','Model','Tenant','Dispatch','Status','Tok in','Tok out','Cost','Duration','Started'] as $col)
                 <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">{{ $col }}</th>
                 @endforeach
             </tr>
@@ -145,6 +145,7 @@
                     </div>
                 </td>
                 <td class="px-3 py-2 text-gray-600 dark:text-gray-300">{{ $run->driver }}</td>
+                <td class="px-3 py-2 text-gray-500 dark:text-gray-400 text-xs">{{ $run->model ?? '—' }}</td>
                 <td class="px-3 py-2 text-gray-500 dark:text-gray-400 text-xs">{{ $run->tenant_id }}</td>
                 <td class="px-3 py-2">
                     @php $dispatchBadge = $run->dispatch === 'queue'
@@ -165,7 +166,7 @@
             </tr>
             @empty
             <tr>
-                <td colspan="10" class="px-3 py-8 text-center text-gray-400 dark:text-gray-500">No runs found.</td>
+                <td colspan="11" class="px-3 py-8 text-center text-gray-400 dark:text-gray-500">No runs found.</td>
             </tr>
             @endforelse
         </tbody>
@@ -214,6 +215,7 @@
                 </div>
             </td>
             <td class="px-3 py-2 text-gray-600 dark:text-gray-300">${r.driver ?? '—'}</td>
+            <td class="px-3 py-2 text-gray-500 dark:text-gray-400 text-xs">${r.model ?? '—'}</td>
             <td class="px-3 py-2 text-gray-500 dark:text-gray-400 text-xs">${r.tenant_id ?? ''}</td>
             <td class="px-3 py-2"><span class="inline-flex px-2 py-0.5 rounded text-xs font-medium ${dc}">${r.dispatch}</span></td>
             <td class="px-3 py-2"><span class="inline-flex px-2 py-0.5 rounded text-xs font-medium ${badge}">${r.status}</span></td>

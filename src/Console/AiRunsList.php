@@ -32,11 +32,11 @@ class AiRunsList extends Command
         }
 
         $rows = $q->limit((int) $this->option('limit'))
-            ->get(['id', 'tenant_id', 'task', 'driver', 'status', 'tokens_in', 'tokens_out', 'cost', 'duration_ms', 'created_at'])
+            ->get(['id', 'tenant_id', 'task', 'driver', 'model', 'status', 'tokens_in', 'tokens_out', 'cost', 'duration_ms', 'created_at'])
             ->toArray();
 
         $this->table(
-            ['ID', 'Tenant', 'Task', 'Driver', 'Status', 'In', 'Out', 'Cost', 'ms', 'At'],
+            ['ID', 'Tenant', 'Task', 'Driver', 'Model', 'Status', 'In', 'Out', 'Cost', 'ms', 'At'],
             $rows
         );
 

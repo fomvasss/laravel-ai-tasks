@@ -27,4 +27,18 @@ class Cost
 
         return round($cost, 8);
     }
+
+    /**
+     * Approximates cost for character-billed modalities (audio/TTS), which don't
+     * return token usage. Rate is per 1M characters, configured under price.per_char.
+     */
+    public static function calcByChars(string $provider, int $chars, array $driverCfg): ?float
+    {
+        $rate = $driverCfg['price']['per_char'] ?? null;
+        if ($rate === null) {
+            return null;
+        }
+
+        return round(($chars / 1_000_000) * (float) $rate, 8);
+    }
 }

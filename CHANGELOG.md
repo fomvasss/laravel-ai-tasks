@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [3.12.0] — 2026-07-29
+
+> ⚠️ **Action required before deploying this version:** run
+> `php artisan vendor:publish --tag=ai-migrations && php artisan migrate`
+> in the same deploy as the `composer update`. `AiRun::finish()` now always writes a `model`
+> column — without the migration, **every successful `AI::send()`/`AI::queue()` call fails**
+> (`SQLSTATE: Unknown column 'model'`), not just the dashboard. This is not an isolated new
+> feature — it's on the completion path used by every task.
+
+### Added
+- `ai_runs.model` column (migration `add_model_to_ai_runs_table`) — the resolved model name (e.g. `gpt-4o-mini`, `gpt-image-1`, `gpt-4o-mini-tts`) is now persisted for every run. Previously each `LaravelAiDriver::sendX()` method resolved `$model` locally to call the provider but discarded it afterward — nothing in `AiResponse`/`AiRun` carried it, so it was impossible to tell which model actually served a given task without re-reading code/config. `mapUsage()` now takes an optional `$model` param; `sendEmbed()`/`sendAudio()` (which build their usage array by hand) set it directly. Shown in the dashboard table/detail view and in `ai:runs`
+- Approximate cost tracking for `audio` (TTS) — OpenAI's `/v1/audio/speech` response carries no usage/token data at all (unlike image/transcription), so `cost` was always `null` for audio runs. Added `Cost::calcByChars()` (input character count × configurable `price.per_char`, per 1M chars) and a new `drivers.openai.price.per_char` config key (env `OPENAI_TTS_PRICE_PER_CHAR`, default `15.0`). `tokens_in`/`tokens_out` stay `null` for audio — this is a cost estimate only, not real usage; verify the default rate against current OpenAI pricing for your model before relying on it
+
+### Fixed
+- `AiServiceProvider::boot()` guarded the original `create_ai_runs_table` migration publish with `class_exists('CreateAiRunsTable')`, which never matches (Laravel 12 migrations are anonymous classes) — so every `vendor:publish --tag=ai-migrations` re-copied it under a fresh timestamp, and a subsequent `migrate` failed with "table already exists". Replaced with a glob check (`database/migrations/*_{basename}.php`) that skips publishing a migration whose base name already exists under any timestamp — applies to both the create-table and the new add-model migration, and to any future ones added the same way. Also wrapped migration publishing in `runningInConsole()` to avoid the filesystem check on every web request
+
 ## [3.11.2] — 2026-07-29
 
 ### Fixed

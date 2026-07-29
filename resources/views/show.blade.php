@@ -31,6 +31,7 @@ $durStr = $dur === null ? '—' : ($dur < 1000 ? "{$dur}ms" : number_format($dur
     <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
         @foreach([
             'Driver'       => $run->driver,
+            'Model'        => $run->model ?? '—',
             'Modality'     => $run->modality,
             'Dispatch'     => $run->dispatch ?? '—',
             'Tenant'       => $run->tenant_id,
