@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [3.11.2] — 2026-07-29
+
+### Fixed
+- `LaravelAiDriver::sendImage()` silently ignored `AiPayload::$options['size']` for any value other than the exact strings `'3:2'`/`'2:3'` — `->landscape()`/`->portrait()` were called only for those two, so a documented value like `'1024x1024'` (used in `docs/modalities.md` and the sandbox `GenerateProductImageTask` example) never reached the provider. Now calls `$pending->size($size)` for any non-empty `size` option, which `laravel/ai`'s `PendingImageGeneration::size()` already accepts as an arbitrary string (exact dimensions or aspect ratio)
+- `AiRun::minifyRequest()` threw a `TypeError` (`messageRole(): Argument #1 ($m) must be of type object, string given`) for any `audio`/`embed`/`transcription` task, since those modalities pass plain strings in `AiPayload::$messages` (as documented in `docs/modalities.md`) while the mapper only handled arrays and message objects. Sync `send()` and queued dispatch both call this before the provider request even happens, so every non-array/object message payload was broken. Added a string branch; `messageRole()` now also reads the role off `Laravel\Ai\Messages\Message::$role` (a `MessageRole` enum covering `user`/`assistant`/`tool_result`) instead of a hardcoded `instanceof AssistantMessage` check, so `ToolResultMessage` and any future `Message` subclass are labeled correctly instead of defaulting to `user`
+- `config/ai-tasks.php`: default OpenAI `audio_model` was `gpt-4o-audio-preview`, a chat/completions model — the TTS request goes straight to `POST /v1/audio/speech` (`OpenAiGateway::generateAudio()`), which only accepts `tts-1`, `tts-1-hd`, or `gpt-4o-mini-tts`. Default changed to `gpt-4o-mini-tts` (also `laravel/ai`'s own `OpenAiProvider::defaultAudioModel()` default), so `audio` modality works out of the box without an explicit `OPENAI_AUDIO_MODEL` override
+
 ## [3.11.0] — 2026-07-24
 
 ### Fixed

@@ -161,6 +161,9 @@ class AiRun extends Model
                 $data['system'] = $p->systemPrompt;
             }
             $data['messages'] = array_map(function ($m) {
+                if (is_string($m)) {
+                    return ['role' => 'user', 'content' => $m];
+                }
                 if (is_array($m)) {
                     return ['role' => $m['role'] ?? 'user', 'content' => $m['content'] ?? ''];
                 }
@@ -173,9 +176,6 @@ class AiRun extends Model
 
     private static function messageRole(object $m): string
     {
-        return match (true) {
-            $m instanceof \Laravel\Ai\Messages\AssistantMessage => 'assistant',
-            default => 'user',
-        };
+        return $m instanceof \Laravel\Ai\Messages\Message ? $m->role->value : 'user';
     }
 }

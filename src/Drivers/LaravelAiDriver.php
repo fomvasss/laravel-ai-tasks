@@ -159,10 +159,8 @@ final class LaravelAiDriver implements AiDriver
         if ($quality = $p->options['quality'] ?? null) {
             $pending->quality($quality);
         }
-        if (($p->options['size'] ?? null) === '3:2') {
-            $pending->landscape();
-        } elseif (($p->options['size'] ?? null) === '2:3') {
-            $pending->portrait();
+        if ($size = $p->options['size'] ?? null) {
+            $pending->size($size);
         }
         if ($timeout = $p->options['timeout'] ?? null) {
             $pending->timeout($timeout);

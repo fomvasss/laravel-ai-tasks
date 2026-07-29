@@ -79,7 +79,7 @@ return [
             'model'       => env('OPENAI_MODEL', 'gpt-4o-mini'),
             'embed_model' => env('OPENAI_EMBED_MODEL', 'text-embedding-3-small'),
             'image_model' => env('OPENAI_IMAGE_MODEL', 'gpt-image-1'),
-            'audio_model' => env('OPENAI_AUDIO_MODEL', 'gpt-4o-audio-preview'),
+            'audio_model' => env('OPENAI_AUDIO_MODEL', 'gpt-4o-mini-tts'),
             'price' => [
                 'in'  => 0.15,
                 'out' => 0.60,
