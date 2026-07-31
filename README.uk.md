@@ -261,7 +261,7 @@ $this->app->scoped(\Fomvasss\AiTasks\Support\TenantResolver::class, fn() => new 
 
 ```php
 'anthropic' => [
-    'model' => 'claude-sonnet-4-6',
+    'model' => 'claude-sonnet-5',
     'price' => [
         'in'          => 3.00,
         'out'         => 15.00,
@@ -686,7 +686,26 @@ php artisan ai:models openai --filter=gpt-4
 php artisan ai:models anthropic --detail
 ```
 
-Поточна модель з конфігу позначається `✓`. Провайдери з URL у `config/ai.php` (Groq, Mistral, DeepSeek, xAI, Ollama…) опитуються через OpenAI-сумісний `/v1/models` автоматично.
+Поточна модель з конфігу позначається `✓`. Groq, Mistral, DeepSeek, xAI, Ollama і OpenRouter опитуються через OpenAI-сумісний `/v1/models` автоматично — за дефолтним URL провайдера з коробки; `ai.providers.{driver}.url` треба задавати лише щоб перевизначити його (наприклад, свій self-hosted Ollama).
+
+Той самий лістинг доступний і з власного коду — `AI::models()` сам резолвить credentials з `config/ai.php`, так само як `send()`/`queue()`/`stream()`:
+
+```php
+use Fomvasss\AiTasks\Facades\AI;
+
+$models = AI::models('openai', filter: 'gpt');
+// [['id' => 'gpt-5.6-luna', 'display_name' => null, 'owner' => 'system', 'created' => '2026-06-23', ...], ...]
+```
+
+Кидає `Fomvasss\AiTasks\Exceptions\AiDriverException`, якщо в драйвера немає `api_key` в `config/ai.php`, `ModelListingUnavailableException` — якщо немає ендпоінту для лістингу, або `ModelListingException` — при помилці з'єднання/API.
+
+Сама логіка запиту живе в `Fomvasss\AiTasks\Support\ModelLister` (її й використовує `AI::models()` всередині) — інжектуй або створюй напряму, якщо credentials вже маєш під рукою і хочеш пропустити lookup у конфігах:
+
+```php
+use Fomvasss\AiTasks\Support\ModelLister;
+
+$models = app(ModelLister::class)->forDriver('openai', ['api_key' => config('ai.providers.openai.key')], filter: 'gpt');
+```
 
 ## Підтримувані провайдери
 
@@ -704,9 +723,9 @@ php artisan ai:models anthropic --detail
 | Mistral | `mistral` | ✅ |
 | xAI (Grok) | `xai` | ✅ |
 | Ollama (локально) | `ollama` | ✅ |
+| OpenRouter | `openrouter` | ✅ |
 | VoyageAI | `voyageai` | додати вручну |
 | AWS Bedrock | `bedrock` | додати вручну |
-| OpenRouter | `openrouter` | додати вручну |
 | Perplexity | `perplexity` | додати вручну |
 | ElevenLabs | `eleven` | ✅ (audio/tts) |
 | будь-який laravel/ai провайдер | — | додати вручну |

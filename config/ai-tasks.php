@@ -79,13 +79,13 @@ return [
     'drivers' => [
 
         'openai' => [
-            'model'       => env('OPENAI_MODEL', 'gpt-4o-mini'),
+            'model'       => env('OPENAI_MODEL', 'gpt-5.6-luna'),
             'embed_model' => env('OPENAI_EMBED_MODEL', 'text-embedding-3-small'),
-            'image_model' => env('OPENAI_IMAGE_MODEL', 'gpt-image-1'),
+            'image_model' => env('OPENAI_IMAGE_MODEL', 'gpt-image-2'),
             'audio_model' => env('OPENAI_AUDIO_MODEL', 'gpt-4o-mini-tts'),
             'price' => [
-                'in'       => 0.15,
-                'out'      => 0.60,
+                'in'       => 1.00,
+                'out'      => 6.00,
                 'per_char' => env('OPENAI_TTS_PRICE_PER_CHAR', 15.0), // approximate, verify against current pricing
             ],
             // Webhook signature verification (optional)
@@ -96,7 +96,7 @@ return [
         ],
 
         'anthropic' => [
-            'model' => env('ANTHROPIC_MODEL', 'claude-sonnet-4-6'),
+            'model' => env('ANTHROPIC_MODEL', 'claude-sonnet-5'),
             'price' => [
                 'in'          => 3.00,
                 'out'         => 15.00,
@@ -106,11 +106,11 @@ return [
         ],
 
         'gemini' => [
-            'model'       => env('GEMINI_MODEL', 'gemini-2.5-flash'),
+            'model'       => env('GEMINI_MODEL', 'gemini-3.6-flash'),
             'embed_model' => env('GEMINI_EMBED_MODEL', 'gemini-embedding-001'),
             'price' => [
-                'in'  => 0.15,
-                'out' => 0.60,
+                'in'  => 1.50,
+                'out' => 7.50,
             ],
         ],
 
@@ -123,7 +123,7 @@ return [
         ],
 
         'groq' => [
-            'model' => env('GROQ_MODEL', 'llama-3.3-70b-versatile'),
+            'model' => env('GROQ_MODEL', 'openai/gpt-oss-120b'),
             'price' => null,
         ],
 
@@ -133,7 +133,7 @@ return [
         ],
 
         'xai' => [
-            'model' => env('XAI_MODEL', 'grok-3-mini'),
+            'model' => env('XAI_MODEL', 'grok-4.1-fast'),
             'price' => null,
         ],
 
@@ -142,9 +142,14 @@ return [
             'price' => null,
         ],
 
+        'openrouter' => [
+            'model' => env('OPENROUTER_MODEL', 'anthropic/claude-sonnet-5'),
+            'price' => null,
+        ],
+
         // ElevenLabs — audio/TTS only
         'eleven' => [
-            'audio_model' => env('ELEVENLABS_AUDIO_MODEL', 'eleven_multilingual_v2'),
+            'audio_model' => env('ELEVENLABS_AUDIO_MODEL', 'eleven_v3'),
             'price'       => null,
         ],
 

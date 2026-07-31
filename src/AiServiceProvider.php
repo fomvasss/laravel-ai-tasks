@@ -10,6 +10,7 @@ use Fomvasss\AiTasks\Core\Router;
 use Fomvasss\AiTasks\Http\Controllers\DashboardController;
 use Fomvasss\AiTasks\Http\Controllers\WebhookController;
 use Fomvasss\AiTasks\Support\Budget;
+use Fomvasss\AiTasks\Support\ModelLister;
 use Fomvasss\AiTasks\Support\TenantResolver;
 use Fomvasss\AiTasks\Support\WebhookRegistry;
 use Illuminate\Support\Facades\Route;
@@ -25,6 +26,7 @@ class AiServiceProvider extends ServiceProvider
         $this->app->singleton(Router::class, fn() => new Router());
         $this->app->singleton(Budget::class, fn() => new Budget());
         $this->app->singleton(WebhookRegistry::class, fn() => new WebhookRegistry());
+        $this->app->singleton(ModelLister::class, fn() => new ModelLister());
 
         // scoped: new instance per request/job — safe for Octane and custom stateful resolvers
         $this->app->scoped(TenantResolver::class, fn() => new TenantResolver());
@@ -32,6 +34,7 @@ class AiServiceProvider extends ServiceProvider
         $this->app->singleton(AI::class, fn($app) => new AI(
             $app->make(AiManager::class),
             $app->make(Router::class),
+            $app->make(ModelLister::class),
         ));
 
         $this->registerOctaneListeners();

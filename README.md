@@ -287,7 +287,7 @@ Set pricing per driver in `config/ai-tasks.php` (per 1M tokens):
 
 ```php
 'anthropic' => [
-    'model' => 'claude-sonnet-4-6',
+    'model' => 'claude-sonnet-5',
     'price' => [
         'in'          => 3.00,
         'out'         => 15.00,
@@ -687,7 +687,26 @@ php artisan ai:models openai --filter=gpt-4
 php artisan ai:models anthropic --detail
 ```
 
-Currently configured model is highlighted with `✓`. Providers with a URL in `ai.providers.*.url` (Groq, Mistral, DeepSeek, xAI, Ollama, OpenRouter…) are queried via the OpenAI-compatible `/v1/models` endpoint automatically.
+Currently configured model is highlighted with `✓`. Groq, Mistral, DeepSeek, xAI, Ollama and OpenRouter are queried via the OpenAI-compatible `/v1/models` endpoint automatically — using each provider's default API URL out of the box; set `ai.providers.{driver}.url` only to override it (e.g. a self-hosted Ollama instance).
+
+Same listing also available from your own code — `AI::models()` resolves credentials from `config/ai.php` itself, same as `send()`/`queue()`/`stream()`:
+
+```php
+use Fomvasss\AiTasks\Facades\AI;
+
+$models = AI::models('openai', filter: 'gpt');
+// [['id' => 'gpt-5.6-luna', 'display_name' => null, 'owner' => 'system', 'created' => '2026-06-23', ...], ...]
+```
+
+Throws `Fomvasss\AiTasks\Exceptions\AiDriverException` if the driver has no `api_key` in `config/ai.php`, `ModelListingUnavailableException` if it has no listing endpoint, or `ModelListingException` on a connection/API error.
+
+The fetching logic itself lives in `Fomvasss\AiTasks\Support\ModelLister` (used internally by `AI::models()`) — inject or `new` it directly if you already have credentials at hand and want to skip the config lookup:
+
+```php
+use Fomvasss\AiTasks\Support\ModelLister;
+
+$models = app(ModelLister::class)->forDriver('openai', ['api_key' => config('ai.providers.openai.key')], filter: 'gpt');
+```
 
 ## Supported Providers
 
@@ -705,9 +724,9 @@ The following providers are pre-configured in `config/ai-tasks.php` (just add th
 | Mistral | `mistral` | ✅ |
 | xAI (Grok) | `xai` | ✅ |
 | Ollama (local) | `ollama` | ✅ |
+| OpenRouter | `openrouter` | ✅ |
 | VoyageAI | `voyageai` | add manually |
 | AWS Bedrock | `bedrock` | add manually |
-| OpenRouter | `openrouter` | add manually |
 | Perplexity | `perplexity` | add manually |
 | ElevenLabs | `eleven` | ✅ (audio/tts) |
 | any laravel/ai provider | — | add manually |

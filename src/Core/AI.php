@@ -17,6 +17,7 @@ use Fomvasss\AiTasks\Exceptions\BudgetExceededException;
 use Fomvasss\AiTasks\Jobs\ProcessAiPayload;
 use Fomvasss\AiTasks\Models\AiRun;
 use Fomvasss\AiTasks\Support\Budget;
+use Fomvasss\AiTasks\Support\ModelLister;
 use Fomvasss\AiTasks\Tasks\AiTask;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Pipeline\Pipeline;
@@ -24,9 +25,36 @@ use Illuminate\Pipeline\Pipeline;
 class AI
 {
     public function __construct(
-        private readonly AiManager $manager,
-        private readonly Router    $router,
+        private readonly AiManager   $manager,
+        private readonly Router      $router,
+        private readonly ModelLister $lister = new ModelLister(),
     ) {}
+
+    /**
+     * List available models for a driver, straight from the provider's own API
+     * (not config/ai-tasks.php). Credentials come from config/ai.php, same as
+     * send()/queue()/stream().
+     *
+     * @return array<int, array{id: string, display_name: ?string, owner: ?string, created: ?string, context_in: ?int, context_out: ?int, methods: ?string, capabilities: ?string}>
+     *
+     * @throws AiDriverException when the driver has no api_key configured in config/ai.php
+     * @throws \Fomvasss\AiTasks\Exceptions\ModelListingUnavailableException when the driver has no listing endpoint available
+     * @throws \Fomvasss\AiTasks\Exceptions\ModelListingException on connection or API errors
+     */
+    public function models(string $driver, ?string $filter = null): array
+    {
+        $apiKey = config("ai.providers.{$driver}.key")
+            ?? config("ai.providers.{$driver}.access_key_id"); // bedrock
+
+        if (empty($apiKey)) {
+            throw new AiDriverException("Driver [{$driver}] is not configured in config/ai.php.");
+        }
+
+        $cfg = config("ai-tasks.drivers.{$driver}", []);
+        $cfg['api_key'] = $apiKey;
+
+        return $this->lister->forDriver($driver, $cfg, $filter);
+    }
 
     public function send(AiTask $task, array|string $drivers = []): AiResponse
     {

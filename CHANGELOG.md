@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [3.15.0] — 2026-07-31
+
+### Added
+- `AI::models(string $driver, ?string $filter = null): array` — lists a driver's available models straight from the provider's own API (not `config/ai-tasks.php`), resolving `api_key` from `config/ai.php` the same way `send()`/`queue()`/`stream()` already do. Throws `AiDriverException` if the driver has no `api_key` configured. Backs the existing `ai:models` command, now also usable directly from app code / tinker. `Core\AI::__construct()` gained a third `ModelLister $lister` param defaulting to `new ModelLister()`, so any existing 2-arg `new AI($manager, $router)` call site keeps working unchanged
+- `Fomvasss\AiTasks\Support\ModelLister` — the model-fetching logic behind `AI::models()`/`ai:models` (per-provider HTTP calls, filtering, normalization), extracted into a plain, container-resolvable class returning raw model data (no CLI formatting/colors). Throws `ModelListingUnavailableException` (no listing endpoint for the driver) or `ModelListingException` (connection/API error) instead of the command's previous silent `[null, null]`/`[[], []]` return-tuple convention. Covered by 6 new tests (`tests/ModelListerTest.php`, `Http::fake()`)
+- `openrouter` pre-configured in `config/ai-tasks.php` `drivers` (model `env('OPENROUTER_MODEL', 'anthropic/claude-sonnet-5')`, `price: null` — same as Groq/Mistral/xAI, since per-model pricing varies by the underlying model routed through OpenRouter). `laravel/ai` already ships `OpenRouterProvider`; this only saves the manual `drivers` entry previously documented as "add manually" in the README
+
+### Fixed
+- `ai:models` no longer requires `ai.providers.{driver}.url` to be set in `config/ai.php` for Groq/Mistral/DeepSeek/xAI/OpenRouter — it now falls back to each provider's default API URL (the same hardcoded default already used internally by the corresponding `laravel/ai` Gateway), so the command works out of the box with just an `api_key`. `ai.providers.{driver}.url` is only needed now to override the default (e.g. a self-hosted endpoint)
+
+### Changed
+- Bumped stale default models across `config/ai-tasks.php` `drivers` to their current (July 2026) equivalents: `anthropic` → `claude-sonnet-5` (was `claude-sonnet-4-6`), `openai.model` → `gpt-5.6-luna` (was `gpt-4o-mini`, retired), `openai.image_model` → `gpt-image-2` (was `gpt-image-1`), `gemini` → `gemini-3.6-flash` (was `gemini-2.5-flash`), `groq` → `openai/gpt-oss-120b` (was `llama-3.3-70b-versatile`, deprecated by Groq on 2026-06-17), `xai` → `grok-4.1-fast` (was `grok-3-mini`), `eleven.audio_model` → `eleven_v3` (was `eleven_multilingual_v2`). Also bumped `openai` and `gemini` per-token `price` to match the new default models. `deepseek`, `mistral` (`mistral-small-latest` is a rolling alias) and `ollama` were already current and left unchanged. `openai.embed_model`/`openai.audio_model` (`gpt-4o-mini-tts`) also confirmed still current, no change
+
 ## [3.14.1] — 2026-07-29
 
 ### Added
