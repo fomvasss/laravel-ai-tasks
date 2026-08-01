@@ -7,7 +7,6 @@ namespace Fomvasss\AiTasks\Jobs;
 use Fomvasss\AiTasks\Contracts\ShouldQueueAi;
 use Fomvasss\AiTasks\Core\AI;
 use Fomvasss\AiTasks\DTO\AiResponse;
-use Fomvasss\AiTasks\Events\AiTaskCompleted;
 use Fomvasss\AiTasks\Models\AiRun;
 use Fomvasss\AiTasks\Tasks\AiTask;
 use Illuminate\Bus\Queueable;
@@ -60,7 +59,7 @@ class PostprocessAiResult implements ShouldQueue
             ? $result
             : new AiResponse(true, json_encode($result));
 
-        event(new AiTaskCompleted($task, $finalResponse, $run, attemptsExhausted: ! $accepted));
+        AI::complete($task, $finalResponse, $run, attemptsExhausted: ! $accepted);
     }
 
     /**

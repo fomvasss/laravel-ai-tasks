@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [3.16.0] — 2026-08-01
+
+### Added
+- `AiTask::onCompleted(AiResponse|array $result, bool $attemptsExhausted): void` — optional hook, no-op by default, called exactly once at the same pipeline point `AiTaskCompleted` fires (`AI::send()`/`AI::stream()`, and `PostprocessAiResult` for the queued path) — after `postprocess()`/`isAcceptable()` have settled on a final result. Does not run on rejected intermediate retry attempts, unlike `postprocess()`. Meant for the common single-consumer case, sparing the boilerplate of a dedicated `AiTaskCompleted` listener class (create it, register it, filter by task type inside it) — `AiTaskCompleted` remains available for cross-cutting/multi-consumer cases and still fires alongside `onCompleted()`
+- `AiTaskCompletedHandlerFailed` event — fired when `AiTask::onCompleted()` throws. The exception is caught and logged (`Log::error`, "AiTask::onCompleted() threw") so a broken hook can never break the package's own pipeline or suppress `AiTaskCompleted`
+- `Core\AI::complete()` (public static) — the shared call-`onCompleted()`-then-fire-`AiTaskCompleted` step, extracted so `PostprocessAiResult` and `AI::send()`/`stream()` share one implementation instead of duplicating the try/catch
+
+### Changed
+- README: `SummarizeTask` example now shows `onCompleted()` alongside `postprocess()` — the former shaping the response, the latter persisting it (`Document::whereKey(...)->update(...)`) — instead of a placeholder `// save to DB, dispatch further jobs, etc.` comment
+- README: "Structured Output (Schema)" gained a "Field Types & Nesting" subsection — nested objects (`$schema->object([...])->nullable()`), `boolean()`, and the top-level-object requirement (wrap array results under a key) weren't shown before, only flat `string()`/`enum()`/`number()`
+- README: "Horizon / Queue" now explains what the `ai`/`ai-post` queues are actually for (`ProcessAiPayload` vs `PostprocessAiResult`) instead of just listing the two queue names and a config example
+- README: dropped the `AI_TASKS_TABLE` custom-table-name install step — a minor detail that doesn't need its own doc callout; the config key itself (`config('ai-tasks.table')`) is unchanged and still works
+
 ## [3.15.0] — 2026-07-31
 
 ### Added

@@ -96,6 +96,18 @@ abstract class AiTask
     }
 
     /**
+     * Optional hook called exactly once, at the same point AiTaskCompleted fires — after
+     * postprocess()/isAcceptable() have settled on a final result (accepted, or retries
+     * exhausted). Unlike postprocess(), this does not run on rejected intermediate attempts.
+     * Prefer this over an AiTaskCompleted listener for a single-consumer task; keep a listener
+     * when several independent consumers need to react to the same task without editing it.
+     */
+    public function onCompleted(AiResponse|array $result, bool $attemptsExhausted): void
+    {
+        // no-op — override is optional
+    }
+
+    /**
      * Maximum number of automatic retries when isAcceptable() rejects the postprocessed result —
      * a response the provider returned "successfully" (ok=true, no exception) but that is still
      * unusable (e.g. blank/whitespace content from a reasoning model that spent its whole token

@@ -9,6 +9,7 @@ use Fomvasss\AiTasks\DTO\AiContext;
 use Fomvasss\AiTasks\DTO\AiPayload;
 use Fomvasss\AiTasks\DTO\AiResponse;
 use Fomvasss\AiTasks\Events\AiTaskCompleted;
+use Fomvasss\AiTasks\Events\AiTaskCompletedHandlerFailed;
 use Fomvasss\AiTasks\Events\AiTaskFailed;
 use Fomvasss\AiTasks\Events\AiTaskQueued;
 use Fomvasss\AiTasks\Events\AiTaskStarted;
@@ -21,6 +22,7 @@ use Fomvasss\AiTasks\Support\ModelLister;
 use Fomvasss\AiTasks\Tasks\AiTask;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Pipeline\Pipeline;
+use Illuminate\Support\Facades\Log;
 
 class AI
 {
@@ -109,7 +111,7 @@ class AI
                 ? $result
                 : new AiResponse(true, json_encode($result));
 
-            event(new AiTaskCompleted($task, $finalResponse, $run));
+            self::complete($task, $finalResponse, $run);
 
             return $finalResponse;
         }
@@ -210,12 +212,34 @@ class AI
                 ? $result
                 : new AiResponse(true, json_encode($result));
 
-            event(new AiTaskCompleted($task, $finalResponse, $run));
+            self::complete($task, $finalResponse, $run);
 
             return $finalResponse;
         }
 
         throw new AiDriverException('All providers failed: ' . implode(' | ', $errors));
+    }
+
+    /**
+     * Calls AiTask::onCompleted() (swallowing/logging any exception it throws, so a broken
+     * hook never breaks the AI pipeline itself) and fires AiTaskCompleted, in that order, at
+     * every point in the package where a task's result is considered final — send()/stream()
+     * here and PostprocessAiResult for the queued path.
+     */
+    public static function complete(AiTask $task, AiResponse $finalResponse, AiRun $run, bool $attemptsExhausted = false): void
+    {
+        try {
+            $task->onCompleted($finalResponse, $attemptsExhausted);
+        } catch (\Throwable $e) {
+            Log::error('AiTask::onCompleted() threw', [
+                'task' => $task->name(),
+                'run_id' => $run->id,
+                'exception' => $e->getMessage(),
+            ]);
+            event(new AiTaskCompletedHandlerFailed($task, $e, $run));
+        }
+
+        event(new AiTaskCompleted($task, $finalResponse, $run, $attemptsExhausted));
     }
 
     private function resolveDrivers(AiTask $task, array|string $drivers): array

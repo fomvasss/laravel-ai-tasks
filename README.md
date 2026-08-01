@@ -52,18 +52,6 @@ php artisan vendor:publish --tag=ai-migrations
 php artisan migrate
 ```
 
-By default runs are stored in the `ai_runs` table. To use a different table name, set it before running the migration — via `.env`:
-
-```env
-AI_TASKS_TABLE=my_ai_runs
-```
-
-or in `config/ai-tasks.php`:
-
-```php
-'table' => 'my_ai_runs',
-```
-
 Add API keys to `.env` — credentials are read by `laravel/ai`:
 
 ```env
@@ -85,7 +73,10 @@ GROQ_API_KEY=gsk_...
 
 ## Horizon / Queue
 
-Two queues are used by default:
+Two queues are used by default, split by workload so a burst of slow provider calls can't starve fast postprocessing behind it:
+
+- `ai` — `ProcessAiPayload`, the actual provider call. Slow (seconds), so it needs more processes and a long `timeout`
+- `ai-post` — `PostprocessAiResult`, running `postprocess()`/`isAcceptable()` and dispatching retries/completion. Fast and lightweight, so a couple of processes and a short `timeout` are enough
 
 ```env
 AI_QUEUE=ai
@@ -129,6 +120,7 @@ declare(strict_types=1);
 
 namespace App\Ai\Tasks;
 
+use App\Models\Document;
 use Laravel\Ai\Messages\UserMessage;
 use Fomvasss\AiTasks\DTO\AiPayload;
 use Fomvasss\AiTasks\DTO\AiResponse;
@@ -137,6 +129,7 @@ use Fomvasss\AiTasks\Tasks\AiTask;
 class SummarizeTask extends AiTask
 {
     public function __construct(
+        private readonly int    $documentId,
         private readonly string $text,
     ) {}
 
@@ -155,13 +148,29 @@ class SummarizeTask extends AiTask
         );
     }
 
-    public function postprocess(AiResponse $response): AiResponse|array
+    public function serializeForQueue(): array
     {
-        // save to DB, dispatch further jobs, etc.
-        return $response;
+        return [$this->documentId, $this->text];
+    }
+
+    public function postprocess(AiResponse $response): array
+    {
+        // shape the raw response into your own result format — runs on every attempt,
+        // including attempts a later isAcceptable() rejects, so keep this side-effect free
+        return ['summary' => trim($response->content ?? '')];
+    }
+
+    public function onCompleted(AiResponse|array $result, bool $attemptsExhausted): void
+    {
+        // runs exactly once, only for the final result — this is where side effects belong
+        Document::whereKey($this->documentId)->update([
+            'summary' => $result['summary'] ?? null,
+        ]);
     }
 }
 ```
+
+`postprocess()` shapes the response; `onCompleted()` acts on the final one. See [The `onCompleted()` Hook](#the-oncompleted-hook) below for the full guarantee (called once, after retries settle, isolated from the pipeline if it throws).
 
 ## Running Tasks
 
@@ -169,21 +178,21 @@ class SummarizeTask extends AiTask
 use Fomvasss\AiTasks\Facades\AI;
 
 // Sync
-$response = AI::send(new SummarizeTask($text));
+$response = AI::send(new SummarizeTask($documentId, $text));
 echo $response->content;
 
 // Async (queue)
-$runId = AI::queue(new SummarizeTask($text));
+$runId = AI::queue(new SummarizeTask($documentId, $text));
 
 // Streaming
-$response = AI::stream(new SummarizeTask($text), function (string $chunk) {
+$response = AI::stream(new SummarizeTask($documentId, $text), function (string $chunk) {
     echo $chunk;
 });
 // $response->content — full accumulated text
 // $response->usage  — tokens + cost (same as AI::send)
 
 // Override driver at runtime
-$response = AI::send(new SummarizeTask($text), drivers: 'anthropic');
+$response = AI::send(new SummarizeTask($documentId, $text), drivers: 'anthropic');
 ```
 
 ## Streaming
@@ -192,7 +201,7 @@ $response = AI::send(new SummarizeTask($text), drivers: 'anthropic');
 
 ```php
 $response = AI::stream(
-    new SummarizeTask($text),
+    new SummarizeTask($documentId, $text),
     function (string $chunk) {
         echo $chunk;          // or: event('stream', $chunk)
     },
@@ -260,7 +269,7 @@ Tasks are routed to drivers via `config/ai-tasks.php`:
 Or on the task instance:
 
 ```php
-AI::send((new SummarizeTask($text))->viaDrivers('gemini'));
+AI::send((new SummarizeTask($documentId, $text))->viaDrivers('gemini'));
 ```
 
 ## Multi-tenant Budget Tracking
@@ -353,6 +362,41 @@ public function postprocess(AiResponse $resp): array|AiResponse
 ```
 
 `schema()` takes precedence over `jsonMode` when both are set. It works with `send()` and `queue()` (the closure is wrapped in `Laravel\SerializableClosure\SerializableClosure` automatically, so it survives the queue payload) but is not applied to `stream()`.
+
+### Field Types & Nesting
+
+`JsonSchema` supports the usual field types plus nested objects and optional fields — a realistic schema (e.g. a chat-assistant reply that sometimes captures contact details) combines them:
+
+```php
+public function schema(): ?\Closure
+{
+    return fn (JsonSchema $schema): array => [
+        'action'     => $schema->string()->enum(['reply', 'escalate_to_human']),
+        'confidence' => $schema->number(),
+        'urgent'     => $schema->boolean(),
+        'contact'    => $schema->object([
+            'name'  => $schema->string(),
+            'email' => $schema->string(),
+        ])->nullable(), // the whole object, or null when there's nothing to report
+    ];
+}
+```
+
+Structured output is always a top-level **object** — a task whose natural result is a list (e.g. extracted keywords) has to wrap it under a key, then unwrap it in `postprocess()`:
+
+```php
+public function schema(): ?\Closure
+{
+    return fn (JsonSchema $schema): array => [
+        'keywords' => $schema->array()->items($schema->string()),
+    ];
+}
+
+public function postprocess(AiResponse $resp): array
+{
+    return ['keywords' => $resp->structured['keywords'] ?? []];
+}
+```
 
 ### Provider-Specific Options
 
@@ -486,9 +530,9 @@ class AnalyzeTask extends AiTask implements ShouldQueueAi
 Pass a `delay` to `AI::queue()` to defer execution:
 
 ```php
-AI::queue(new SummarizeTask($text), delay: 300);                 // 5 minutes (seconds)
-AI::queue(new SummarizeTask($text), delay: now()->addHours(2));  // Carbon
-AI::queue(new SummarizeTask($text), delay: new \DateInterval('PT10M'));
+AI::queue(new SummarizeTask($documentId, $text), delay: 300);                 // 5 minutes (seconds)
+AI::queue(new SummarizeTask($documentId, $text), delay: now()->addHours(2));  // Carbon
+AI::queue(new SummarizeTask($documentId, $text), delay: new \DateInterval('PT10M'));
 ```
 
 ### Pre-execution guard — `shouldRun()`
@@ -585,6 +629,31 @@ Only applies to the queued path (`AI::queue()`); `AI::send()`/`AI::stream()` are
 
 > **Note:** the attempt number is not persisted to `ai_runs` — only recoverable from the `idempotency_key` suffix (`...-retry1`, `...-retry2`, ...). There is no `attempt` column or a link between a run and its retries, so the dashboard doesn't show the retry chain structurally.
 
+### The `onCompleted()` Hook
+
+For a task with a single consumer, override `onCompleted()` instead of writing a separate `AiTaskCompleted` listener:
+
+```php
+class GenerateChatAssistantReplyTask extends AiTask implements ShouldQueueAi
+{
+    public function onCompleted(AiResponse|array $result, bool $attemptsExhausted): void
+    {
+        if ($attemptsExhausted) {
+            SetManagerAction::run($this->message);
+            return;
+        }
+
+        // save the message, broadcast it over the websocket, etc.
+    }
+}
+```
+
+It's called exactly once, at the same point `AiTaskCompleted` fires — after `postprocess()`/`isAcceptable()` have settled on a final result (accepted, or retries exhausted). It does not run on rejected intermediate retry attempts. `$attemptsExhausted` means the same thing as `AiTaskCompleted::$attemptsExhausted`.
+
+An exception thrown from `onCompleted()` is caught and logged, and fires `AiTaskCompletedHandlerFailed` — it never breaks the package's own pipeline or stops `AiTaskCompleted` from firing.
+
+Keep using an `AiTaskCompleted` listener when several independent consumers need to react to the same task's completion without editing the task itself (e.g. one persists a domain record, another writes to analytics). Both can be used together — the package calls `onCompleted()` and fires the event at the same moment.
+
 ## Laravel Octane
 
 No configuration needed. The package handles Octane automatically:
@@ -643,6 +712,7 @@ $fake->assertNothingSent();
 | `AiTaskStarted` | API call begins |
 | `AiTaskCompleted` | Postprocess done, response ready |
 | `AiTaskFailed` | All drivers failed |
+| `AiTaskCompletedHandlerFailed` | `AiTask::onCompleted()` threw |
 | `AiRunFinished` | Low-level: single driver call succeeded |
 | `AiRunFailed` | Low-level: single driver call failed |
 

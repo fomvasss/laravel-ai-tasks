@@ -52,18 +52,6 @@ php artisan vendor:publish --tag=ai-migrations
 php artisan migrate
 ```
 
-За замовчуванням запуски зберігаються в таблиці `ai_runs`. Щоб використати іншу назву таблиці, задай її перед запуском міграції — через `.env`:
-
-```env
-AI_TASKS_TABLE=my_ai_runs
-```
-
-або в `config/ai-tasks.php`:
-
-```php
-'table' => 'my_ai_runs',
-```
-
 Додай ключі до `.env` — credentials читає `laravel/ai`:
 
 ```env
@@ -85,7 +73,10 @@ GROQ_API_KEY=gsk_...
 
 ## Horizon / Черги
 
-За замовчуванням використовуються дві черги:
+За замовчуванням використовуються дві черги, розділені за навантаженням, щоб сплеск повільних викликів провайдера не блокував швидку постобробку позаду себе:
+
+- `ai` — `ProcessAiPayload`, власне виклик провайдера. Повільний (секунди), тому потрібно більше процесів і довгий `timeout`
+- `ai-post` — `PostprocessAiResult`, виконує `postprocess()`/`isAcceptable()` і диспетчить ретраї/подію завершення. Швидкий і легкий, тому вистачає пари процесів і короткого `timeout`
 
 ```env
 AI_QUEUE=ai
@@ -129,6 +120,7 @@ declare(strict_types=1);
 
 namespace App\Ai\Tasks;
 
+use App\Models\Document;
 use Laravel\Ai\Messages\UserMessage;
 use Fomvasss\AiTasks\DTO\AiPayload;
 use Fomvasss\AiTasks\DTO\AiResponse;
@@ -137,6 +129,7 @@ use Fomvasss\AiTasks\Tasks\AiTask;
 class SummarizeTask extends AiTask
 {
     public function __construct(
+        private readonly int    $documentId,
         private readonly string $text,
     ) {}
 
@@ -155,13 +148,29 @@ class SummarizeTask extends AiTask
         );
     }
 
-    public function postprocess(AiResponse $response): AiResponse|array
+    public function serializeForQueue(): array
     {
-        // зберегти в БД, відправити подію тощо
-        return $response;
+        return [$this->documentId, $this->text];
+    }
+
+    public function postprocess(AiResponse $response): array
+    {
+        // приводимо сиру відповідь до свого формату — виконується на кожній спробі,
+        // включно з тими, що потім відхилить isAcceptable(), тому без побічних ефектів
+        return ['summary' => trim($response->content ?? '')];
+    }
+
+    public function onCompleted(AiResponse|array $result, bool $attemptsExhausted): void
+    {
+        // викликається рівно один раз, тільки для фінального результату — сюди побічні ефекти
+        Document::whereKey($this->documentId)->update([
+            'summary' => $result['summary'] ?? null,
+        ]);
     }
 }
 ```
+
+`postprocess()` формує відповідь; `onCompleted()` діє на фінальний результат. Детальніше — [Хук `onCompleted()`](#хук-oncompleted) нижче (гарантія одного виклику, після вирішення ретраїв, ізоляція від пайплайна при винятку).
 
 ## Запуск задач
 
@@ -169,21 +178,21 @@ class SummarizeTask extends AiTask
 use Fomvasss\AiTasks\Facades\AI;
 
 // Синхронно
-$response = AI::send(new SummarizeTask($text));
+$response = AI::send(new SummarizeTask($documentId, $text));
 echo $response->content;
 
 // Асинхронно (черга)
-$runId = AI::queue(new SummarizeTask($text));
+$runId = AI::queue(new SummarizeTask($documentId, $text));
 
 // Стрімінг
-$response = AI::stream(new SummarizeTask($text), function (string $chunk) {
+$response = AI::stream(new SummarizeTask($documentId, $text), function (string $chunk) {
     echo $chunk;
 });
 // $response->content — повний накопичений текст
 // $response->usage  — токени + вартість (як у AI::send)
 
 // Перевизначити драйвер на льоту
-$response = AI::send(new SummarizeTask($text), drivers: 'anthropic');
+$response = AI::send(new SummarizeTask($documentId, $text), drivers: 'anthropic');
 ```
 
 ## Стрімінг
@@ -192,7 +201,7 @@ $response = AI::send(new SummarizeTask($text), drivers: 'anthropic');
 
 ```php
 $response = AI::stream(
-    new SummarizeTask($text),
+    new SummarizeTask($documentId, $text),
     function (string $chunk) {
         echo $chunk;           // або: event('stream', $chunk)
     },
@@ -234,7 +243,7 @@ $response->content; // повний накопичений текст
 Або безпосередньо на інстансі таску:
 
 ```php
-AI::send((new SummarizeTask($text))->viaDrivers('gemini'));
+AI::send((new SummarizeTask($documentId, $text))->viaDrivers('gemini'));
 ```
 
 ## Multi-tenant бюджет
@@ -327,6 +336,41 @@ public function postprocess(AiResponse $resp): array|AiResponse
 ```
 
 `schema()` має пріоритет над `jsonMode`, якщо задано обидва. Працює з `send()` і `queue()` (замикання автоматично обгортається в `Laravel\SerializableClosure\SerializableClosure`, тому переживає серіалізацію job-у), але не застосовується до `stream()`.
+
+### Типи полів і вкладеність
+
+`JsonSchema` підтримує звичні типи полів, а також вкладені об'єкти й опційні поля — реалістична схема (наприклад, відповідь чат-асистента, яка іноді фіксує контактні дані) поєднує їх:
+
+```php
+public function schema(): ?\Closure
+{
+    return fn (JsonSchema $schema): array => [
+        'action'     => $schema->string()->enum(['reply', 'escalate_to_human']),
+        'confidence' => $schema->number(),
+        'urgent'     => $schema->boolean(),
+        'contact'    => $schema->object([
+            'name'  => $schema->string(),
+            'email' => $schema->string(),
+        ])->nullable(), // весь об'єкт, або null, якщо звітувати нічого
+    ];
+}
+```
+
+Структурований вивід завжди — top-level **об'єкт**: таск, чий природний результат — список (напр. видобуті ключові слова), має обгорнути його в ключ, а потім розгорнути в `postprocess()`:
+
+```php
+public function schema(): ?\Closure
+{
+    return fn (JsonSchema $schema): array => [
+        'keywords' => $schema->array()->items($schema->string()),
+    ];
+}
+
+public function postprocess(AiResponse $resp): array
+{
+    return ['keywords' => $resp->structured['keywords'] ?? []];
+}
+```
 
 ### Провайдер-специфічні опції
 
@@ -460,9 +504,9 @@ class AnalyzeTask extends AiTask implements ShouldQueueAi
 Передай `delay` у `AI::queue()` щоб відкласти виконання:
 
 ```php
-AI::queue(new SummarizeTask($text), delay: 300);                 // 5 хвилин (секунди)
-AI::queue(new SummarizeTask($text), delay: now()->addHours(2));  // Carbon
-AI::queue(new SummarizeTask($text), delay: new \DateInterval('PT10M'));
+AI::queue(new SummarizeTask($documentId, $text), delay: 300);                 // 5 хвилин (секунди)
+AI::queue(new SummarizeTask($documentId, $text), delay: now()->addHours(2));  // Carbon
+AI::queue(new SummarizeTask($documentId, $text), delay: new \DateInterval('PT10M'));
 ```
 
 ### Перевірка перед виконанням — `shouldRun()`
@@ -559,6 +603,31 @@ class ChatReplyCompletedListener
 
 > **Примітка:** номер спроби не зберігається в `ai_runs` — відновити можна тільки з суфікса `idempotency_key` (`...-retry1`, `...-retry2`, ...). Немає колонки `attempt` чи зв'язку run з його ретраями, тому дашборд не показує ланцюжок структуровано.
 
+### Хук `onCompleted()`
+
+Для таска з єдиним споживачем результату перевизнач `onCompleted()` замість окремого listener-а на `AiTaskCompleted`:
+
+```php
+class GenerateChatAssistantReplyTask extends AiTask implements ShouldQueueAi
+{
+    public function onCompleted(AiResponse|array $result, bool $attemptsExhausted): void
+    {
+        if ($attemptsExhausted) {
+            SetManagerAction::run($this->message);
+            return;
+        }
+
+        // зберегти повідомлення, розіслати подію по вебсокету і т.д.
+    }
+}
+```
+
+Викликається рівно один раз, у тій самій точці, де фаєриться `AiTaskCompleted`, — коли `postprocess()`/`isAcceptable()` вже визначили фінальний результат (прийнятий або вичерпані ретраї). Не викликається на проміжних відхилених спробах ретраю. `$attemptsExhausted` означає те саме, що й `AiTaskCompleted::$attemptsExhausted`.
+
+Виняток усередині `onCompleted()` перехоплюється й логується, фаєриться `AiTaskCompletedHandlerFailed` — це ніколи не ламає внутрішній пайплайн пакета і не блокує `AiTaskCompleted`.
+
+Listener на `AiTaskCompleted` лишається доречним, коли за завершенням одного таска мають незалежно стежити декілька споживачів (напр. один зберігає доменний запис, інший пише в аналітику) — без правок самого таска. Обидва можуть співіснувати: пакет викликає `onCompleted()` і фаєрить подію в той самий момент.
+
 ## Інструменти та MCP
 
 Перевизнач `tools()` у будь-якому таску, щоб передати інструменти в `AnonymousAgent`. Інструменти автоматично передаються при `send()`, `stream()` і `queue()`.
@@ -642,6 +711,7 @@ $fake->assertNothingSent();
 | `AiTaskStarted` | Починається виклик API |
 | `AiTaskCompleted` | Постобробка завершена, відповідь готова |
 | `AiTaskFailed` | Всі драйвери впали |
+| `AiTaskCompletedHandlerFailed` | `AiTask::onCompleted()` кинув виняток |
 | `AiRunFinished` | Низький рівень: один виклик драйвера успішний |
 | `AiRunFailed` | Низький рівень: один виклик драйвера впав |
 
