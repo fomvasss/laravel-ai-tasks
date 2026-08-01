@@ -111,7 +111,7 @@ class AI
                 ? $result
                 : new AiResponse(true, json_encode($result));
 
-            self::complete($task, $finalResponse, $run);
+            self::complete($task, $result, $finalResponse, $run);
 
             return $finalResponse;
         }
@@ -212,7 +212,7 @@ class AI
                 ? $result
                 : new AiResponse(true, json_encode($result));
 
-            self::complete($task, $finalResponse, $run);
+            self::complete($task, $result, $finalResponse, $run);
 
             return $finalResponse;
         }
@@ -225,11 +225,16 @@ class AI
      * hook never breaks the AI pipeline itself) and fires AiTaskCompleted, in that order, at
      * every point in the package where a task's result is considered final — send()/stream()
      * here and PostprocessAiResult for the queued path.
+     *
+     * $result is whatever postprocess() returned (AiResponse|array) — the same value
+     * isAcceptable() is consulted with — not the AiResponse-wrapped $finalResponse the event
+     * carries, so a task whose postprocess() returns a plain array gets that array back in
+     * onCompleted(), not an AiResponse it never asked for.
      */
-    public static function complete(AiTask $task, AiResponse $finalResponse, AiRun $run, bool $attemptsExhausted = false): void
+    public static function complete(AiTask $task, AiResponse|array $result, AiResponse $finalResponse, AiRun $run, bool $attemptsExhausted = false): void
     {
         try {
-            $task->onCompleted($finalResponse, $attemptsExhausted);
+            $task->onCompleted($result, $attemptsExhausted);
         } catch (\Throwable $e) {
             Log::error('AiTask::onCompleted() threw', [
                 'task' => $task->name(),

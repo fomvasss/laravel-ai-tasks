@@ -40,6 +40,7 @@ class PostprocessAiResult implements ShouldQueue
         $resp = new AiResponse(
             ok: true,
             content: $run->response['content'] ?? null,
+            structured: $run->response['structured'] ?? null,
         );
 
         /** @var class-string<AiTask> $cls */
@@ -59,7 +60,7 @@ class PostprocessAiResult implements ShouldQueue
             ? $result
             : new AiResponse(true, json_encode($result));
 
-        AI::complete($task, $finalResponse, $run, attemptsExhausted: ! $accepted);
+        AI::complete($task, $result, $finalResponse, $run, attemptsExhausted: ! $accepted);
     }
 
     /**

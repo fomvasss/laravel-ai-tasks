@@ -91,6 +91,24 @@ class OnCompletedTest extends TestCase
         return $task;
     }
 
+    /** postprocess() returns a plain array — onCompleted() must receive that array as-is, not an AiResponse wrapping it. */
+    private function arrayPostprocessTask(): AiTask
+    {
+        $task = new class extends AiTask {
+            public static array $calls = [];
+            public function modality(): string { return 'text'; }
+            public function toPayload(): AiPayload { return new AiPayload('text', messages: [new \Laravel\Ai\Messages\UserMessage('hi')]); }
+            public function postprocess(AiResponse $resp): array { return ['summary' => 'shaped:' . $resp->content]; }
+            public function onCompleted(AiResponse|array $result, bool $attemptsExhausted): void
+            {
+                static::$calls[] = $result['summary'] ?? '__MISSING_KEY__';
+            }
+        };
+        $task::$calls = [];
+
+        return $task;
+    }
+
     private function okDriver(): AiDriver
     {
         return new class implements AiDriver {
@@ -146,6 +164,26 @@ class OnCompletedTest extends TestCase
         $this->assertSame([false], $task::$calls);
     }
 
+    public function test_send_passes_postprocess_array_result_to_on_completed_unwrapped(): void
+    {
+        $this->swapDriverMap(['driverA' => $this->okDriver()]);
+
+        $task = $this->arrayPostprocessTask();
+        AIFacade::send($task, 'driverA');
+
+        $this->assertSame(['shaped:ok'], $task::$calls);
+    }
+
+    public function test_stream_passes_postprocess_array_result_to_on_completed_unwrapped(): void
+    {
+        $this->swapDriverMap(['driverA' => $this->okDriver()]);
+
+        $task = $this->arrayPostprocessTask();
+        AIFacade::stream($task, fn ($c) => null, 'driverA');
+
+        $this->assertSame(['shaped:ok'], $task::$calls);
+    }
+
     // ── PostprocessAiResult (queued path) ────────────────────────────────
 
     public function test_queue_path_calls_on_completed_once_when_accepted(): void
@@ -180,6 +218,16 @@ class OnCompletedTest extends TestCase
         (new PostprocessAiResult($run->id, $task::class, $task->serializeForQueue(), attempt: 1))->handle();
 
         $this->assertSame([true], $task::$calls);
+    }
+
+    public function test_queue_path_passes_postprocess_array_result_to_on_completed_unwrapped(): void
+    {
+        $task = $this->arrayPostprocessTask();
+        $run  = $this->makeOkRun($task);
+
+        (new PostprocessAiResult($run->id, $task::class, $task->serializeForQueue(), attempt: 0))->handle();
+
+        $this->assertSame(['shaped:irrelevant'], $task::$calls);
     }
 
     // ── Failure isolation ─────────────────────────────────────────────────

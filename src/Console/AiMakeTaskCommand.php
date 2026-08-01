@@ -45,17 +45,9 @@ class AiMakeTaskCommand extends Command
 
     private function buildStub(string $namespace, string $class, bool $queued): string
     {
-        $taskName    = Str::snake(str_replace('Task', '', $class));
-        $implements  = $queued ? ' implements ShouldQueueAi' : '';
-        $queuedUse   = $queued ? "\nuse Fomvasss\\AiTasks\\Contracts\\ShouldQueueAi;" : '';
-        $serializeMethod = $queued ? <<<PHP
-
-    public function serializeForQueue(): array
-    {
-        return []; // return constructor args
-    }
-
-PHP : '';
+        $taskName       = Str::snake(str_replace('Task', '', $class));
+        $implements     = $queued ? ' implements ShouldQueueAi' : '';
+        $shouldQueueUse = $queued ? "\nuse Fomvasss\\AiTasks\\Contracts\\ShouldQueueAi;" : '';
 
         return <<<PHP
 <?php
@@ -67,12 +59,15 @@ namespace {$namespace};
 use Laravel\Ai\Messages\UserMessage;
 use Fomvasss\AiTasks\DTO\AiPayload;
 use Fomvasss\AiTasks\DTO\AiResponse;
-use Fomvasss\AiTasks\Tasks\AiTask;{$queuedUse}
+use Fomvasss\AiTasks\Tasks\AiTask;
+use Fomvasss\AiTasks\Traits\AutoSerializesConstructorArgs;{$shouldQueueUse}
 
 class {$class} extends AiTask{$implements}
 {
+    use AutoSerializesConstructorArgs;
+
     public function __construct(
-        // add your constructor arguments
+        // add your constructor arguments — must be promoted properties, e.g. `private readonly int \$id`
     ) {}
 
     public function name(): string
@@ -99,7 +94,7 @@ class {$class} extends AiTask{$implements}
     {
         return \$response;
     }
-{$serializeMethod}}
+}
 PHP;
     }
 }

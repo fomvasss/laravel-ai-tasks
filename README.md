@@ -120,17 +120,20 @@ declare(strict_types=1);
 
 namespace App\Ai\Tasks;
 
-use App\Models\Document;
+use App\Models\Article;
+use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Ai\Messages\UserMessage;
 use Fomvasss\AiTasks\DTO\AiPayload;
 use Fomvasss\AiTasks\DTO\AiResponse;
 use Fomvasss\AiTasks\Tasks\AiTask;
+use Fomvasss\AiTasks\Traits\AutoSerializesConstructorArgs;
 
 class SummarizeTask extends AiTask
 {
+    use AutoSerializesConstructorArgs;
+
     public function __construct(
-        private readonly int    $documentId,
-        private readonly string $text,
+        private readonly Article $article,
     ) {}
 
     public function modality(): string
@@ -142,35 +145,35 @@ class SummarizeTask extends AiTask
     {
         return new AiPayload(
             modality: $this->modality(),
-            messages: [new UserMessage("Summarize: {$this->text}")],
+            messages: [new UserMessage("Summarize: {$this->article->body}")],
             systemPrompt: 'You are a concise summarizer. Reply in 3 sentences max.',
             options: ['temperature' => 0.3],
         );
     }
 
-    public function serializeForQueue(): array
+    public function schema(): ?\Closure
     {
-        return [$this->documentId, $this->text];
+        return fn (JsonSchema $schema): array => [
+            'summary' => $schema->string(),
+        ];
     }
 
     public function postprocess(AiResponse $response): array
     {
         // shape the raw response into your own result format — runs on every attempt,
         // including attempts a later isAcceptable() rejects, so keep this side-effect free
-        return ['summary' => trim($response->content ?? '')];
+        return ['summary' => $response->structured['summary'] ?? ''];
     }
 
     public function onCompleted(AiResponse|array $result, bool $attemptsExhausted): void
     {
         // runs exactly once, only for the final result — this is where side effects belong
-        Document::whereKey($this->documentId)->update([
-            'summary' => $result['summary'] ?? null,
-        ]);
+        $this->article->update(['summary' => $result['summary'] ?? null]);
     }
 }
 ```
 
-`postprocess()` shapes the response; `onCompleted()` acts on the final one. See [The `onCompleted()` Hook](#the-oncompleted-hook) below for the full guarantee (called once, after retries settle, isolated from the pipeline if it throws).
+`private readonly Article $article` — a plain Eloquent model, not an id — works because of `use AutoSerializesConstructorArgs;` (added by `ai:make-task` automatically): it handles `serializeForQueue()`/`fromQueueArgs()` for you, restoring a fresh `$article` on the worker for every queued run. `schema()` guarantees the provider replies with exactly `{"summary": "..."}`, decoded into `AiResponse::$structured` — see [Structured Output](#structured-output-schema) below. `postprocess()` shapes the response; `onCompleted()` acts on the final one. See [The `onCompleted()` Hook](#the-oncompleted-hook) below for the full guarantee (called once, after retries settle, isolated from the pipeline if it throws).
 
 ## Running Tasks
 
@@ -178,21 +181,21 @@ class SummarizeTask extends AiTask
 use Fomvasss\AiTasks\Facades\AI;
 
 // Sync
-$response = AI::send(new SummarizeTask($documentId, $text));
+$response = AI::send(new SummarizeTask($article));
 echo $response->content;
 
 // Async (queue)
-$runId = AI::queue(new SummarizeTask($documentId, $text));
+$runId = AI::queue(new SummarizeTask($article));
 
 // Streaming
-$response = AI::stream(new SummarizeTask($documentId, $text), function (string $chunk) {
+$response = AI::stream(new SummarizeTask($article), function (string $chunk) {
     echo $chunk;
 });
 // $response->content — full accumulated text
 // $response->usage  — tokens + cost (same as AI::send)
 
 // Override driver at runtime
-$response = AI::send(new SummarizeTask($documentId, $text), drivers: 'anthropic');
+$response = AI::send(new SummarizeTask($article), drivers: 'anthropic');
 ```
 
 ## Streaming
@@ -201,7 +204,7 @@ $response = AI::send(new SummarizeTask($documentId, $text), drivers: 'anthropic'
 
 ```php
 $response = AI::stream(
-    new SummarizeTask($documentId, $text),
+    new SummarizeTask($article),
     function (string $chunk) {
         echo $chunk;          // or: event('stream', $chunk)
     },
@@ -269,7 +272,7 @@ Tasks are routed to drivers via `config/ai-tasks.php`:
 Or on the task instance:
 
 ```php
-AI::send((new SummarizeTask($documentId, $text))->viaDrivers('gemini'));
+AI::send((new SummarizeTask($article))->viaDrivers('gemini'));
 ```
 
 ## Multi-tenant Budget Tracking
@@ -329,37 +332,7 @@ return new AiPayload(
 
 ## Structured Output (Schema)
 
-Implement `AiTask::schema(): ?\Closure` to declare a JSON Schema for the response. Unlike `jsonMode`, the schema is enforced by the provider itself (native structured output on Anthropic, OpenAI, and others via `laravel/ai`'s `StructuredAnonymousAgent`) — the model can't return a shape you didn't ask for.
-
-```php
-use Illuminate\Contracts\JsonSchema\JsonSchema;
-
-class ClassifyContentTask extends AiTask
-{
-    // ...
-
-    public function schema(): ?\Closure
-    {
-        return fn (JsonSchema $schema): array => [
-            'category'   => $schema->string()->enum(['tech', 'science', 'politics', 'sport', 'culture', 'business', 'other']),
-            'confidence' => $schema->number(),
-        ];
-    }
-}
-```
-
-`AiResponse::$structured` is already the decoded array matching your schema — no manual `json_decode()` or markdown-fence stripping needed in `postprocess()`:
-
-```php
-public function postprocess(AiResponse $resp): array|AiResponse
-{
-    return [
-        'ok'         => $resp->ok,
-        'category'   => $resp->structured['category']   ?? null,
-        'confidence' => $resp->structured['confidence']  ?? null,
-    ];
-}
-```
+Implement `AiTask::schema(): ?\Closure` to declare a JSON Schema for the response — `SummarizeTask` in [Creating a Task](#creating-a-task) already does this (`'summary' => $schema->string()`). Unlike `jsonMode`, the schema is enforced by the provider itself (native structured output on Anthropic, OpenAI, and others via `laravel/ai`'s `StructuredAnonymousAgent`) — the model can't return a shape you didn't ask for. `AiResponse::$structured` is the already-decoded array matching that schema — no manual `json_decode()` or markdown-fence stripping needed in `postprocess()`.
 
 `schema()` takes precedence over `jsonMode` when both are set. It works with `send()` and `queue()` (the closure is wrapped in `Laravel\SerializableClosure\SerializableClosure` automatically, so it survives the queue payload) but is not applied to `stream()`.
 
@@ -521,18 +494,16 @@ class AnalyzeTask extends AiTask implements ShouldQueueAi
 }
 ```
 
-> **Note:** `serializeForQueue()` must return only scalar values (strings, ints, arrays of scalars). The array is JSON-encoded and stored in Redis; on the worker side it is passed back into the constructor via `new static(...$args)`. Do not pass Eloquent models — they will be JSON-serialized into a plain array and the constructor will receive an `array` instead of a model instance. Pass IDs instead and load the model inside `toPayload()`.
->
-> `serializeForQueue()` also drives idempotency: if it returns `[]` (the default), no deduplication is applied for `AI::queue()`. Any task that accepts constructor parameters influencing the prompt must implement `serializeForQueue()` — `AI::queue()` will throw a `LogicException` at dispatch time if it detects constructor parameters but `serializeForQueue()` returns `[]`.
+> **Note:** `serializeForQueue()` must return only scalar values (strings, ints, arrays of scalars) — this array is passed back into the constructor on the worker via `new static(...$args)`. `SummarizeTask` in [Creating a Task](#creating-a-task) shows the easier path — `use AutoSerializesConstructorArgs;` lets the constructor take an Eloquent model directly (a promoted property), instead of an id you'd reload by hand in `toPayload()`. `serializeForQueue()` also drives idempotency — see [Idempotency](#idempotency).
 
 ### Delayed dispatch
 
 Pass a `delay` to `AI::queue()` to defer execution:
 
 ```php
-AI::queue(new SummarizeTask($documentId, $text), delay: 300);                 // 5 minutes (seconds)
-AI::queue(new SummarizeTask($documentId, $text), delay: now()->addHours(2));  // Carbon
-AI::queue(new SummarizeTask($documentId, $text), delay: new \DateInterval('PT10M'));
+AI::queue(new SummarizeTask($article), delay: 300);                 // 5 minutes (seconds)
+AI::queue(new SummarizeTask($article), delay: now()->addHours(2));  // Carbon
+AI::queue(new SummarizeTask($article), delay: new \DateInterval('PT10M'));
 ```
 
 ### Pre-execution guard — `shouldRun()`
@@ -558,32 +529,28 @@ Useful when a queued task may become irrelevant by the time a worker picks it up
 
 Every run is protected against duplicates via a unique `idempotency_key` stored in `ai_runs`. The key is a hash of `[tenantId, taskName, modality, serializeForQueue()]`.
 
-**Deduplication is active only when `serializeForQueue()` returns a non-empty array.** If it returns `[]` (the default), `idempotencyKey()` returns `null` and no deduplication is applied — multiple runs with the same task can coexist. This means: for any task with variable inputs, implementing `serializeForQueue()` is required both for queue reconstruction and for correct idempotency behavior.
+**Deduplication is active only when `serializeForQueue()` returns a non-empty array.** If it returns `[]` (the default), `idempotencyKey()` returns `null` and no deduplication is applied — multiple runs with the same task can coexist. This means: for any task with variable inputs, implementing `serializeForQueue()` is required both for queue reconstruction and for correct idempotency behavior. `AI::queue()` enforces this at dispatch time — it throws a `LogicException` for a task that has constructor parameters but whose `serializeForQueue()` returns `[]`.
 
 **Collision behavior (when a non-null key already exists in `ai_runs`):**
 - `AI::queue()` — returns the existing `run_id`; no duplicate job is dispatched.
 - `AI::send()` — always makes a fresh API call; `idempotency_key` is not stored for sync runs.
 
-Override `idempotencyKey()` when you need custom deduplication logic:
+What matters for custom deduplication is what `serializeForQueue()` includes — the default `idempotencyKey()` just hashes it as-is, no override needed:
 
 ```php
 class ChatTask extends AiTask
 {
+    use AutoSerializesConstructorArgs;
+
     public function __construct(
         private readonly string $question,
         private readonly string $messageId, // unique per message from the chat system
         private readonly array  $history = [],
     ) {}
-
-    public function serializeForQueue(): array
-    {
-        return [$this->question, $this->messageId, $this->history];
-    }
-    // idempotencyKey() default is sufficient — messageId makes each turn unique
 }
 ```
 
-For chat/assistant integrations where the same question can be asked multiple times: as long as the conversation history (or a `messageId`) is part of `serializeForQueue()`, each turn produces a different key and idempotency works correctly — it only blocks genuine technical duplicates (double-send, queue retry).
+For chat/assistant integrations where the same question can be asked multiple times: as long as the conversation history (or a `messageId`) is part of the constructor, each turn produces a different key and idempotency works correctly — it only blocks genuine technical duplicates (double-send, queue retry).
 
 ### Retrying an Unacceptable Result
 

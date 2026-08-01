@@ -120,17 +120,20 @@ declare(strict_types=1);
 
 namespace App\Ai\Tasks;
 
-use App\Models\Document;
+use App\Models\Article;
+use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Ai\Messages\UserMessage;
 use Fomvasss\AiTasks\DTO\AiPayload;
 use Fomvasss\AiTasks\DTO\AiResponse;
 use Fomvasss\AiTasks\Tasks\AiTask;
+use Fomvasss\AiTasks\Traits\AutoSerializesConstructorArgs;
 
 class SummarizeTask extends AiTask
 {
+    use AutoSerializesConstructorArgs;
+
     public function __construct(
-        private readonly int    $documentId,
-        private readonly string $text,
+        private readonly Article $article,
     ) {}
 
     public function modality(): string
@@ -142,35 +145,35 @@ class SummarizeTask extends AiTask
     {
         return new AiPayload(
             modality: $this->modality(),
-            messages: [new UserMessage("Стисни текст: {$this->text}")],
+            messages: [new UserMessage("Стисни текст: {$this->article->body}")],
             systemPrompt: 'Ти помічник-редактор. Відповідай максимум 3 реченнями.',
             options: ['temperature' => 0.3],
         );
     }
 
-    public function serializeForQueue(): array
+    public function schema(): ?\Closure
     {
-        return [$this->documentId, $this->text];
+        return fn (JsonSchema $schema): array => [
+            'summary' => $schema->string(),
+        ];
     }
 
     public function postprocess(AiResponse $response): array
     {
         // приводимо сиру відповідь до свого формату — виконується на кожній спробі,
         // включно з тими, що потім відхилить isAcceptable(), тому без побічних ефектів
-        return ['summary' => trim($response->content ?? '')];
+        return ['summary' => $response->structured['summary'] ?? ''];
     }
 
     public function onCompleted(AiResponse|array $result, bool $attemptsExhausted): void
     {
         // викликається рівно один раз, тільки для фінального результату — сюди побічні ефекти
-        Document::whereKey($this->documentId)->update([
-            'summary' => $result['summary'] ?? null,
-        ]);
+        $this->article->update(['summary' => $result['summary'] ?? null]);
     }
 }
 ```
 
-`postprocess()` формує відповідь; `onCompleted()` діє на фінальний результат. Детальніше — [Хук `onCompleted()`](#хук-oncompleted) нижче (гарантія одного виклику, після вирішення ретраїв, ізоляція від пайплайна при винятку).
+`private readonly Article $article` — звичайна Eloquent-модель, не id — працює завдяки `use AutoSerializesConstructorArgs;` (його додає сам `ai:make-task`): бере на себе `serializeForQueue()`/`fromQueueArgs()`, відновлюючи свіжий `$article` на воркері для кожного queue-запуску; див. [Передача Eloquent-моделей](#передача-eloquent-моделей). `schema()` гарантує, що провайдер відповість точно `{"summary": "..."}`, розпарсене в `AiResponse::$structured` — див. [Структурований вивід](#структурований-вивід-schema) нижче. `postprocess()` формує відповідь; `onCompleted()` діє на фінальний результат. Детальніше — [Хук `onCompleted()`](#хук-oncompleted) нижче (гарантія одного виклику, після вирішення ретраїв, ізоляція від пайплайна при винятку).
 
 ## Запуск задач
 
@@ -178,21 +181,21 @@ class SummarizeTask extends AiTask
 use Fomvasss\AiTasks\Facades\AI;
 
 // Синхронно
-$response = AI::send(new SummarizeTask($documentId, $text));
+$response = AI::send(new SummarizeTask($article));
 echo $response->content;
 
 // Асинхронно (черга)
-$runId = AI::queue(new SummarizeTask($documentId, $text));
+$runId = AI::queue(new SummarizeTask($article));
 
 // Стрімінг
-$response = AI::stream(new SummarizeTask($documentId, $text), function (string $chunk) {
+$response = AI::stream(new SummarizeTask($article), function (string $chunk) {
     echo $chunk;
 });
 // $response->content — повний накопичений текст
 // $response->usage  — токени + вартість (як у AI::send)
 
 // Перевизначити драйвер на льоту
-$response = AI::send(new SummarizeTask($documentId, $text), drivers: 'anthropic');
+$response = AI::send(new SummarizeTask($article), drivers: 'anthropic');
 ```
 
 ## Стрімінг
@@ -201,7 +204,7 @@ $response = AI::send(new SummarizeTask($documentId, $text), drivers: 'anthropic'
 
 ```php
 $response = AI::stream(
-    new SummarizeTask($documentId, $text),
+    new SummarizeTask($article),
     function (string $chunk) {
         echo $chunk;           // або: event('stream', $chunk)
     },
@@ -243,7 +246,7 @@ $response->content; // повний накопичений текст
 Або безпосередньо на інстансі таску:
 
 ```php
-AI::send((new SummarizeTask($documentId, $text))->viaDrivers('gemini'));
+AI::send((new SummarizeTask($article))->viaDrivers('gemini'));
 ```
 
 ## Multi-tenant бюджет
@@ -303,37 +306,7 @@ return new AiPayload(
 
 ## Структурований вивід (Schema)
 
-Реалізуйте `AiTask::schema(): ?\Closure`, щоб оголосити JSON Schema для відповіді. На відміну від `jsonMode`, схему валідує сам провайдер (нативний structured output на Anthropic, OpenAI та інших через `StructuredAnonymousAgent` пакету `laravel/ai`) — модель фізично не може повернути іншу форму, ніж ви попросили.
-
-```php
-use Illuminate\Contracts\JsonSchema\JsonSchema;
-
-class ClassifyContentTask extends AiTask
-{
-    // ...
-
-    public function schema(): ?\Closure
-    {
-        return fn (JsonSchema $schema): array => [
-            'category'   => $schema->string()->enum(['tech', 'science', 'politics', 'sport', 'culture', 'business', 'other']),
-            'confidence' => $schema->number(),
-        ];
-    }
-}
-```
-
-`AiResponse::$structured` — це вже задекодований масив за вашою схемою, ручний `json_decode()` чи прибирання markdown-обгорток у `postprocess()` більше не потрібні:
-
-```php
-public function postprocess(AiResponse $resp): array|AiResponse
-{
-    return [
-        'ok'         => $resp->ok,
-        'category'   => $resp->structured['category']   ?? null,
-        'confidence' => $resp->structured['confidence']  ?? null,
-    ];
-}
-```
+Реалізуйте `AiTask::schema(): ?\Closure`, щоб оголосити JSON Schema для відповіді — `SummarizeTask` у [Створенні таску](#створення-таску) вже так робить (`'summary' => $schema->string()`). На відміну від `jsonMode`, схему валідує сам провайдер (нативний structured output на Anthropic, OpenAI та інших через `StructuredAnonymousAgent` пакету `laravel/ai`) — модель фізично не може повернути іншу форму, ніж ви попросили. `AiResponse::$structured` — це вже задекодований масив за вашою схемою, ручний `json_decode()` чи прибирання markdown-обгорток у `postprocess()` більше не потрібні.
 
 `schema()` має пріоритет над `jsonMode`, якщо задано обидва. Працює з `send()` і `queue()` (замикання автоматично обгортається в `Laravel\SerializableClosure\SerializableClosure`, тому переживає серіалізацію job-у), але не застосовується до `stream()`.
 
@@ -495,18 +468,26 @@ class AnalyzeTask extends AiTask implements ShouldQueueAi
 }
 ```
 
-> **Увага:** `serializeForQueue()` повинен повертати тільки скалярні значення (рядки, числа, масиви скалярів). Масив JSON-кодується і зберігається в Redis; на стороні воркера він передається назад у конструктор через `new static(...$args)`. Не передавай Eloquent-моделі — вони серіалізуються у звичайний масив, і конструктор отримає `array` замість екземпляра моделі. Передавай ID і завантажуй модель всередині `toPayload()`.
->
-> `serializeForQueue()` також керує ідемпотентністю: якщо він повертає `[]` (за замовчуванням), дедублікація для `AI::queue()` не застосовується. Будь-яка задача з параметрами конструктора, що впливають на промпт, повинна реалізовувати `serializeForQueue()` — `AI::queue()` кине `LogicException` при диспетчеризації, якщо виявить параметри конструктора, але `serializeForQueue()` повертає `[]`.
+> **Увага:** `serializeForQueue()` повинен повертати тільки скалярні значення (рядки, числа, масиви скалярів) — цей масив передається назад у конструктор на воркері через `new static(...$args)`. Не передавай Eloquent-моделі напряму: модель переживає нативний PHP `serialize()` черги як є, тому воркер отримує **застарілий знімок**, застиглий на момент диспетчу, а не свіжий запит. Передавай ID і завантажуй модель у `toPayload()` — або використай [`AutoSerializesConstructorArgs`](#передача-eloquent-моделей) нижче, який робить це автоматично. `serializeForQueue()` також керує ідемпотентністю — див. [Ідемпотентність](#ідемпотентність).
+
+### Передача Eloquent-моделей
+
+`use AutoSerializesConstructorArgs;` знімає обмеження "передавай ID, не модель" вище — той самий обмін моделі на ідентифікатор, який роблять власні `ShouldQueue`-джоби/Notification/Mailable Laravel (`Illuminate\Queue\SerializesModels`), застосований до `serializeForQueue()`/`fromQueueArgs()`. `SummarizeTask` у [Створенні таску](#створення-таску) вже його використовує — `Article $article` там promoted-властивість конструктора, без жодного написаного вручну `serializeForQueue()`/`fromQueueArgs()`.
+
+Кожен параметр конструктора має бути promoted-властивістю (`private readonly Foo $foo`). `idempotencyKey()` хешує клас+id моделі (не атрибути), тому лишається стабільним, навіть якщо модель зміниться між диспетчем і обробкою. Видалений запис падає при відновленні голосно (`ModelNotFoundException`, run стає `dead`) замість тихої роботи з привидом запису.
+
+> **Увага:** свіжість стосується `postprocess()`/`isAcceptable()`/`onCompleted()`/`shouldRun()` — тих частин, що відновлюють таск із `taskCtorArgs` на воркері. `toPayload()` до них не належить: він виконується один раз, синхронно, всередині самого `AI::queue()`, до постановки job-и в чергу — те, якою модель була на той момент, і піде провайдеру, назавжди.
+
+Звичайний PHP-масив моделей не обмінюється (те саме обмеження, що й у `SerializesModels`) — використовуй Eloquent-колекцію (`Model::query()->get()`) замість масиву.
 
 ### Відкладений запуск (delay)
 
 Передай `delay` у `AI::queue()` щоб відкласти виконання:
 
 ```php
-AI::queue(new SummarizeTask($documentId, $text), delay: 300);                 // 5 хвилин (секунди)
-AI::queue(new SummarizeTask($documentId, $text), delay: now()->addHours(2));  // Carbon
-AI::queue(new SummarizeTask($documentId, $text), delay: new \DateInterval('PT10M'));
+AI::queue(new SummarizeTask($article), delay: 300);                 // 5 хвилин (секунди)
+AI::queue(new SummarizeTask($article), delay: now()->addHours(2));  // Carbon
+AI::queue(new SummarizeTask($article), delay: new \DateInterval('PT10M'));
 ```
 
 ### Перевірка перед виконанням — `shouldRun()`

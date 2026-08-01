@@ -96,7 +96,10 @@ class AiRun extends Model
         $this->update([
             'status'            => 'ok',
             'model'             => $resp->usage['model'] ?? null,
-            'response'          => ['content' => $resp->content],
+            'response'          => array_filter([
+                'content'    => $resp->content,
+                'structured' => $resp->structured,
+            ], fn (mixed $v): bool => $v !== null),
             'tokens_in'         => $resp->usage['tokens_in']          ?? null,
             'tokens_out'        => $resp->usage['tokens_out']         ?? null,
             'cache_read_tokens' => $resp->usage['cache_read_tokens']  ?? null,

@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+### Added
+- `Fomvasss\AiTasks\Traits\AutoSerializesConstructorArgs` — opt-in trait that lets an `AiTask` constructor accept Eloquent models directly, the same swap Laravel's own `ShouldQueue` jobs/Notifications/Mailables get from `Illuminate\Queue\SerializesModels`. A model (or model collection) constructor parameter is serialized as an `Illuminate\Contracts\Database\ModelIdentifier` (class + id) and re-queried fresh on the worker. Requires promoted constructor properties; a plain array of models isn't swapped. See README "Passing Eloquent Models". Covered by `tests/AutoSerializesConstructorArgsTest.php`
+
+### Changed
+- `ai:make-task` now wires up `use AutoSerializesConstructorArgs;` in every generated stub, `--queued` or not, replacing the old manual `serializeForQueue()` placeholder. Covered by `tests/AiMakeTaskCommandTest.php`
+- README: corrected the "do not pass Eloquent models" note under Queued Tasks — a raw model survives the queue's native PHP `serialize()` intact, so the real risk is a stale attribute snapshot on the worker, not a `TypeError`/plain array as previously stated
+
+### Fixed
+- `AiTask::onCompleted()` now receives the exact value `postprocess()` returned (array or `AiResponse`) instead of the `AiResponse`-wrapped value used for the `AiTaskCompleted` event. Fixed in `Core\AI::complete()`. Regression coverage in `tests/OnCompletedTest.php`
+- `AiResponse::$structured` (`schema()` output) is now persisted to `ai_runs` and restored on the queued path — previously only `content` was stored, so `PostprocessAiResult` always saw `structured` as `null` even though `send()`/`stream()` had it. Fixed in `AiRun::finish()` / `PostprocessAiResult::handle()`. Regression coverage in `tests/SchemaTest.php`
+
 ## [3.16.0] — 2026-08-01
 
 ### Added

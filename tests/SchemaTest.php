@@ -15,9 +15,12 @@ use Fomvasss\AiTasks\DTO\AiResponse;
 use Fomvasss\AiTasks\Drivers\JsonModeAgent;
 use Fomvasss\AiTasks\Drivers\LaravelAiDriver;
 use Fomvasss\AiTasks\Facades\AI as AIFacade;
+use Fomvasss\AiTasks\Jobs\PostprocessAiResult;
+use Fomvasss\AiTasks\Models\AiRun;
 use Fomvasss\AiTasks\Tasks\AiTask;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Ai\AnonymousAgent;
+use Laravel\Ai\Messages\UserMessage;
 use Laravel\Ai\StructuredAnonymousAgent;
 use Laravel\SerializableClosure\SerializableClosure;
 use Orchestra\Testbench\TestCase;
@@ -202,5 +205,39 @@ class SchemaTest extends TestCase
         AIFacade::send($this->makeTask(), 'null');
 
         $this->assertNull($spy->received->schema);
+    }
+
+    // ── Queued path: structured must survive the AiRun round-trip ──────────
+
+    public function test_finish_persists_structured_and_queued_postprocess_receives_it(): void
+    {
+        $task = new class extends AiTask {
+            public static ?array $seen = null;
+            public function modality(): string { return 'text'; }
+            public function toPayload(): AiPayload { return new AiPayload('text', messages: [new UserMessage('hi')]); }
+            public function schema(): ?\Closure
+            {
+                return fn (JsonSchema $s): array => ['keywords' => $s->array()->items($s->string())];
+            }
+            public function postprocess(AiResponse $resp): array
+            {
+                return ['keywords' => $resp->structured['keywords'] ?? []];
+            }
+            public function onCompleted(AiResponse|array $result, bool $attemptsExhausted): void
+            {
+                static::$seen = $result;
+            }
+        };
+        $task::$seen = null;
+
+        $run = AiRun::startAsQueue('driverA', $task->toPayload(), $task->context(), $task);
+        $run->markRunning();
+        $run->finish(new AiResponse(true, '{"keywords":["a","b"]}', structured: ['keywords' => ['a', 'b']]));
+
+        $this->assertSame(['keywords' => ['a', 'b']], $run->fresh()->response['structured'] ?? null);
+
+        (new PostprocessAiResult($run->id, $task::class, $task->serializeForQueue(), attempt: 0))->handle();
+
+        $this->assertSame(['keywords' => ['a', 'b']], $task::$seen);
     }
 }
