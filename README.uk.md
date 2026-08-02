@@ -198,6 +198,27 @@ $response = AI::stream(new SummarizeTask($article), function (string $chunk) {
 $response = AI::send(new SummarizeTask($article), drivers: 'anthropic');
 ```
 
+### Швидкі промпти
+
+Для одноразового виклику, під який не варто заводити окремий клас `AiTask`, є `AI::prompt()`. Він так само
+йде через `send()` — routing, перевірка бюджету і трекінг `AiRun` працюють як завжди:
+
+```php
+$response = AI::prompt('Як справи?');
+echo $response->content;
+
+// Із system prompt, конкретним драйвером і власною назвою для дашборду/routing
+$response = AI::prompt(
+    prompt: 'Summarize this in one sentence: ...',
+    system: 'You are a terse assistant.',
+    drivers: 'anthropic',
+    name: 'quick_summary',
+);
+```
+
+Без `name` усі виклики групуються в дашборді під назвою `prompt`. Якщо задача перевикористовується,
+ставиться в чергу, або потребує `postprocess()`/`schema()`/`tools()` — пиши окремий `AiTask`.
+
 ## Стрімінг
 
 `AI::stream()` передає текст відповіді чанками через callback — зручно для real-time UI (SSE, WebSockets).

@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [3.18.0] — 2026-08-02
+
+### Added
+- `AI::prompt()` — quick one-off text prompt without writing a dedicated `AiTask` class. Backed by a new generic `PromptTask`, so it still goes through `send()`: routing, budget checks and `AiRun` tracking apply as usual. Supported by `AI::fake()` too.
+- `ai:make-task` stub: trailing comment listing optional `AiTask` hooks (`schema()`, `onCompleted()`, `maxRetries()`/`isAcceptable()`, `tools()`).
+
 ## [3.17.0] — 2026-08-02
 
 ### Added

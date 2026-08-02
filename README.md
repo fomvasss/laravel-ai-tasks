@@ -198,6 +198,27 @@ $response = AI::stream(new SummarizeTask($article), function (string $chunk) {
 $response = AI::send(new SummarizeTask($article), drivers: 'anthropic');
 ```
 
+### Quick Prompts
+
+For a one-off call that doesn't warrant a dedicated `AiTask` class, use `AI::prompt()`. It still goes
+through `send()` — routing, budget checks and `AiRun` tracking apply as usual:
+
+```php
+$response = AI::prompt('Як справи?');
+echo $response->content;
+
+// With a system prompt, explicit driver, and a custom dashboard/routing name
+$response = AI::prompt(
+    prompt: 'Summarize this in one sentence: ...',
+    system: 'You are a terse assistant.',
+    drivers: 'anthropic',
+    name: 'quick_summary',
+);
+```
+
+All runs default to the `prompt` task name in the dashboard unless `name` is given. For anything
+reused, queued, or needing `postprocess()`/`schema()`/`tools()`, write a proper `AiTask` instead.
+
 ## Streaming
 
 `AI::stream()` delivers response text chunk by chunk via a callback, useful for real-time UI (SSE, WebSockets).

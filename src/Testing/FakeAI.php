@@ -6,6 +6,7 @@ namespace Fomvasss\AiTasks\Testing;
 
 use Fomvasss\AiTasks\DTO\AiResponse;
 use Fomvasss\AiTasks\Tasks\AiTask;
+use Fomvasss\AiTasks\Tasks\PromptTask;
 use Illuminate\Support\Str;
 use PHPUnit\Framework\Assert as PHPUnit;
 
@@ -26,6 +27,11 @@ final class FakeAI
         } else {
             $this->responses = ['*' => 'fake ai response'];
         }
+    }
+
+    public function prompt(string $prompt, ?string $system = null, array|string $drivers = [], string $name = 'prompt'): AiResponse
+    {
+        return $this->send(new PromptTask($prompt, $system, $name), $drivers);
     }
 
     public function send(AiTask $task, array|string $drivers = []): AiResponse

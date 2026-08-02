@@ -94,6 +94,8 @@ class {$class} extends AiTask{$implements}
     {
         return \$response;
     }
+
+    // optional hooks: schema(), onCompleted(), maxRetries()/isAcceptable(), tools() — see README
 }
 PHP;
     }

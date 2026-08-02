@@ -161,4 +161,38 @@ class FakeAITest extends TestCase
 
         $this->assertIsString($runId);
     }
+
+    public function test_prompt_returns_fake_response(): void
+    {
+        AI::fake('Fine, thanks.');
+
+        $resp = AI::prompt('Як справи?');
+
+        $this->assertSame('Fine, thanks.', $resp->content);
+        $this->assertTrue($resp->ok);
+    }
+
+    public function test_prompt_defaults_to_prompt_task_name(): void
+    {
+        AI::fake([
+            'prompt' => 'default name response',
+            '*'      => 'wildcard',
+        ]);
+
+        $resp = AI::prompt('hello');
+
+        $this->assertSame('default name response', $resp->content);
+    }
+
+    public function test_prompt_accepts_custom_name(): void
+    {
+        $fake = AI::fake([
+            'quick_summary' => 'summary response',
+        ]);
+
+        $resp = AI::prompt('hello', name: 'quick_summary');
+
+        $this->assertSame('summary response', $resp->content);
+        $fake->assertSent(\Fomvasss\AiTasks\Tasks\PromptTask::class, fn($t) => $t->name() === 'quick_summary');
+    }
 }

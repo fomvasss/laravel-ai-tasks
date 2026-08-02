@@ -20,6 +20,7 @@ use Fomvasss\AiTasks\Models\AiRun;
 use Fomvasss\AiTasks\Support\Budget;
 use Fomvasss\AiTasks\Support\ModelLister;
 use Fomvasss\AiTasks\Tasks\AiTask;
+use Fomvasss\AiTasks\Tasks\PromptTask;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Pipeline\Pipeline;
 use Illuminate\Support\Facades\Log;
@@ -56,6 +57,16 @@ class AI
         $cfg['api_key'] = $apiKey;
 
         return $this->lister->forDriver($driver, $cfg, $filter);
+    }
+
+    /**
+     * Quick one-off text prompt, without writing a dedicated AiTask class.
+     * Still goes through send() — routing, budget checks and AiRun tracking apply
+     * as usual, grouped in the dashboard under the given (or default 'prompt') name.
+     */
+    public function prompt(string $prompt, ?string $system = null, array|string $drivers = [], string $name = 'prompt'): AiResponse
+    {
+        return $this->send(new PromptTask($prompt, $system, $name), $drivers);
     }
 
     public function send(AiTask $task, array|string $drivers = []): AiResponse
