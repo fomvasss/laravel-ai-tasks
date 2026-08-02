@@ -2,6 +2,28 @@
 
 [← Back to README](../README.md)
 
+## Which approach do I need?
+
+```mermaid
+flowchart TD
+    A[Need a tool for a task?] --> B{Connecting to an MCP server?}
+    B -->|No, just custom PHP logic| C[Local Tool class]
+    B -->|Yes| D{laravel/mcp installed?}
+    D -->|Yes| E{Server transport}
+    E -->|HTTP / Streamable HTTP| F[Client::web]
+    E -->|stdio, e.g. npx| G[Client::local]
+    D -->|No| H{Server transport}
+    H -->|HTTP / Streamable HTTP| I[HttpMcpClient]
+    H -->|stdio, e.g. npx| J[supergateway proxy + HttpMcpClient]
+```
+
+- **Local Tool class** → [Local Tools](#local-tools)
+- **`Client::web` / `Client::local`** → [Native MCP via laravel/mcp](#native-mcp-via-laravelmcp-recommended)
+- **`HttpMcpClient`** → [Remote MCP Tools via HttpMcpClient](#remote-mcp-tools-via-httpmcpclient-zero-dependency-fallback)
+- **supergateway proxy** → [stdio MCP via HTTP proxy](#stdio-mcp-via-http-proxy-npx-packages)
+
+`laravel/mcp` (native) is recommended whenever it's an option — it handles the full protocol (handshake, transport negotiation, auth) with no manual adapter code. The `HttpMcpClient`/proxy paths exist only for when you can't or don't want to add that dependency.
+
 ## Local Tools
 
 Override `tools()` on any task to pass `Laravel\Ai\Contracts\Tool[]` to the underlying `AnonymousAgent`. Tools are forwarded automatically on `send()`, `stream()`, and `queue()`.
@@ -91,6 +113,8 @@ Mcp::registerClient('filesystem', fn () =>
 );
 ```
 
+> **Troubleshooting:** `laravel/mcp` 0.9.0 tightened protocol version negotiation — the client now only accepts servers that negotiate `2025-11-25` or `2025-06-18`. A server that negotiates an older version (`2025-03-26`, `2024-11-05`) now throws `Laravel\Mcp\Exceptions\ClientException` on connect instead of working as before. If a previously-working `Client::web()`/`Client::local()` call starts failing right after a `laravel/mcp` upgrade, this is the first thing to check.
+
 ### Task example
 
 Return the client's tools directly from `tools()` — `laravel/ai` auto-wraps them into `McpTool` instances:
@@ -98,9 +122,12 @@ Return the client's tools directly from `tools()` — `laravel/ai` auto-wraps th
 ```php
 use Laravel\Mcp\Facades\Mcp;
 use Laravel\Ai\Messages\UserMessage;
+use Fomvasss\AiTasks\Traits\SerializesModelsAi;
 
 class NightwatchTask extends AiTask
 {
+    use SerializesModelsAi;
+
     public function __construct(private readonly string $question) {}
 
     public function modality(): string { return 'text'; }
@@ -118,8 +145,6 @@ class NightwatchTask extends AiTask
             systemPrompt: 'You are a monitoring assistant. Use the provided tools to inspect application state.',
         );
     }
-
-    public function serializeForQueue(): array { return [$this->question]; }
 }
 ```
 
@@ -340,8 +365,12 @@ class HttpMcpTool implements Tool
 ### Task example
 
 ```php
+use Fomvasss\AiTasks\Traits\SerializesModelsAi;
+
 class CrmTask extends AiTask
 {
+    use SerializesModelsAi;
+
     private ?HttpMcpClient $mcpClient = null;
 
     public function __construct(private readonly string $question) {}
@@ -377,8 +406,7 @@ class CrmTask extends AiTask
         );
     }
 
-    public function modality(): string        { return 'text'; }
-    public function serializeForQueue(): array { return [$this->question]; }
+    public function modality(): string { return 'text'; }
 }
 ```
 
@@ -393,7 +421,7 @@ AI::queue(new CrmTask('Create a task "Fix login bug" in project CRM, priority 3'
 
 Most community MCP servers (e.g. `@upstash/context7-mcp`, `@modelcontextprotocol/server-filesystem`) use **stdio transport** — they communicate over stdin/stdout, not HTTP.
 
-**With `laravel/mcp`:** use `connectViaStdio()` directly (see [Register clients](#register-clients) above) — no proxy needed.
+**With `laravel/mcp`:** use `Client::local(...)` directly (see [Register clients](#register-clients) above) — no proxy needed.
 
 **Without `laravel/mcp`:** use [supergateway](https://github.com/supermaven-inc/supergateway) to expose any stdio server as a Streamable HTTP endpoint, then point `HttpMcpClient` at it.
 
@@ -427,8 +455,12 @@ Add to `config/services.php`:
 ### Task
 
 ```php
+use Fomvasss\AiTasks\Traits\SerializesModelsAi;
+
 class McpContext7Task extends AiTask
 {
+    use SerializesModelsAi;
+
     private ?HttpMcpClient $mcpClient = null;
 
     public function __construct(private readonly string $question) {}
@@ -456,8 +488,6 @@ class McpContext7Task extends AiTask
             systemPrompt: 'You are a helpful developer assistant with access to up-to-date library documentation via Context7. Always use the provided tools to fetch relevant docs before answering.',
         );
     }
-
-    public function serializeForQueue(): array { return [$this->question]; }
 
     private function client(): HttpMcpClient
     {

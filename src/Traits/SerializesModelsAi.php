@@ -28,7 +28,7 @@ use Illuminate\Queue\SerializesAndRestoresModelIdentifiers;
  * Eloquent collection (e.g. Model::query()->get()) instead of an array when queuing more
  * than one model.
  */
-trait AutoSerializesConstructorArgs
+trait SerializesModelsAi
 {
     use SerializesAndRestoresModelIdentifiers;
 
@@ -68,7 +68,7 @@ trait AutoSerializesConstructorArgs
             if (! property_exists($this, $name)) {
                 throw new \LogicException(
                     static::class . '::__construct() has a non-promoted parameter $' . $name . ' — ' .
-                    'AutoSerializesConstructorArgs requires every constructor parameter to be a promoted ' .
+                    'SerializesModelsAi requires every constructor parameter to be a promoted ' .
                     'property (e.g. `private readonly Foo $foo`).'
                 );
             }

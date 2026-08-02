@@ -8,7 +8,7 @@ Available modalities: `text` · `image` · `embed` · `audio` · `transcription`
 
 ## Image Generation
 
-Set `modality: 'image'` in the payload. Supported via OpenAI (`gpt-image-1`, `dall-e-3`) and Gemini.
+Set `modality: 'image'` in the payload. Supported via OpenAI (`gpt-image-2`, `dall-e-3`) and Gemini.
 
 ```php
 class GenerateImageTask extends AiTask
@@ -21,7 +21,7 @@ class GenerateImageTask extends AiTask
             modality: 'image',
             messages: [new UserMessage('A minimalist blue logo for a tech startup')],
             options: [
-                'model'   => 'gpt-image-1',
+                'model'   => 'gpt-image-2',
                 'size'    => '1024x1024', // or '3:2' landscape / '2:3' portrait
                 'quality' => 'standard',
                 'timeout' => 120,
@@ -105,7 +105,7 @@ class GenerateSpeechTask extends AiTask
             modality: 'audio',
             messages: [$this->text],
             options: [
-                'model'        => 'tts-1', // or 'tts-1-hd'
+                'model'        => 'gpt-4o-mini-tts', // OpenAI's current default TTS model
                 'voice'        => 'alloy', // alloy, echo, fable, onyx, nova, shimmer
                 'female'       => false,   // or true for ElevenLabs
                 'instructions' => 'Speak clearly and slowly', // optional

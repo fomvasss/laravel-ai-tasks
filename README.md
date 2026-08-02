@@ -126,11 +126,11 @@ use Laravel\Ai\Messages\UserMessage;
 use Fomvasss\AiTasks\DTO\AiPayload;
 use Fomvasss\AiTasks\DTO\AiResponse;
 use Fomvasss\AiTasks\Tasks\AiTask;
-use Fomvasss\AiTasks\Traits\AutoSerializesConstructorArgs;
+use Fomvasss\AiTasks\Traits\SerializesModelsAi;
 
 class SummarizeTask extends AiTask
 {
-    use AutoSerializesConstructorArgs;
+    use SerializesModelsAi;
 
     public function __construct(
         private readonly Article $article,
@@ -173,7 +173,7 @@ class SummarizeTask extends AiTask
 }
 ```
 
-`private readonly Article $article` — a plain Eloquent model, not an id — works because of `use AutoSerializesConstructorArgs;` (added by `ai:make-task` automatically): it handles `serializeForQueue()`/`fromQueueArgs()` for you, restoring a fresh `$article` on the worker for every queued run. `schema()` guarantees the provider replies with exactly `{"summary": "..."}`, decoded into `AiResponse::$structured` — see [Structured Output](#structured-output-schema) below. `postprocess()` shapes the response; `onCompleted()` acts on the final one. See [The `onCompleted()` Hook](#the-oncompleted-hook) below for the full guarantee (called once, after retries settle, isolated from the pipeline if it throws).
+`private readonly Article $article` — a plain Eloquent model, not an id — works because of `use SerializesModelsAi;` (added by `ai:make-task` automatically): it handles `serializeForQueue()`/`fromQueueArgs()` for you, restoring a fresh `$article` on the worker for every queued run. `schema()` guarantees the provider replies with exactly `{"summary": "..."}`, decoded into `AiResponse::$structured` — see [Structured Output](#structured-output-schema) below. `postprocess()` shapes the response; `onCompleted()` acts on the final one. See [The `onCompleted()` Hook](#the-oncompleted-hook) below for the full guarantee (called once, after retries settle, isolated from the pipeline if it throws).
 
 ## Running Tasks
 
@@ -473,19 +473,17 @@ How it works:
 
 ## Queued Tasks
 
-Implement `ShouldQueueAi` and define `serializeForQueue()`:
+Implement `ShouldQueueAi` for queue/connection routing; `use SerializesModelsAi;` handles `serializeForQueue()`/`fromQueueArgs()` automatically:
 
 ```php
 use Fomvasss\AiTasks\Contracts\ShouldQueueAi;
+use Fomvasss\AiTasks\Traits\SerializesModelsAi;
 
 class AnalyzeTask extends AiTask implements ShouldQueueAi
 {
-    public function __construct(private readonly int $productId) {}
+    use SerializesModelsAi;
 
-    public function serializeForQueue(): array
-    {
-        return [$this->productId];
-    }
+    public function __construct(private readonly int $productId) {}
 
     public function viaQueues(): array
     {
@@ -494,7 +492,7 @@ class AnalyzeTask extends AiTask implements ShouldQueueAi
 }
 ```
 
-> **Note:** `serializeForQueue()` must return only scalar values (strings, ints, arrays of scalars) — this array is passed back into the constructor on the worker via `new static(...$args)`. `SummarizeTask` in [Creating a Task](#creating-a-task) shows the easier path — `use AutoSerializesConstructorArgs;` lets the constructor take an Eloquent model directly (a promoted property), instead of an id you'd reload by hand in `toPayload()`. `serializeForQueue()` also drives idempotency — see [Idempotency](#idempotency).
+> **Note:** `serializeForQueue()` must return only scalar values (strings, ints, arrays of scalars) — this array is passed back into the constructor on the worker via `new static(...$args)`. `SummarizeTask` in [Creating a Task](#creating-a-task) shows the easier path — `use SerializesModelsAi;` lets the constructor take an Eloquent model directly (a promoted property), instead of an id you'd reload by hand in `toPayload()`. `serializeForQueue()` also drives idempotency — see [Idempotency](#idempotency).
 
 ### Delayed dispatch
 
@@ -540,7 +538,7 @@ What matters for custom deduplication is what `serializeForQueue()` includes —
 ```php
 class ChatTask extends AiTask
 {
-    use AutoSerializesConstructorArgs;
+    use SerializesModelsAi;
 
     public function __construct(
         private readonly string $question,
@@ -575,24 +573,7 @@ class ChatReplyTask extends AiTask implements ShouldQueueAi
 
 `isAcceptable()` receives whatever `postprocess()` returned. No other change is needed — no `$attempt` constructor param, no `idempotencyKey()`/`serializeForQueue()` changes. `PostprocessAiResult` owns all the retry bookkeeping: it derives the retry's idempotency key itself (`idempotencyKey() . '-retry' . $n`) and dispatches a fresh `ProcessAiPayload`/`PostprocessAiResult` pair on the same driver as the original run. The task class never sees or tracks its own attempt number.
 
-Once retries are exhausted (or immediately, if `maxRetries()` is `0`, the default), `AiTaskCompleted` fires as usual — check `$event->attemptsExhausted` to tell a final, unresolved failure apart from a normal accepted result, without re-deriving `isAcceptable()` yourself:
-
-```php
-class ChatReplyCompletedListener
-{
-    public function handle(AiTaskCompleted $event): void
-    {
-        if ($event->attemptsExhausted) {
-            // escalate to a human, mark as failed — whatever fits your domain
-            return;
-        }
-
-        // normal handling — $event->response is an accepted result
-    }
-}
-```
-
-Only applies to the queued path (`AI::queue()`); `AI::send()`/`AI::stream()` are synchronous and always fire once.
+Once retries are exhausted (or immediately, if `maxRetries()` is `0`, the default), the run is final — check `attemptsExhausted` in [`onCompleted()`](#the-oncompleted-hook) below to tell an unresolved failure apart from a normal accepted result, without re-deriving `isAcceptable()` yourself. Only applies to the queued path (`AI::queue()`); `AI::send()`/`AI::stream()` are synchronous and always fire once.
 
 > **Note:** the attempt number is not persisted to `ai_runs` — only recoverable from the `idempotency_key` suffix (`...-retry1`, `...-retry2`, ...). There is no `attempt` column or a link between a run and its retries, so the dashboard doesn't show the retry chain structurally.
 
@@ -603,6 +584,12 @@ For a task with a single consumer, override `onCompleted()` instead of writing a
 ```php
 class GenerateChatAssistantReplyTask extends AiTask implements ShouldQueueAi
 {
+    use SerializesModelsAi;
+
+    public function __construct(
+        private readonly ChatMessage $message,
+    ) {}
+
     public function onCompleted(AiResponse|array $result, bool $attemptsExhausted): void
     {
         if ($attemptsExhausted) {

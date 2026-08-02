@@ -8,7 +8,7 @@ use Fomvasss\AiTasks\AiServiceProvider;
 use Fomvasss\AiTasks\DTO\AiPayload;
 use Fomvasss\AiTasks\Jobs\ProcessAiPayload;
 use Fomvasss\AiTasks\Tasks\AiTask;
-use Fomvasss\AiTasks\Traits\AutoSerializesConstructorArgs;
+use Fomvasss\AiTasks\Traits\SerializesModelsAi;
 use Illuminate\Contracts\Database\ModelIdentifier;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Schema\Blueprint;
@@ -17,7 +17,7 @@ use Illuminate\Support\Str;
 use Laravel\Ai\Messages\UserMessage;
 use Orchestra\Testbench\TestCase;
 
-class AutoSerializesConstructorArgsTest extends TestCase
+class SerializesModelsAiTest extends TestCase
 {
     protected function getPackageProviders($app): array
     {
@@ -142,7 +142,7 @@ class TestArticle extends Model
 
 class ModelArgTask extends AiTask
 {
-    use AutoSerializesConstructorArgs;
+    use SerializesModelsAi;
 
     public function __construct(
         private readonly TestArticle $article,
@@ -160,7 +160,7 @@ class ModelArgTask extends AiTask
 
 class MixedArgTask extends AiTask
 {
-    use AutoSerializesConstructorArgs;
+    use SerializesModelsAi;
 
     public function __construct(
         private readonly TestArticle $article,
@@ -173,7 +173,7 @@ class MixedArgTask extends AiTask
 
 class NoArgTask extends AiTask
 {
-    use AutoSerializesConstructorArgs;
+    use SerializesModelsAi;
 
     public function modality(): string { return 'text'; }
     public function toPayload(): AiPayload { return new AiPayload('text'); }
@@ -181,7 +181,7 @@ class NoArgTask extends AiTask
 
 class UnpromotedArgTask extends AiTask
 {
-    use AutoSerializesConstructorArgs;
+    use SerializesModelsAi;
 
     public function __construct(string $text)
     {

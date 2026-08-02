@@ -60,11 +60,11 @@ use Laravel\Ai\Messages\UserMessage;
 use Fomvasss\AiTasks\DTO\AiPayload;
 use Fomvasss\AiTasks\DTO\AiResponse;
 use Fomvasss\AiTasks\Tasks\AiTask;
-use Fomvasss\AiTasks\Traits\AutoSerializesConstructorArgs;{$shouldQueueUse}
+use Fomvasss\AiTasks\Traits\SerializesModelsAi;{$shouldQueueUse}
 
 class {$class} extends AiTask{$implements}
 {
-    use AutoSerializesConstructorArgs;
+    use SerializesModelsAi;
 
     public function __construct(
         // add your constructor arguments — must be promoted properties, e.g. `private readonly int \$id`

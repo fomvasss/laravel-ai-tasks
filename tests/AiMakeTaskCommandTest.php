@@ -27,14 +27,14 @@ class AiMakeTaskCommandTest extends TestCase
 
         $content = File::get(app_path('Ai/Tasks/PlainStubTask.php'));
 
-        $this->assertStringContainsString('use Fomvasss\AiTasks\Traits\AutoSerializesConstructorArgs;', $content);
-        $this->assertStringContainsString('use AutoSerializesConstructorArgs;', $content);
+        $this->assertStringContainsString('use Fomvasss\AiTasks\Traits\SerializesModelsAi;', $content);
+        $this->assertStringContainsString('use SerializesModelsAi;', $content);
         $this->assertStringContainsString('class PlainStubTask extends AiTask', $content);
         $this->assertStringNotContainsString('ShouldQueueAi', $content);
 
         require app_path('Ai/Tasks/PlainStubTask.php');
         $this->assertContains(
-            \Fomvasss\AiTasks\Traits\AutoSerializesConstructorArgs::class,
+            \Fomvasss\AiTasks\Traits\SerializesModelsAi::class,
             class_uses(\App\Ai\Tasks\PlainStubTask::class),
         );
     }
@@ -45,15 +45,15 @@ class AiMakeTaskCommandTest extends TestCase
 
         $content = File::get(app_path('Ai/Tasks/QueuedStubTask.php'));
 
-        $this->assertStringContainsString('use Fomvasss\AiTasks\Traits\AutoSerializesConstructorArgs;', $content);
-        $this->assertStringContainsString('use AutoSerializesConstructorArgs;', $content);
+        $this->assertStringContainsString('use Fomvasss\AiTasks\Traits\SerializesModelsAi;', $content);
+        $this->assertStringContainsString('use SerializesModelsAi;', $content);
         $this->assertStringContainsString('class QueuedStubTask extends AiTask implements ShouldQueueAi', $content);
         $this->assertStringNotContainsString('return []; // return constructor args', $content);
 
         require app_path('Ai/Tasks/QueuedStubTask.php');
-        $this->assertTrue(trait_exists(\Fomvasss\AiTasks\Traits\AutoSerializesConstructorArgs::class));
+        $this->assertTrue(trait_exists(\Fomvasss\AiTasks\Traits\SerializesModelsAi::class));
         $this->assertContains(
-            \Fomvasss\AiTasks\Traits\AutoSerializesConstructorArgs::class,
+            \Fomvasss\AiTasks\Traits\SerializesModelsAi::class,
             class_uses(\App\Ai\Tasks\QueuedStubTask::class),
         );
     }

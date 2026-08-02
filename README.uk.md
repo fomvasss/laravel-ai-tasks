@@ -126,11 +126,11 @@ use Laravel\Ai\Messages\UserMessage;
 use Fomvasss\AiTasks\DTO\AiPayload;
 use Fomvasss\AiTasks\DTO\AiResponse;
 use Fomvasss\AiTasks\Tasks\AiTask;
-use Fomvasss\AiTasks\Traits\AutoSerializesConstructorArgs;
+use Fomvasss\AiTasks\Traits\SerializesModelsAi;
 
 class SummarizeTask extends AiTask
 {
-    use AutoSerializesConstructorArgs;
+    use SerializesModelsAi;
 
     public function __construct(
         private readonly Article $article,
@@ -173,7 +173,7 @@ class SummarizeTask extends AiTask
 }
 ```
 
-`private readonly Article $article` — звичайна Eloquent-модель, не id — працює завдяки `use AutoSerializesConstructorArgs;` (його додає сам `ai:make-task`): бере на себе `serializeForQueue()`/`fromQueueArgs()`, відновлюючи свіжий `$article` на воркері для кожного queue-запуску; див. [Передача Eloquent-моделей](#передача-eloquent-моделей). `schema()` гарантує, що провайдер відповість точно `{"summary": "..."}`, розпарсене в `AiResponse::$structured` — див. [Структурований вивід](#структурований-вивід-schema) нижче. `postprocess()` формує відповідь; `onCompleted()` діє на фінальний результат. Детальніше — [Хук `onCompleted()`](#хук-oncompleted) нижче (гарантія одного виклику, після вирішення ретраїв, ізоляція від пайплайна при винятку).
+`private readonly Article $article` — звичайна Eloquent-модель, не id — працює завдяки `use SerializesModelsAi;` (його додає сам `ai:make-task`): бере на себе `serializeForQueue()`/`fromQueueArgs()`, відновлюючи свіжий `$article` на воркері для кожного queue-запуску. `schema()` гарантує, що провайдер відповість точно `{"summary": "..."}`, розпарсене в `AiResponse::$structured` — див. [Структурований вивід](#структурований-вивід-schema) нижче. `postprocess()` формує відповідь; `onCompleted()` діє на фінальний результат. Детальніше — [Хук `onCompleted()`](#хук-oncompleted) нижче (гарантія одного виклику, після вирішення ретраїв, ізоляція від пайплайна при винятку).
 
 ## Запуск задач
 
@@ -447,19 +447,17 @@ return new AiPayload(
 
 ## Задачі в черзі
 
-Реалізуй `ShouldQueueAi` і визнач `serializeForQueue()`:
+Реалізуй `ShouldQueueAi` для вибору черги/конекшну; `use SerializesModelsAi;` бере на себе `serializeForQueue()`/`fromQueueArgs()` автоматично:
 
 ```php
 use Fomvasss\AiTasks\Contracts\ShouldQueueAi;
+use Fomvasss\AiTasks\Traits\SerializesModelsAi;
 
 class AnalyzeTask extends AiTask implements ShouldQueueAi
 {
-    public function __construct(private readonly int $productId) {}
+    use SerializesModelsAi;
 
-    public function serializeForQueue(): array
-    {
-        return [$this->productId];
-    }
+    public function __construct(private readonly int $productId) {}
 
     public function viaQueues(): array
     {
@@ -468,17 +466,7 @@ class AnalyzeTask extends AiTask implements ShouldQueueAi
 }
 ```
 
-> **Увага:** `serializeForQueue()` повинен повертати тільки скалярні значення (рядки, числа, масиви скалярів) — цей масив передається назад у конструктор на воркері через `new static(...$args)`. Не передавай Eloquent-моделі напряму: модель переживає нативний PHP `serialize()` черги як є, тому воркер отримує **застарілий знімок**, застиглий на момент диспетчу, а не свіжий запит. Передавай ID і завантажуй модель у `toPayload()` — або використай [`AutoSerializesConstructorArgs`](#передача-eloquent-моделей) нижче, який робить це автоматично. `serializeForQueue()` також керує ідемпотентністю — див. [Ідемпотентність](#ідемпотентність).
-
-### Передача Eloquent-моделей
-
-`use AutoSerializesConstructorArgs;` знімає обмеження "передавай ID, не модель" вище — той самий обмін моделі на ідентифікатор, який роблять власні `ShouldQueue`-джоби/Notification/Mailable Laravel (`Illuminate\Queue\SerializesModels`), застосований до `serializeForQueue()`/`fromQueueArgs()`. `SummarizeTask` у [Створенні таску](#створення-таску) вже його використовує — `Article $article` там promoted-властивість конструктора, без жодного написаного вручну `serializeForQueue()`/`fromQueueArgs()`.
-
-Кожен параметр конструктора має бути promoted-властивістю (`private readonly Foo $foo`). `idempotencyKey()` хешує клас+id моделі (не атрибути), тому лишається стабільним, навіть якщо модель зміниться між диспетчем і обробкою. Видалений запис падає при відновленні голосно (`ModelNotFoundException`, run стає `dead`) замість тихої роботи з привидом запису.
-
-> **Увага:** свіжість стосується `postprocess()`/`isAcceptable()`/`onCompleted()`/`shouldRun()` — тих частин, що відновлюють таск із `taskCtorArgs` на воркері. `toPayload()` до них не належить: він виконується один раз, синхронно, всередині самого `AI::queue()`, до постановки job-и в чергу — те, якою модель була на той момент, і піде провайдеру, назавжди.
-
-Звичайний PHP-масив моделей не обмінюється (те саме обмеження, що й у `SerializesModels`) — використовуй Eloquent-колекцію (`Model::query()->get()`) замість масиву.
+> **Увага:** `serializeForQueue()` повинен повертати тільки скалярні значення (рядки, числа, масиви скалярів) — цей масив передається назад у конструктор на воркері через `new static(...$args)`. `SummarizeTask` у [Створенні таску](#створення-таску) показує простіший шлях — `use SerializesModelsAi;` дозволяє передати в конструктор Eloquent-модель напряму (promoted-властивість), а не id, який довелось би вручну довантажувати в `toPayload()`. `serializeForQueue()` також керує ідемпотентністю — див. [Ідемпотентність](#ідемпотентність).
 
 ### Відкладений запуск (delay)
 
@@ -513,32 +501,28 @@ class AnalyzeProductTask extends AiTask
 
 Кожен run захищений від дублів через унікальний `idempotency_key` в `ai_runs`. Ключ — хеш від `[tenantId, taskName, modality, serializeForQueue()]`.
 
-**Дедублікація активна тільки коли `serializeForQueue()` повертає непорожній масив.** Якщо він повертає `[]` (за замовчуванням), `idempotencyKey()` повертає `null` і дедублікація не застосовується — кілька runs з однаковою задачею можуть співіснувати. Тобто: для будь-якої задачі зі змінними вхідними даними реалізація `serializeForQueue()` обов'язкова як для відновлення з черги, так і для коректної роботи idempotency.
+**Дедублікація активна тільки коли `serializeForQueue()` повертає непорожній масив.** Якщо він повертає `[]` (за замовчуванням), `idempotencyKey()` повертає `null` і дедублікація не застосовується — кілька runs з однаковою задачею можуть співіснувати. Тобто: для будь-якої задачі зі змінними вхідними даними реалізація `serializeForQueue()` обов'язкова як для відновлення з черги, так і для коректної роботи idempotency. `AI::queue()` перевіряє це при диспетчеризації — кидає `LogicException` для таска з параметрами конструктора, чий `serializeForQueue()` повертає `[]`.
 
 **Поведінка при колізії (коли ненульовий ключ вже є в `ai_runs`):**
 - `AI::queue()` — повертає наявний `run_id`; дублікат job-а не диспатчиться.
 - `AI::send()` — завжди робить свіжий API-виклик; `idempotency_key` для sync-runs не зберігається.
 
-Перевизнач `idempotencyKey()` для власної логіки дедублікації:
+Для власної логіки дедублікації важливо, що включає `serializeForQueue()` — дефолтний `idempotencyKey()` просто хешує це як є, перевизначати нічого не треба:
 
 ```php
 class ChatTask extends AiTask
 {
+    use SerializesModelsAi;
+
     public function __construct(
         private readonly string $question,
         private readonly string $messageId, // унікальний ID повідомлення з чат-системи
         private readonly array  $history = [],
     ) {}
-
-    public function serializeForQueue(): array
-    {
-        return [$this->question, $this->messageId, $this->history];
-    }
-    // idempotencyKey() за замовчуванням — включає messageId, кожен turn унікальний
 }
 ```
 
-Для чат/асистент-інтеграцій, де одне й те саме питання може задаватись кілька разів: поки в `serializeForQueue()` є `messageId` або повна історія чату — кожен turn дає унікальний ключ, і idempotency захищає тільки від технічних дублів (double-send, retry черги).
+Для чат/асистент-інтеграцій, де одне й те саме питання може задаватись кілька разів: поки `messageId` або повна історія чату — параметр конструктора — кожен turn дає унікальний ключ, і idempotency захищає тільки від технічних дублів (double-send, retry черги).
 
 ### Повторна спроба при непридатному результаті
 
@@ -563,24 +547,7 @@ class ChatReplyTask extends AiTask implements ShouldQueueAi
 
 `isAcceptable()` отримує те, що повернув `postprocess()`. Більше нічого міняти не треба — ні конструкторного `$attempt`, ні змін у `idempotencyKey()`/`serializeForQueue()`. Всю бухгалтерію ретраю бере на себе `PostprocessAiResult`: сам рахує idempotency-ключ ретраю (`idempotencyKey() . '-retry' . $n`) і диспетчить нову пару `ProcessAiPayload`/`PostprocessAiResult` на тому ж драйвері, що й оригінальний run. Task-клас взагалі не бачить і не тримає власний номер спроби.
 
-Коли спроби вичерпані (або одразу, якщо `maxRetries()` — `0` за замовчуванням), `AiTaskCompleted` фаєриться як завжди — перевір `$event->attemptsExhausted`, щоб відрізнити фінальну невдачу від звичайного прийнятого результату, не дублюючи власну перевірку `isAcceptable()`:
-
-```php
-class ChatReplyCompletedListener
-{
-    public function handle(AiTaskCompleted $event): void
-    {
-        if ($event->attemptsExhausted) {
-            // ескалація на людину, позначити як провалене — що підходить твоїй логіці
-            return;
-        }
-
-        // звичайна обробка — $event->response це прийнятий результат
-    }
-}
-```
-
-Працює лише на queue-шляху (`AI::queue()`); `AI::send()`/`AI::stream()` синхронні і завжди фаєряться один раз.
+Коли спроби вичерпані (або одразу, якщо `maxRetries()` — `0` за замовчуванням), run стає фінальним — перевір `attemptsExhausted` у [`onCompleted()`](#хук-oncompleted) нижче, щоб відрізнити невирішену невдачу від звичайного прийнятого результату, не дублюючи власну перевірку `isAcceptable()`. Працює лише на queue-шляху (`AI::queue()`); `AI::send()`/`AI::stream()` синхронні і завжди фаєряться один раз.
 
 > **Примітка:** номер спроби не зберігається в `ai_runs` — відновити можна тільки з суфікса `idempotency_key` (`...-retry1`, `...-retry2`, ...). Немає колонки `attempt` чи зв'язку run з його ретраями, тому дашборд не показує ланцюжок структуровано.
 
@@ -591,6 +558,12 @@ class ChatReplyCompletedListener
 ```php
 class GenerateChatAssistantReplyTask extends AiTask implements ShouldQueueAi
 {
+    use SerializesModelsAi;
+
+    public function __construct(
+        private readonly ChatMessage $message,
+    ) {}
+
     public function onCompleted(AiResponse|array $result, bool $attemptsExhausted): void
     {
         if ($attemptsExhausted) {
