@@ -40,7 +40,9 @@ class PostprocessAiResult implements ShouldQueue
         $resp = new AiResponse(
             ok: true,
             content: $run->response['content'] ?? null,
+            toolCalls: $run->response['tool_calls'] ?? [],
             structured: $run->response['structured'] ?? null,
+            finishReason: $run->response['finish_reason'] ?? null,
         );
 
         /** @var class-string<AiTask> $cls */

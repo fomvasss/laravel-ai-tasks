@@ -14,5 +14,6 @@ final class AiResponse
         public readonly ?string $error     = null,
         public readonly array   $toolCalls = [],
         public readonly ?array  $structured = null,
+        public readonly ?string $finishReason = null,
     ) {}
 }

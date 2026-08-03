@@ -386,6 +386,15 @@ return new AiPayload(
 
 Реалізовано через контракт `HasProviderOptions` пакету `laravel/ai` — `StructuredToolChoiceAgent::providerOptions(Lab|string $provider)` повертає масив, заданий для резолвленого драйвера, або `[]`, якщо для нього нічого не налаштовано. Корисно для нативних параметрів провайдера, які пакет не обгортає явно (DeepSeek `thinking`, Anthropic extended-thinking бюджети, Gemini `thinkingConfig` тощо). Працює лише коли використовується `schema()` (`StructuredToolChoiceAgent`); на `jsonMode` чи звичайні text-задачі не впливає.
 
+## Метадані відповіді
+
+`AiResponse` несе ще пару полів окрім `content`/`structured`, обидва переживають round-trip через чергу (зберігаються в `ai_runs.response`, відновлюються для `postprocess()`):
+
+- `AiResponse::$toolCalls` — які тули модель реально викликала для цієї відповіді (`array<int, array{id: string, name: string, arguments: array, ...}>`, по одному запису на `Laravel\Ai\Responses\Data\ToolCall::toArray()`). Порожній, якщо модель жодного тула не викликала.
+- `AiResponse::$finishReason` — причина зупинки останнього кроку генерації від `laravel/ai` (`stop`, `length`, `tool_calls`, `content_filter`, `error`, `unknown`). Корисно в `isAcceptable()`, щоб відрізнити дійсно обірвану відповідь (`length`) від інших причин відхилення замість вгадування з порожнього `content`.
+
+`AiResponse::$raw` існує, але наразі завжди порожній — його джерело (`providerContentBlocks`) `laravel/ai` губить ще до того, як воно долітає до `StructuredAgentResponse`, тож для `schema()`-задач воно не заповнюється.
+
 ## Вибір тула (Tool Choice)
 
 Реалізуйте `AiTask::toolChoice()`, щоб примусити модель викликати (чи навпаки — не викликати) конкретний тул, на додачу до `AiTask::tools()`. Працює через `ToolChoice` пакету `laravel/ai` (Gemini, OpenAI, Anthropic).

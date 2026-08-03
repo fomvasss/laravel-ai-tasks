@@ -412,6 +412,15 @@ return new AiPayload(
 
 Backed by `laravel/ai`'s `HasProviderOptions` contract — `StructuredToolChoiceAgent::providerOptions(Lab|string $provider)` returns the array set for the resolved driver, or `[]` if nothing was configured for it. Useful for provider-native knobs the package doesn't wrap explicitly (DeepSeek `thinking`, Anthropic extended-thinking budgets, Gemini `thinkingConfig`, …). Only applies when `schema()` is used (`StructuredToolChoiceAgent`); has no effect with `jsonMode` or plain-text tasks.
 
+## Response Metadata
+
+`AiResponse` carries a couple of fields beyond `content`/`structured`, both survive the queued round-trip (persisted in `ai_runs.response`, restored for `postprocess()`):
+
+- `AiResponse::$toolCalls` — the tools the model actually invoked for this response (`array<int, array{id: string, name: string, arguments: array, ...}>`, one entry per `Laravel\Ai\Responses\Data\ToolCall::toArray()`). Empty when the model didn't call any tool.
+- `AiResponse::$finishReason` — the last generation step's stop reason from `laravel/ai` (`stop`, `length`, `tool_calls`, `content_filter`, `error`, `unknown`). Useful in `isAcceptable()` to tell a genuinely truncated response (`length`) apart from other rejection reasons instead of guessing from an empty `content`.
+
+`AiResponse::$raw` exists but is currently always empty — its intended source (`providerContentBlocks`) is dropped by `laravel/ai` before it reaches a `StructuredAgentResponse`, so it isn't populated for `schema()`-based tasks.
+
 ## Tool Choice
 
 Implement `AiTask::toolChoice()` to force whether and which tool the model must call, on top of `AiTask::tools()`. Backed by `laravel/ai`'s `ToolChoice` (Gemini, OpenAI, Anthropic).

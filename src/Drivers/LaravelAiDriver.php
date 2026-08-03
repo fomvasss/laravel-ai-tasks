@@ -16,6 +16,7 @@ use Laravel\Ai\Image;
 use Laravel\Ai\Messages\AssistantMessage;
 use Laravel\Ai\Messages\Message;
 use Laravel\Ai\Messages\UserMessage;
+use Laravel\Ai\Responses\AgentResponse;
 use Laravel\Ai\Responses\Data\Usage;
 use Laravel\Ai\Responses\StructuredAgentResponse;
 use Laravel\Ai\Streaming\Events\TextDelta;
@@ -68,11 +69,29 @@ final class LaravelAiDriver implements AiDriver
             timeout: $p->options['timeout'] ?? 60,
         );
 
+        return $this->buildTextResponse($response, $displayProvider, $model);
+    }
+
+    /**
+     * Map a laravel/ai AgentResponse (or StructuredAgentResponse) onto our AiResponse DTO.
+     * Split out from sendText() so the mapping can be unit-tested with a hand-built response,
+     * without a real provider call.
+     */
+    private function buildTextResponse(AgentResponse $response, string $displayProvider, ?string $model): AiResponse
+    {
         $usage         = $this->mapUsage($response->usage, $displayProvider, $model);
         $usage['cost'] = Cost::calc($displayProvider, $usage, $this->cfg);
         $structured    = $response instanceof StructuredAgentResponse ? $response->structured : null;
+        $finishReason  = $response->steps->last()?->finishReason?->value;
 
-        return new AiResponse(ok: true, content: $response->text, usage: $usage, structured: $structured);
+        return new AiResponse(
+            ok: true,
+            content: $response->text,
+            usage: $usage,
+            toolCalls: $response->toolCalls->map(fn ($toolCall) => $toolCall->toArray())->all(),
+            structured: $structured,
+            finishReason: $finishReason,
+        );
     }
 
     private function makeAgent(AiPayload $p, array $history): AnonymousAgent

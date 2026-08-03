@@ -97,8 +97,10 @@ class AiRun extends Model
             'status'            => 'ok',
             'model'             => $resp->usage['model'] ?? null,
             'response'          => array_filter([
-                'content'    => $resp->content,
+                'content' => $resp->content,
                 'structured' => $resp->structured,
+                'tool_calls' => $resp->toolCalls ?: null,
+                'finish_reason' => $resp->finishReason,
             ], fn (mixed $v): bool => $v !== null),
             'tokens_in'         => $resp->usage['tokens_in']          ?? null,
             'tokens_out'        => $resp->usage['tokens_out']         ?? null,

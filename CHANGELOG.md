@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [3.19.0] — 2026-08-03
+
+### Added
+- `AiResponse::$toolCalls` — now populated with the tools the model actually called (was always empty).
+- `AiResponse::$finishReason` — new field with the model's stop reason (`stop`, `length`, `tool_calls`, `content_filter`, `error`, `unknown`); use it in `isAcceptable()` to detect a truncated response.
+- Both fields also work with `AI::queue()`, not only `AI::send()`.
+
 ## [3.18.0] — 2026-08-02
 
 ### Added
