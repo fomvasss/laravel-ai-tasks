@@ -10,6 +10,11 @@ use Fomvasss\AiTasks\DTO\AiResponse;
 use Laravel\Ai\Files\Image as AiImage;
 use Laravel\Ai\Messages\UserMessage;
 
+/**
+ * @deprecated Unused starter example, not wired into anything else in the package.
+ *             Write your own AiTask subclass instead (see "Creating a Task" in the
+ *             README). Will be removed in the next major version.
+ */
 class VisionExampleTask extends AiTask implements ShouldQueueAi
 {
     public function __construct(

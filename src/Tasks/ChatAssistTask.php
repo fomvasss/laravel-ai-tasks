@@ -10,6 +10,12 @@ use Fomvasss\AiTasks\DTO\AiContext;
 use Fomvasss\AiTasks\DTO\AiPayload;
 use Fomvasss\AiTasks\DTO\AiResponse;
 
+/**
+ * @deprecated Unused starter example, not wired into anything else in the package.
+ *             Its hardcoded English systemPrompt can't be customized. Write your own
+ *             AiTask subclass instead (see "Creating a Task" in the README). Will be
+ *             removed in the next major version.
+ */
 class ChatAssistTask extends AiTask
 {
     public function __construct(

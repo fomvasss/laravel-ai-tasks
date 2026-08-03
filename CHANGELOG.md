@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [3.20.0] — 2026-08-04
+
+### Deprecated
+- `ChatAssistTask` and `VisionExampleTask` — unused starter examples, not referenced anywhere else in the package. Write your own `AiTask` subclass instead (see "Creating a Task" in the README). Will be removed in the next major version.
+
 ## [3.19.1] — 2026-08-04
 
 ### Fixed
