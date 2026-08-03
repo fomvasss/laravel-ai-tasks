@@ -14,6 +14,7 @@ use Fomvasss\AiTasks\DTO\AiPayload;
 use Fomvasss\AiTasks\DTO\AiResponse;
 use Fomvasss\AiTasks\Facades\AI as AIFacade;
 use Fomvasss\AiTasks\Tasks\AiTask;
+use Fomvasss\AiTasks\Tasks\ChatAssistTask;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Ai\Contracts\Tool;
 use Laravel\Ai\Tools\Request;
@@ -211,5 +212,41 @@ class ToolsTest extends TestCase
 
         $this->assertCount(3, $spy->received->tools);
         $this->assertSame($tools, $spy->received->tools);
+    }
+
+    // ── Regression: ChatAssistTask's constructor tools must actually reach the driver ──
+
+    public function test_chat_assist_task_tools_method_returns_constructor_tools(): void
+    {
+        $tool = $this->makeTool();
+        $task = new ChatAssistTask(history: [], tools: [$tool]);
+
+        $this->assertSame([$tool], $task->tools());
+    }
+
+    public function test_chat_assist_task_passes_tools_to_driver(): void
+    {
+        $tool = $this->makeTool();
+
+        $spy = new class implements AiDriver {
+            public ?AiPayload $received = null;
+            public function supports(string $modality): bool { return true; }
+            public function send(AiPayload $p, AiContext $c): AiResponse
+            {
+                $this->received = $p;
+                return new AiResponse(true, 'ok');
+            }
+            public function stream(AiPayload $p, AiContext $c, callable $cb): AiResponse
+            {
+                return new AiResponse(true, 'ok');
+            }
+        };
+
+        $this->swapDriverForNull($spy);
+
+        AIFacade::send(new ChatAssistTask(history: [], tools: [$tool]), 'null');
+
+        $this->assertCount(1, $spy->received->tools);
+        $this->assertSame($tool, $spy->received->tools[0]);
     }
 }

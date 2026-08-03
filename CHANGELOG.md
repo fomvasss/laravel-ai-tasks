@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [3.19.1] — 2026-08-04
+
+### Fixed
+- `ChatAssistTask`'s `tools` constructor argument was silently ignored — tool-calling never worked with this task. Tools passed to it now reach the model.
+
 ## [3.19.0] — 2026-08-03
 
 ### Added
