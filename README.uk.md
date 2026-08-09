@@ -286,6 +286,22 @@ AI::send((new SummarizeTask($article))->viaDrivers('gemini'));
 $this->app->scoped(\Fomvasss\AiTasks\Support\TenantResolver::class, fn() => new MyTenantResolver());
 ```
 
+Власний `TenantResolver` має доступ лише до поточного запиту/auth-стану — нічого специфічного для конкретного таску. Якщо таск і так уже знає свій tenant (напр. тримає Eloquent-модель з `organization_id`) — перевизнач `tenantId()` прямо на таску, без жодного біндингу в service provider, і він матиме пріоритет над `TenantResolver`:
+
+```php
+protected function tenantId(): ?string
+{
+    return $this->order->organization_id; // null — фолбек на TenantResolver, як і раніше
+}
+```
+
+У парі з `subjectType()`/`subjectId()` можна позначити run конкретним записом, якого він стосується (напр. `'order'` / `$this->order->id`) — незалежно від `tenantId()`, суто для фільтрації `ai_runs` по subject, а не лише по tenant/task:
+
+```php
+protected function subjectType(): ?string { return 'order'; }
+protected function subjectId(): ?string { return $this->order->id; }
+```
+
 `Fomvasss\AiTasks\Exceptions\BudgetExceededException` кидається, коли місячна витрата тенанта перевищує `monthly_usd` — перевірка йде і pre-flight (до звернення до провайдера, за вже витраченим), і post-call (після відповіді, за реальною ціною виклику) на `send()`, `stream()` і в чергового job. Якщо виняток стався post-call — виклик уже відбувся й оплачений, тож run все одно зберігається як `ok` з реальним `cost`, інакше ця витрата зникла б з майбутніх підрахунків бюджету.
 
 ## Відстеження витрат

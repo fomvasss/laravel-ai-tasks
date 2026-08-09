@@ -312,6 +312,22 @@ The `TenantResolver` picks up tenant ID from `X-Tenant-Id` header, authenticated
 $this->app->scoped(\Fomvasss\AiTasks\Support\TenantResolver::class, fn() => new MyTenantResolver());
 ```
 
+A custom `TenantResolver` only has access to the current request/auth state — nothing task-specific. When a task already knows its own tenant (e.g. it holds an Eloquent model with an `organization_id`), override `tenantId()` on the task itself instead — no service provider binding needed, and it takes priority over `TenantResolver`:
+
+```php
+protected function tenantId(): ?string
+{
+    return $this->order->organization_id; // null falls back to TenantResolver, as usual
+}
+```
+
+Pair it with `subjectType()`/`subjectId()` to tag the run with the specific record it concerns (e.g. `'order'` / `$this->order->id`) — independent of `tenantId()`, purely for filtering `ai_runs` by subject instead of only by tenant/task:
+
+```php
+protected function subjectType(): ?string { return 'order'; }
+protected function subjectId(): ?string { return $this->order->id; }
+```
+
 `Fomvasss\AiTasks\Exceptions\BudgetExceededException` is thrown once a tenant's monthly spend would exceed `monthly_usd` — checked both pre-flight (before the provider call, using prior spend) and post-call (after, using the actual cost of the response) on `send()`, `stream()`, and the queued job. If the exception fires post-call, the response was already billed, so the run is still recorded as `ok` with its real `cost` — otherwise that spend would vanish from future budget checks.
 
 ## Cost Tracking

@@ -45,12 +45,38 @@ abstract class AiTask
     public function context(): AiContext
     {
         return $this->cachedContext ??= new AiContext(
-            tenantId: app(TenantResolver::class)->id(),
+            tenantId: $this->tenantId() ?? app(TenantResolver::class)->id(),
             taskName: $this->name(),
-            subjectType: null,
-            subjectId: null,
+            subjectType: $this->subjectType(),
+            subjectId: $this->subjectId(),
             meta: $this->defaultMeta(),
         );
+    }
+
+    /**
+     * Override to pin this task's tenant explicitly (e.g. from a model the task already holds —
+     * an organization/account id) instead of relying on the app-wide TenantResolver, which only
+     * has access to the current request/auth state and nothing task-specific. Return null (default)
+     * to fall back to TenantResolver — useful when only some tasks need an explicit tenant.
+     */
+    protected function tenantId(): ?string
+    {
+        return null;
+    }
+
+    /**
+     * Override together with subjectId() to tag this run with the business record it concerns
+     * (e.g. 'chat', 'order') — lets you query AiRun by subject instead of only by tenant/task.
+     * Purely for filtering/audit; unrelated to tenantId() (who's billed) or to Laravel's morph maps.
+     */
+    protected function subjectType(): ?string
+    {
+        return null;
+    }
+
+    protected function subjectId(): ?string
+    {
+        return null;
     }
 
     public function tools(): array

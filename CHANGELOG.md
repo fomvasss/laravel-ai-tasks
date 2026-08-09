@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [3.21.0] — 2026-08-09
+
+### Added
+- `AiTask::tenantId()`, `subjectType()`, `subjectId()` — optional per-task hooks (like `defaultMeta()`, `maxRetries()`) to set `AiContext`/`ai_runs` tenant and subject explicitly, without overriding the whole `context()` method. `tenantId()` returning `null` (default) keeps falling back to `TenantResolver` as before — fully backward compatible.
+
 ## [3.20.0] — 2026-08-04
 
 ### Deprecated
