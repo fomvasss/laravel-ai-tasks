@@ -18,6 +18,8 @@ use Illuminate\Support\ServiceProvider;
 
 class AiServiceProvider extends ServiceProvider
 {
+    private static int $migrationTimestampOffset = 0;
+
     public function register(): void
     {
         $this->mergeConfigFrom(__DIR__ . '/../config/ai-tasks.php', 'ai-tasks');
@@ -105,8 +107,10 @@ class AiServiceProvider extends ServiceProvider
             return;
         }
 
+        $timestamp = now()->addSeconds(self::$migrationTimestampOffset++)->format('Y_m_d_His');
+
         $this->publishes([
-            $source => database_path('migrations/' . date('Y_m_d_His') . "_{$baseName}.php"),
+            $source => database_path("migrations/{$timestamp}_{$baseName}.php"),
         ], 'ai-migrations');
     }
 
