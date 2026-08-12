@@ -126,9 +126,10 @@ use Laravel\Ai\Messages\UserMessage;
 use Fomvasss\AiTasks\DTO\AiPayload;
 use Fomvasss\AiTasks\DTO\AiResponse;
 use Fomvasss\AiTasks\Tasks\AiTask;
+use Fomvasss\AiTasks\Contracts\ShouldQueueAi;
 use Fomvasss\AiTasks\Traits\SerializesModelsAi;
 
-class SummarizeTask extends AiTask
+class SummarizeTask extends AiTask implements ShouldQueueAi
 {
     use SerializesModelsAi;
 
