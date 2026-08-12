@@ -430,6 +430,58 @@ public function toolChoice(): ToolChoice|string|array|null
 
 Примусовий вибір автоматично знімається після першого кроку, тому за примусовим tool-викликом все одно йде звичайна текстова відповідь із результатом тула. `toolChoice()` за замовчуванням `null` (дефолт провайдера, зазвичай `auto`) і не має ефекту без `tools()`.
 
+## Підтвердження tool-виклику (Tool Approval)
+
+Для тула з `AiTask::tools()`, що робить незворотну чи дорогу дію (оформити замовлення, видалити файл, переказати кошти) — реалізуйте нативний `laravel/ai`'s `Contracts\Approvable` (повний контракт — у документації `laravel/ai`: `requireApproval()`/`withoutApproval()`/`shouldRequestApproval()`). Пакет не додає власного протоколу підтвердження — лише прокидає те, що вже робить `laravel/ai`:
+
+```php
+use Laravel\Ai\Approvals\Approval;
+use Laravel\Ai\Concerns\InteractsWithApprovals;
+use Laravel\Ai\Contracts\Approvable;
+
+class CreateOrderTool implements Tool, Approvable
+{
+    use InteractsWithApprovals;
+
+    protected function needsApproval(Request $request): Approval|bool
+    {
+        return Approval::required('Оформлення реального замовлення потребує підтвердження клієнта.');
+    }
+}
+```
+
+Коли модель намагається викликати `Approvable`-тул, що потребує підтвердження, — виконання зупиняється замість виклику тула: `AiResponse::$pendingApprovals` заповнюється (`id`/`tool`/`arguments`/`reason` на кожен pending-виклик), тул **не** виконується.
+
+Щоб продовжити — задиспатчити той самий таск повторно, задавши `AiPayload::$decisions` замість нового текстового промпту:
+
+```php
+public function toPayload(): AiPayload
+{
+    return new AiPayload(
+        modality: 'text',
+        messages: $this->history(), // має включати призупинений хід асистента з tool-викликом
+        decisions: $this->decisions, // напр. ['call_abc123' => true] — null на першому, пропонуючому виклику
+    );
+}
+```
+
+`decisions` приймає інстанс `Laravel\Ai\Approvals\Decisions` або звичайний масив `['tool_call_id' => true|false|Decision::approve()|Decision::reject('причина')]`.
+
+**Свідомо не побудовано на `RemembersConversations`/`ConversationStore` пакету `laravel/ai`** — пакет вважає, що джерело правди для історії розмови вже є у вашій доменній моделі (чат, лог повідомлень тощо), і `AiPayload::$messages` завжди будується з неї. Друга, окрема таблиця розмов від `laravel/ai` дублювала б це. Це означає, що коректний резюм — ваша відповідальність: білдер історії таска має відтворити призупинений хід асистента як повідомлення зі справжнім tool-викликом, а не лише текстовий підсумок, який бачив клієнт — точну форму дивіться в документації `laravel/ai` про `Approvable`/`PendingApproval`.
+
+**Відтворюйте призупинений хід із `AiResponse::$toolCalls`, не з `$pendingApprovals`.** `$pendingApprovals` — урізаний вигляд для відображення (лише `id`/`tool`/`arguments`/`reason`). `$toolCalls` несе повну форму, яка справді потрібна для реплею — `result_id`, а для reasoning-моделей у провайдерів (напр. OpenAI Responses API з reasoning-моделлю) — ще й `reasoning_id`/`reasoning_summary`/`reasoning_encrypted_content`. Відтворюйте tool-виклик через `Laravel\Ai\Responses\Data\ToolCall::fromArray($entry)`, а не вручну обраними полями — реплей без `result_id` відхиляється одразу (`400: input[N].call_id: expected a string, but got null`):
+
+```php
+use Illuminate\Support\Collection;
+use Laravel\Ai\Messages\AssistantMessage;
+use Laravel\Ai\Responses\Data\ToolCall;
+
+// $pendingToolCall — відповідний запис з AiResponse::$toolCalls пропонуючого виклику
+$messages[] = new AssistantMessage('', new Collection([
+    ToolCall::fromArray($pendingToolCall),
+]));
+```
+
 ## JSON-режим
 
 Виставте `jsonMode: true` в `AiPayload`, щоб модель завжди повертала валідний JSON — без markdown-обгорток і тексту поза об'єктом. Для нових задач надавайте перевагу `schema()` вище; `jsonMode` лишається для випадків, де сувора форма не потрібна, або для стрімінгу.

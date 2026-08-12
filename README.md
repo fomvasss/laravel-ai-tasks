@@ -456,6 +456,58 @@ public function toolChoice(): ToolChoice|string|array|null
 
 The forced choice is automatically released after the first step, so a forced tool call is still followed by a normal text answer using the tool's result. `toolChoice()` defaults to `null` (provider's own default, usually `auto`) and has no effect without `tools()`.
 
+## Tool Approval
+
+For a tool returned from `AiTask::tools()` that performs an irreversible or expensive action (place an order, delete a file, send money), have it implement `laravel/ai`'s native `Contracts\Approvable` (see `laravel/ai`'s own docs for the full contract — `requireApproval()`/`withoutApproval()`/`shouldRequestApproval()`). This package does not add its own approval protocol — it only surfaces what `laravel/ai` already does:
+
+```php
+use Laravel\Ai\Approvals\Approval;
+use Laravel\Ai\Concerns\InteractsWithApprovals;
+use Laravel\Ai\Contracts\Approvable;
+
+class CreateOrderTool implements Tool, Approvable
+{
+    use InteractsWithApprovals;
+
+    protected function needsApproval(Request $request): Approval|bool
+    {
+        return Approval::required('Placing a real order requires customer confirmation.');
+    }
+}
+```
+
+When the model tries to call an `Approvable` tool that requires approval, the run pauses instead of executing it — `AiResponse::$pendingApprovals` is populated (`id`/`tool`/`arguments`/`reason` per pending call) and the tool is **not** run.
+
+To resume, dispatch the same task again with `AiPayload::$decisions` set instead of building a new text prompt:
+
+```php
+public function toPayload(): AiPayload
+{
+    return new AiPayload(
+        modality: 'text',
+        messages: $this->history(), // must include the paused assistant turn with its tool call
+        decisions: $this->decisions, // e.g. ['call_abc123' => true] — null on the first, proposing call
+    );
+}
+```
+
+`decisions` accepts a `Laravel\Ai\Approvals\Decisions` instance or a plain `['tool_call_id' => true|false|Decision::approve()|Decision::reject('reason')]` map.
+
+**Deliberately not built on `laravel/ai`'s `RemembersConversations`/`ConversationStore`** — this package assumes your own domain data (chat, message log, etc.) is already the source of truth for conversation history, and `AiPayload::$messages` is always built from it. Adding a second, `laravel/ai`-owned conversation table would duplicate that. This means resuming correctly is on you: your task's history builder must reconstruct the paused assistant turn as a real message with its tool call attached, not just the text summary the user saw — see `laravel/ai`'s docs on `Approvable`/`PendingApproval` for the exact shape.
+
+**Reconstruct the paused turn from `AiResponse::$toolCalls`, not `$pendingApprovals`.** `$pendingApprovals` is a reduced view for display (`id`/`tool`/`arguments`/`reason` only). `$toolCalls` carries the full shape a replay actually needs — `result_id` and, for reasoning-model providers (e.g. OpenAI's Responses API with a reasoning model), `reasoning_id`/`reasoning_summary`/`reasoning_encrypted_content`. Rebuild the tool call with `Laravel\Ai\Responses\Data\ToolCall::fromArray($entry)` rather than hand-picking fields — a replay missing `result_id` is rejected outright (`400: input[N].call_id: expected a string, but got null`):
+
+```php
+use Illuminate\Support\Collection;
+use Laravel\Ai\Messages\AssistantMessage;
+use Laravel\Ai\Responses\Data\ToolCall;
+
+// $pendingToolCall = the matching entry from the PROPOSING call's AiResponse::$toolCalls
+$messages[] = new AssistantMessage('', new Collection([
+    ToolCall::fromArray($pendingToolCall),
+]));
+```
+
 ## JSON Mode
 
 Set `jsonMode: true` on `AiPayload` to tell the model to always respond with valid JSON — no markdown fences, no prose outside the object. Prefer `schema()` above for new tasks; `jsonMode` remains for providers/cases where you don't need a strict shape, or for streaming.

@@ -30,7 +30,7 @@
     "illuminate/events": "^12.0|^13.0",
     "illuminate/pipeline": "^12.0|^13.0",
     "illuminate/http": "^12.0|^13.0",
-    "laravel/ai": "^0.10"
+    "laravel/ai": "^0.10.1"
   },
   "suggest": {
     "laravel/mcp": "Native MCP client support (recommended over HttpMcpClient for production use)"

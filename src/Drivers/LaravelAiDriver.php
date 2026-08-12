@@ -57,6 +57,23 @@ final class LaravelAiDriver implements AiDriver
         $provider        = $this->resolveProvider($p);
         $displayProvider = $p->providerOverride['driver'] ?? $provider;
         $model           = $p->options['model'] ?? $p->providerOverride['model'] ?? $this->cfg['model'];
+
+        if ($p->decisions !== null) {
+            // Резюм паузи на tool-approval: немає нового текстового промпту —
+            // весь $messages (включно з paused tool_use-ходом) стає історією агента,
+            // а Decisions передається в prompt() замість тексту.
+            $agent = $this->makeAgent($p, $this->toLabMessages($p->messages));
+
+            $response = $agent->prompt(
+                prompt: $p->decisions,
+                provider: $provider,
+                model: $model,
+                timeout: $p->options['timeout'] ?? 60,
+            );
+
+            return $this->buildTextResponse($response, $displayProvider, $model);
+        }
+
         [$history, $prompt] = $this->splitMessages($p->messages);
 
         $agent = $this->makeAgent($p, $history);
@@ -91,6 +108,7 @@ final class LaravelAiDriver implements AiDriver
             toolCalls: $response->toolCalls->map(fn ($toolCall) => $toolCall->toArray())->all(),
             structured: $structured,
             finishReason: $finishReason,
+            pendingApprovals: $response->pendingApprovals->map(fn ($approval) => $approval->toArray())->all(),
         );
     }
 
@@ -276,13 +294,21 @@ final class LaravelAiDriver implements AiDriver
         return $alias;
     }
 
+    /**
+     * @return Message[]
+     */
+    private function toLabMessages(array $messages): array
+    {
+        return array_map(fn ($m) => $this->toLabMessage($m), $messages);
+    }
+
     private function splitMessages(array $messages): array
     {
         if (empty($messages)) {
             return [[], ''];
         }
 
-        $labMessages = array_map(fn ($m) => $this->toLabMessage($m), $messages);
+        $labMessages = $this->toLabMessages($messages);
 
         // Find the last user message to use as the prompt
         $lastUserIdx = null;

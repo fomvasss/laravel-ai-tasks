@@ -15,5 +15,6 @@ final class AiResponse
         public readonly array   $toolCalls = [],
         public readonly ?array  $structured = null,
         public readonly ?string $finishReason = null,
+        public readonly array   $pendingApprovals = [],
     ) {}
 }

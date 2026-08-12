@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [3.22.0] — 2026-08-12
+
+### Added
+- `AiResponse::$pendingApprovals` — populated when a tool implementing `laravel/ai`'s `Contracts\Approvable` pauses the run instead of executing (`Approval::required()`). Each entry: `id`/`tool`/`arguments`/`reason`.
+- `AiPayload::$decisions` — new optional constructor param to resume a run that previously paused with `pendingApprovals`, instead of sending a new text prompt. Accepts a `Laravel\Ai\Approvals\Decisions` instance or a plain `['tool_call_id' => true|false|Decision::approve()|Decision::reject('reason')]` map. See README "Tool Approval" for the full resume flow, including why the paused tool call must be rebuilt from `AiResponse::$toolCalls` rather than `$pendingApprovals`.
+- Streaming (`AI::stream()`) does not support `$decisions` yet — only the non-streaming path (`AI::send()`/`AI::queue()`).
+
+### Fixed
+- A task combining `tools()` with `decisions` could lose the decision on resume and re-pause instead of continuing.
+
+### Changed
+- `laravel/ai` requirement raised from `^0.10` to `^0.10.1`, the earliest version confirmed to ship the `Approvals` namespace this feature depends on.
+
 ## [3.21.0] — 2026-08-09
 
 ### Added

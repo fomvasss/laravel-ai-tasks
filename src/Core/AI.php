@@ -316,6 +316,7 @@ class AI
             providerOverride: $payload->providerOverride,
             schema: $schema,
             toolChoice: $toolChoice,
+            decisions: $payload->decisions,
         );
     }
 
