@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [3.24.0] — 2026-08-16
+
+### Changed
+- A run rejected by the post-call budget check (provider already billed the request) is now recorded as `error` with its real `cost`/token usage kept, instead of a misleading `ok`. Spend tracking now counts every run with a recorded cost regardless of status, so budget math is unchanged — but anything filtering runs by `status='ok'` will no longer see these runs as successes.
+- Attachments are no longer stored verbatim in `ai_runs.request` options (they can hold base64/binary payloads) — replaced with an `[N attachment(s) omitted]` placeholder.
+
+### Fixed
+- On Octane, per-request provider overrides (`providerOverride` with a custom key) accumulated one runtime provider alias per unique driver+key pair in config and in laravel/ai's instance cache for the worker's lifetime — both are now flushed between requests.
+
 ## [3.23.0] — 2026-08-16
 
 ### Added

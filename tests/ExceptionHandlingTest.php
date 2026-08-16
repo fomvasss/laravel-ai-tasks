@@ -126,7 +126,7 @@ class ExceptionHandlingTest extends TestCase
         $this->assertSame('ok', $runs[1]->status);
     }
 
-    public function test_send_rethrows_on_budget_exceeded_but_keeps_run_ok_with_cost(): void
+    public function test_send_rethrows_on_budget_exceeded_and_fails_run_but_keeps_cost(): void
     {
         config(['ai-tasks.budgets.default.monthly_usd' => 0.0]);
 
@@ -138,12 +138,34 @@ class ExceptionHandlingTest extends TestCase
             AIFacade::send($this->makeTask(), 'driverA');
         } finally {
             $run = AiRun::query()->latest('created_at')->first();
-            // Виклик провайдера реально відбувся й був оплачений — run лишається 'ok' з cost,
-            // інакше витрата стає невидимою для наступних підрахунків бюджету (issue #7).
-            $this->assertSame('ok', $run->status);
+            // Виклик провайдера реально відбувся й був оплачений — статус чесний ('error'),
+            // але cost збережено, щоб витрата не випала з підрахунків бюджету (issue #7):
+            // Budget::getSpentBetween() сумує по cost IS NOT NULL, не по status.
+            $this->assertSame('error', $run->status);
+            $this->assertStringContainsString('Budget exceeded', $run->error);
             $this->assertSame(10.0, $run->cost);
             $this->assertNotNull($run->finished_at);
         }
+    }
+
+    public function test_budget_counts_cost_of_failed_runs(): void
+    {
+        AiRun::create([
+            'tenant_id' => 'default',
+            'task' => 'prior',
+            'driver' => 'driverA',
+            'modality' => 'text',
+            'dispatch' => 'sync',
+            'status' => 'error',
+            'error' => 'Budget exceeded for tenant [default]',
+            'cost' => 10.0,
+            'request' => ['modality' => 'text'],
+            'finished_at' => now(),
+        ]);
+
+        $spent = app(\Fomvasss\AiTasks\Support\Budget::class)->getMonthlySpent('default');
+
+        $this->assertSame(10.0, $spent);
     }
 
     public function test_send_preflight_blocks_before_any_driver_call_when_already_over_budget(): void
@@ -191,7 +213,7 @@ class ExceptionHandlingTest extends TestCase
         $this->assertNotNull($run->finished_at);
     }
 
-    public function test_stream_enforces_budget_after_call_and_keeps_run_ok_with_cost(): void
+    public function test_stream_enforces_budget_after_call_and_fails_run_but_keeps_cost(): void
     {
         config(['ai-tasks.budgets.default.monthly_usd' => 0.0]);
 
@@ -203,7 +225,7 @@ class ExceptionHandlingTest extends TestCase
             AIFacade::stream($this->makeTask(), fn ($c) => null, 'driverA');
         } finally {
             $run = AiRun::query()->latest('created_at')->first();
-            $this->assertSame('ok', $run->status);
+            $this->assertSame('error', $run->status);
             $this->assertSame(10.0, $run->cost);
         }
     }
@@ -250,7 +272,7 @@ class ExceptionHandlingTest extends TestCase
         $this->assertNotNull($run->finished_at);
     }
 
-    public function test_queued_job_keeps_run_ok_with_cost_when_postcall_budget_exceeded(): void
+    public function test_queued_job_fails_run_but_keeps_cost_when_postcall_budget_exceeded(): void
     {
         config(['ai-tasks.budgets.default.monthly_usd' => 0.0]);
 
@@ -273,7 +295,8 @@ class ExceptionHandlingTest extends TestCase
         $job->handle(app(AiManager::class));
 
         $run->refresh();
-        $this->assertSame('ok', $run->status);
+        $this->assertSame('error', $run->status);
+        $this->assertStringContainsString('Budget exceeded', $run->error);
         $this->assertSame(10.0, $run->cost);
     }
 }

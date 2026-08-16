@@ -102,9 +102,10 @@ class AI
 
                 app(Budget::class)->ensureNotExceeded($ctx->tenantId, (float) ($resp->usage['cost'] ?? 0.0));
             } catch (BudgetExceededException $e) {
-                // Виклик провайдера вже відбувся й оплачений — зберігаємо cost через finish(),
-                // інакше витрата випадає з майбутніх підрахунків бюджету (issue #7).
-                $run->finish($resp);
+                // Виклик провайдера вже відбувся й оплачений — статус чесний ('error'), але
+                // cost зберігається через fail($usage), щоб витрата не випала з майбутніх
+                // підрахунків бюджету (issue #7): Budget сумує по cost, не по status.
+                $run->fail($e->getMessage(), $resp->usage);
                 event(new AiTaskFailed($task, $e->getMessage(), $run));
                 throw $e;
             } catch (\Throwable $e) {
@@ -201,7 +202,8 @@ class AI
 
                 app(Budget::class)->ensureNotExceeded($ctx->tenantId, (float) ($resp->usage['cost'] ?? 0.0));
             } catch (BudgetExceededException $e) {
-                $run->finish($resp);
+                // див. коментар в send() — статус 'error', cost зберігається для бюджету
+                $run->fail($e->getMessage(), $resp->usage);
                 event(new AiTaskFailed($task, $e->getMessage(), $run));
                 throw $e;
             } catch (\Throwable $e) {

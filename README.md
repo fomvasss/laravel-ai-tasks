@@ -347,7 +347,9 @@ protected function subjectType(): ?string { return 'order'; }
 protected function subjectId(): ?string { return $this->order->id; }
 ```
 
-`Fomvasss\AiTasks\Exceptions\BudgetExceededException` is thrown once a tenant's monthly spend would exceed `monthly_usd` — checked both pre-flight (before the provider call, using prior spend) and post-call (after, using the actual cost of the response) on `send()`, `stream()`, and the queued job. If the exception fires post-call, the response was already billed, so the run is still recorded as `ok` with its real `cost` — otherwise that spend would vanish from future budget checks.
+`Fomvasss\AiTasks\Exceptions\BudgetExceededException` is thrown once a tenant's monthly spend would exceed `monthly_usd` — checked both pre-flight (before the provider call, using prior spend) and post-call (after, using the actual cost of the response) on `send()`, `stream()`, and the queued job. If the exception fires post-call, the response was already billed — the run is recorded as `error` but keeps its real `cost`/token usage, and spend tracking counts every run with a recorded cost regardless of status, so nothing vanishes from future budget checks.
+
+> **Note:** budget checks are advisory, not a hard guarantee — concurrent jobs each pass the pre-flight check against the same prior spend, so several in-flight requests can collectively overshoot the limit by up to their combined cost. Treat `monthly_usd` as a soft cap with at most a few requests of drift, not an exact billing ceiling.
 
 ## Cost Tracking
 

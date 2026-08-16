@@ -85,13 +85,10 @@ class ProcessAiPayload implements ShouldQueue
             dispatch($post);
 
         } catch (BudgetExceededException $e) {
-            // Якщо $resp вже відомий — виклик провайдера відбувся й оплачений, зберігаємо cost
-            // через finish() замість fail(), інакше витрата випадає з майбутніх підрахунків (issue #7).
-            if (isset($resp) && $resp->ok) {
-                $run->finish($resp);
-            } else {
-                $run->fail($e->getMessage());
-            }
+            // Якщо $resp вже відомий — виклик провайдера відбувся й оплачений: статус чесний
+            // ('error'), але cost зберігається через fail($usage), щоб витрата не випала з
+            // майбутніх підрахунків бюджету (issue #7): Budget сумує по cost, не по status.
+            $run->fail($e->getMessage(), isset($resp) && $resp->ok ? $resp->usage : []);
             event(new AiTaskFailed($task, $e->getMessage(), $run));
 
         } catch (\Throwable $e) {
