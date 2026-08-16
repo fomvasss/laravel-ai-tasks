@@ -4,12 +4,8 @@ declare(strict_types=1);
 
 namespace Fomvasss\AiTasks\Console;
 
-use Laravel\Ai\Messages\UserMessage;
 use Fomvasss\AiTasks\Core\AI;
-use Fomvasss\AiTasks\DTO\AiContext;
-use Fomvasss\AiTasks\DTO\AiPayload;
-use Fomvasss\AiTasks\Support\TenantResolver;
-use Fomvasss\AiTasks\Tasks\AiTask;
+use Fomvasss\AiTasks\Tasks\AdhocRequestTask;
 use Illuminate\Console\Command;
 use Illuminate\Support\Str;
 
@@ -41,36 +37,7 @@ class AiRequestCommand extends Command
         $temp     = (float) $this->option('temperature');
         $tenant   = $this->option('tenant');
 
-        $task = new class('adhoc', $modality, $prompt, $temp, $tenant) extends AiTask {
-            public function __construct(
-                private readonly string  $taskName,
-                private readonly string  $modalityVal,
-                private readonly string  $prompt,
-                private readonly float   $temperature,
-                private readonly ?string $tenantOverride,
-            ) {}
-
-            public function name(): string     { return $this->taskName; }
-            public function modality(): string { return $this->modalityVal; }
-            public function idempotencyKey(): string { return hash('xxh3', $this->prompt); }
-
-            public function context(): AiContext
-            {
-                return new AiContext(
-                    tenantId: $this->tenantOverride ?? app(TenantResolver::class)->id(),
-                    taskName: $this->name(),
-                );
-            }
-
-            public function toPayload(): AiPayload
-            {
-                return new AiPayload(
-                    modality: $this->modality(),
-                    messages: [new UserMessage($this->prompt)],
-                    options: ['temperature' => $this->temperature],
-                );
-            }
-        };
+        $task = new AdhocRequestTask($prompt, $modality, $temp, $tenant);
 
         $drivers = $driver ? [$driver] : [];
 

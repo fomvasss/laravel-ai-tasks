@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Fomvasss\AiTasks\Testing;
 
+use Fomvasss\AiTasks\Core\AI;
 use Fomvasss\AiTasks\DTO\AiResponse;
+use Fomvasss\AiTasks\Models\AiRun;
 use Fomvasss\AiTasks\Tasks\AiTask;
 use Fomvasss\AiTasks\Tasks\PromptTask;
 use Illuminate\Support\Str;
@@ -40,9 +42,7 @@ final class FakeAI
         $text = $this->resolve($task);
         $resp = new AiResponse(true, $text, ['driver' => 'fake', 'tokens_in' => 0, 'tokens_out' => 0, 'cost' => 0.0]);
 
-        $result = $task->postprocess($resp);
-
-        return $result instanceof AiResponse ? $result : new AiResponse(true, json_encode($result));
+        return $this->completeLikeReal($task, $resp);
     }
 
     public function stream(AiTask $task, callable $onChunk, array|string $drivers = []): AiResponse
@@ -53,16 +53,47 @@ final class FakeAI
 
         $resp = new AiResponse(true, $text, ['driver' => 'fake', 'tokens_in' => 0, 'tokens_out' => 0, 'cost' => 0.0]);
 
-        $result = $task->postprocess($resp);
-
-        return $result instanceof AiResponse ? $result : new AiResponse(true, json_encode($result));
+        return $this->completeLikeReal($task, $resp);
     }
 
     public function queue(AiTask $task, array|string $drivers = [], \DateTimeInterface|\DateInterval|int|null $delay = null): string
     {
+        // same guard as the real AI::queue(), so tests catch unreconstructable tasks early
+        $ctor = (new \ReflectionClass($task))->getConstructor();
+        if ($ctor && $ctor->getNumberOfRequiredParameters() > 0 && empty($task->serializeForQueue())) {
+            throw new \LogicException(
+                $task::class . ' has constructor parameters but serializeForQueue() returns []. ' .
+                'Implement serializeForQueue() to enable queue reconstruction and idempotency.'
+            );
+        }
+
         $this->record('queue', $task, $drivers);
 
         return (string) Str::uuid();
+    }
+
+    /**
+     * Mirror the real pipeline's completion: run postprocess(), then onCompleted() and
+     * the AiTaskCompleted event via AI::complete(), with an unsaved AiRun stand-in.
+     */
+    private function completeLikeReal(AiTask $task, AiResponse $resp): AiResponse
+    {
+        $result = $task->postprocess($resp);
+
+        $finalResponse = $result instanceof AiResponse ? $result : new AiResponse(true, json_encode($result));
+
+        $run = new AiRun([
+            'tenant_id' => $task->context()->tenantId,
+            'task' => $task->name(),
+            'driver' => 'fake',
+            'modality' => $task->modality(),
+            'dispatch' => 'sync',
+            'status' => 'ok',
+        ]);
+
+        AI::complete($task, $result, $finalResponse, $run);
+
+        return $finalResponse;
     }
 
     // ── Assertions ────────────────────────────────────────────────────────

@@ -4,6 +4,35 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [3.23.0] — 2026-08-16
+
+### Added
+- `temperature`, `max_tokens`, `top_p` set in `AiPayload` options are now actually sent to the provider (previously silently ignored).
+- `AiTask::idempotencyWindow()` — scope queue deduplication to a period instead of forever, e.g. one run per day for the same task+args. Default `null` keeps the existing dedup-forever behavior; existing idempotency keys are unaffected.
+- `AI::stream()` now supports `jsonMode` and `toolChoice`, same as `send()`.
+- `ai_runs.request` now stores the task's class name, and (when `AI_STORE_REQUEST=true`) its constructor arguments — needed for `ai:retry` and for webhook-driven completion to reconstruct the task.
+- `Support\StandardWebhookVerifier` — public helper for verifying Standard Webhooks signatures in a custom `WebhookRegistry::extend()` handler.
+
+### Changed
+- `viaQueues()['post']` is now honored — the postprocess step is dispatched to the task's declared `post` queue/connection instead of always the package default queue. Make sure your workers consume that queue before upgrading.
+- `ai:retry` now re-dispatches the matching failed runs instead of only listing them; pass `--dry-run` for the old list-only behavior.
+- Global postprocess pipes (`ai-tasks.postprocess.pipes`) now also run on the queued path and on `AI::stream()` — previously they only had effect on `send()`. Order is unchanged: pipes run before the task's own `postprocess()`.
+- `AI::fake()` now calls `onCompleted()` and fires `AiTaskCompleted` for faked `send()`/`stream()`, and applies the same reconstructability guard to `queue()` as the real dispatcher — tests relying on the old no-op behavior may need adjusting.
+- `AI::stream()`'s default timeout is now 60s (previously unset), matching `send()`.
+
+### Fixed
+- Webhook-driven completion (`AiRun::markWaiting()` + `POST /ai-webhooks/{driver}`) could never actually run the task's `postprocess()`/`onCompleted()` — the run finished, but nothing downstream fired. Now works whenever the task's constructor arguments were stored (see Added).
+- `ai:request --queue` always failed.
+- The `QualityScore` example postprocess pipe crashed when enabled.
+- Retries triggered by `isAcceptable()` could collide with each other for a task without an idempotency key.
+- Unconfigured-driver error referenced the wrong config file.
+
+### Security
+- The built-in OpenAI webhook handler now verifies the actual [Standard Webhooks](https://www.standardwebhooks.com/) signature scheme OpenAI uses (`webhook-id`/`webhook-timestamp`/`webhook-signature` headers, with a replay-window check) — the previous scheme did not match what OpenAI sends, so signature verification had no real effect even with a secret configured. If you use `ai-tasks.drivers.openai.webhook.secret`, set it to the `whsec_...` value from your OpenAI webhook settings. The unused `webhook.signature_header` config key was removed.
+
+### Deprecated
+- `Support\Pipes\EnsureJson` and `Support\Pipes\SanitizeHtml` — empty example pipes, will be removed in 4.0.
+
 ## [3.22.0] — 2026-08-12
 
 ### Added

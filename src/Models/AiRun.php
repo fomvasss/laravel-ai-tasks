@@ -50,7 +50,7 @@ class AiRun extends Model
             'dispatch'        => 'sync',
             'status'          => 'running',
             'idempotency_key' => null,
-            'request'         => static::minifyRequest($p),
+            'request'         => static::minifyRequest($p, $task),
             'started_at'      => now(),
         ]);
     }
@@ -67,7 +67,7 @@ class AiRun extends Model
             'dispatch'        => 'queue',
             'status'          => 'queued',
             'idempotency_key' => $idempotencyKey ?? $task->idempotencyKey(),
-            'request'         => static::minifyRequest($p),
+            'request'         => static::minifyRequest($p, $task),
         ]);
     }
 
@@ -154,15 +154,20 @@ class AiRun extends Model
         }
     }
 
-    private static function minifyRequest(AiPayload $p): array
+    private static function minifyRequest(AiPayload $p, AiTask $task): array
     {
         $data = [
-            'modality' => $p->modality,
-            'options'  => $p->options,
-            'meta'     => $p->meta,
+            'modality'   => $p->modality,
+            'options'    => $p->options,
+            'meta'       => $p->meta,
+            'task_class' => $task::class,
         ];
 
         if (config('ai-tasks.store_request')) {
+            // needed to reconstruct the task for ai:retry and webhook completion;
+            // gated by store_request because ctor args usually contain the prompt text
+            $data['task_args'] = $task->serializeForQueue();
+
             if ($p->systemPrompt !== null) {
                 $data['system'] = $p->systemPrompt;
             }

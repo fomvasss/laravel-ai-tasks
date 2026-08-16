@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Fomvasss\AiTasks\Core;
 
-use Fomvasss\AiTasks\Contracts\ShouldQueueAi;
 use Fomvasss\AiTasks\DTO\AiContext;
 use Fomvasss\AiTasks\DTO\AiPayload;
 use Fomvasss\AiTasks\DTO\AiResponse;
@@ -19,6 +18,7 @@ use Fomvasss\AiTasks\Jobs\ProcessAiPayload;
 use Fomvasss\AiTasks\Models\AiRun;
 use Fomvasss\AiTasks\Support\Budget;
 use Fomvasss\AiTasks\Support\ModelLister;
+use Fomvasss\AiTasks\Support\QueueDispatch;
 use Fomvasss\AiTasks\Tasks\AiTask;
 use Fomvasss\AiTasks\Tasks\PromptTask;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -84,6 +84,7 @@ class AI
 
             if (! $this->isConfigured($driverName) && ! ($payload->providerOverride['key'] ?? null)) {
                 $run->skip("driver_not_configured: {$driverName}");
+                $errors[] = "driver_not_configured: {$driverName}";
                 continue;
             }
 
@@ -161,14 +162,7 @@ class AI
             timeout: $task->jobTimeout(),
         );
 
-        if ($task instanceof ShouldQueueAi) {
-            if ($conn = $task->preferredConnection()) {
-                $job->onConnection($conn);
-            }
-            $job->onQueue($task->preferredQueueFor('request', config('ai-tasks.queues.default')));
-        } else {
-            $job->onQueue(config('ai-tasks.queues.default'));
-        }
+        QueueDispatch::configure($job, $task, 'request', config('ai-tasks.queues.default'));
 
         $pending = dispatch($job);
 
@@ -192,12 +186,13 @@ class AI
         $errors = [];
 
         foreach ($list as $driverName) {
+            $run = AiRun::start($driverName, $payload, $ctx, $task);
+
             if (! $this->isConfigured($driverName) && ! ($payload->providerOverride['key'] ?? null)) {
+                $run->skip("driver_not_configured: {$driverName}");
                 $errors[] = "driver_not_configured: {$driverName}";
                 continue;
             }
-
-            $run = AiRun::start($driverName, $payload, $ctx, $task);
 
             event(new AiTaskStarted($task, $ctx, $run));
 
@@ -218,6 +213,7 @@ class AI
 
             $run->finish($resp);
 
+            $resp = $this->runPostprocess($resp);
             $result = $task->postprocess($resp);
             $finalResponse = $result instanceof AiResponse
                 ? $result

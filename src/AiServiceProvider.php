@@ -135,12 +135,9 @@ class AiServiceProvider extends ServiceProvider
             if (config('ai-tasks.drivers.openai')) {
                 $registry->extend('openai', function (\Illuminate\Http\Request $r) {
                     $secret = config('ai-tasks.drivers.openai.webhook.secret');
-                    $sigHdr = config('ai-tasks.drivers.openai.webhook.signature_header', 'X-OpenAI-Signature');
 
                     if ($secret) {
-                        $sig  = (string) $r->header($sigHdr);
-                        $calc = hash_hmac('sha256', $r->getContent(), $secret);
-                        abort_unless(hash_equals($calc, $sig), 401);
+                        abort_unless(\Fomvasss\AiTasks\Support\StandardWebhookVerifier::verify($r, $secret), 401);
                     }
 
                     $event = $r->json()->all();

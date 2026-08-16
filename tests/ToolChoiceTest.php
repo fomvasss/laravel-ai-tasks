@@ -129,15 +129,15 @@ class ToolChoiceTest extends TestCase
         $this->assertSame(ToolChoice::required, $agent->toolChoice()->mode);
     }
 
-    public function test_driver_uses_plain_agent_when_no_tool_choice(): void
+    public function test_driver_leaves_tool_choice_unset_when_not_requested(): void
     {
         $driver  = new LaravelAiDriver('openai', ['model' => 'gpt-4o-mini']);
         $payload = new AiPayload('text');
 
         $agent = $this->callMakeAgent($driver, $payload);
 
-        $this->assertNotInstanceOf(AnonymousToolChoiceAgent::class, $agent);
         $this->assertInstanceOf(AnonymousAgent::class, $agent);
+        $this->assertNull($agent->toolChoice());
     }
 
     public function test_driver_applies_tool_choice_to_json_mode_agent(): void

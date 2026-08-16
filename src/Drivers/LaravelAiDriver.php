@@ -118,13 +118,17 @@ final class LaravelAiDriver implements AiDriver
             $agent = new StructuredToolChoiceAgent($p->systemPrompt ?? '', $history, $p->tools, $p->schema->getClosure(), $p->options['provider_options'] ?? []);
         } elseif ($p->jsonMode) {
             $agent = new JsonModeAgent($p->systemPrompt ?? '', $history, $p->tools);
-        } elseif ($p->toolChoice !== null) {
-            $agent = new AnonymousToolChoiceAgent($p->systemPrompt ?? '', $history, $p->tools);
         } else {
-            return new AnonymousAgent($p->systemPrompt ?? '', $history, $p->tools);
+            $agent = new AnonymousToolChoiceAgent($p->systemPrompt ?? '', $history, $p->tools);
         }
 
-        return $agent->withToolChoice($p->toolChoice);
+        return $agent
+            ->withToolChoice($p->toolChoice)
+            ->withGenerationOptions(
+                isset($p->options['temperature']) ? (float) $p->options['temperature'] : null,
+                isset($p->options['max_tokens']) ? (int) $p->options['max_tokens'] : null,
+                isset($p->options['top_p']) ? (float) $p->options['top_p'] : null,
+            );
     }
 
     private function streamText(AiPayload $p, callable $onChunk): AiResponse
@@ -134,13 +138,13 @@ final class LaravelAiDriver implements AiDriver
         $model           = $p->options['model'] ?? $p->providerOverride['model'] ?? $this->cfg['model'];
         [$history, $prompt] = $this->splitMessages($p->messages);
 
-        $streamable = (new AnonymousAgent($p->systemPrompt ?? '', $history, $p->tools))
+        $streamable = $this->makeAgent($p, $history)
             ->stream(
                 prompt: $prompt,
                 attachments: $p->options['attachments'] ?? [],
                 provider: $provider,
                 model: $model,
-                timeout: $p->options['timeout'] ?? null,
+                timeout: $p->options['timeout'] ?? 60,
             );
 
         $text  = '';

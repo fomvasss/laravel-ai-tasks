@@ -7,17 +7,16 @@ namespace Fomvasss\AiTasks\Jobs;
 use Fomvasss\AiTasks\Core\AiManager;
 use Fomvasss\AiTasks\DTO\AiContext;
 use Fomvasss\AiTasks\DTO\AiPayload;
-use Fomvasss\AiTasks\Events\AiTaskCompleted;
 use Fomvasss\AiTasks\Events\AiTaskFailed;
 use Fomvasss\AiTasks\Events\AiTaskStarted;
 use Fomvasss\AiTasks\Exceptions\BudgetExceededException;
 use Fomvasss\AiTasks\Models\AiRun;
 use Fomvasss\AiTasks\Support\Budget;
+use Fomvasss\AiTasks\Support\QueueDispatch;
 use Fomvasss\AiTasks\Tasks\AiTask;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
-use Illuminate\Pipeline\Pipeline;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Queue\SerializesModels;
@@ -79,10 +78,11 @@ class ProcessAiPayload implements ShouldQueue
 
             $run->finish($resp);
 
-            $resp = $this->runPostprocess($resp);
+            $post = new PostprocessAiResult($run->id, $this->taskClass, $this->taskCtorArgs, $this->attempt);
 
-            dispatch(new PostprocessAiResult($run->id, $this->taskClass, $this->taskCtorArgs, $this->attempt))
-                ->onQueue(config('ai-tasks.queues.post'));
+            QueueDispatch::configure($post, $task, 'post', config('ai-tasks.queues.post'));
+
+            dispatch($post);
 
         } catch (BudgetExceededException $e) {
             // Якщо $resp вже відомий — виклик провайдера відбувся й оплачений, зберігаємо cost
@@ -111,17 +111,5 @@ class ProcessAiPayload implements ShouldQueue
         $cls = $this->taskClass;
 
         return $cls::fromQueueArgs($this->taskCtorArgs);
-    }
-
-    private function runPostprocess(mixed $resp): mixed
-    {
-        if (! config('ai-tasks.postprocess.enabled', false)) {
-            return $resp;
-        }
-
-        return app(Pipeline::class)
-            ->send($resp)
-            ->through(config('ai-tasks.postprocess.pipes', []))
-            ->thenReturn();
     }
 }

@@ -23,6 +23,7 @@ class FakeAITest extends TestCase
         return (new class($text) extends AiTask {
             public function __construct(private string $text) {}
             public function modality(): string { return 'text'; }
+            public function serializeForQueue(): array { return [$this->text]; }
             public function toPayload(): AiPayload
             {
                 return new AiPayload('text', [new UserMessage($this->text)]);

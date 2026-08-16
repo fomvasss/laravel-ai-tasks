@@ -88,10 +88,11 @@ return [
                 'out'      => 6.00,
                 'per_char' => env('OPENAI_TTS_PRICE_PER_CHAR', 15.0), // approximate, verify against current pricing
             ],
-            // Webhook signature verification (optional)
+            // Webhook signature verification (optional).
+            // Standard Webhooks scheme, as sent by OpenAI — the "whsec_..." secret
+            // from the OpenAI dashboard. Unset = signatures are NOT verified.
             'webhook' => [
-                'secret'           => env('OPENAI_WEBHOOK_SECRET'),
-                'signature_header' => 'X-OpenAI-Signature',
+                'secret' => env('OPENAI_WEBHOOK_SECRET'),
             ],
         ],
 
@@ -185,7 +186,7 @@ return [
     |
     | Global pipes applied to every AiResponse before AiTaskCompleted fires.
     | Each pipe receives AiResponse and must return AiResponse.
-    | Task-level postprocess() runs before these pipes.
+    | These pipes run first, then the task-level postprocess().
     */
     'postprocess' => [
         'enabled' => false,
