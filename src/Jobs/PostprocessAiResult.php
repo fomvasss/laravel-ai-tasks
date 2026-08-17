@@ -44,6 +44,7 @@ class PostprocessAiResult implements ShouldQueue
             toolCalls: $run->response['tool_calls'] ?? [],
             structured: $run->response['structured'] ?? null,
             finishReason: $run->response['finish_reason'] ?? null,
+            pendingApprovals: $run->response['pending_approvals'] ?? [],
         );
 
         /** @var class-string<AiTask> $cls */

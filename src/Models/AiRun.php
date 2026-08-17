@@ -101,6 +101,7 @@ class AiRun extends Model
                 'structured' => $resp->structured,
                 'tool_calls' => $resp->toolCalls ?: null,
                 'finish_reason' => $resp->finishReason,
+                'pending_approvals' => $resp->pendingApprovals ?: null,
             ], fn (mixed $v): bool => $v !== null),
             'tokens_in'         => $resp->usage['tokens_in']          ?? null,
             'tokens_out'        => $resp->usage['tokens_out']         ?? null,

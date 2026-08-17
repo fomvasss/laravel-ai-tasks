@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [3.24.1] — 2026-08-17
+
+### Fixed
+- `AiResponse::$pendingApprovals` was silently lost on the queued path (`AI::queue()`): `AiRun::finish()` never persisted it into the stored run, so `PostprocessAiResult` always reconstructed the response with an empty `pendingApprovals` — a tool-approval pause never reached `postprocess()`/`onCompleted()`. `AI::send()` was unaffected (it doesn't round-trip through run storage).
+
 ## [3.24.0] — 2026-08-16
 
 ### Changed

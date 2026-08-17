@@ -14,6 +14,8 @@ use Fomvasss\AiTasks\DTO\AiPayload;
 use Fomvasss\AiTasks\DTO\AiResponse;
 use Fomvasss\AiTasks\Drivers\LaravelAiDriver;
 use Fomvasss\AiTasks\Facades\AI as AIFacade;
+use Fomvasss\AiTasks\Jobs\PostprocessAiResult;
+use Fomvasss\AiTasks\Models\AiRun;
 use Fomvasss\AiTasks\Tasks\AiTask;
 use Laravel\Ai\Approvals\Decision;
 use Laravel\Ai\Approvals\Decisions;
@@ -196,5 +198,40 @@ class DecisionsTest extends TestCase
         AIFacade::send($this->makeTask(), 'null');
 
         $this->assertNull($spy->received->decisions);
+    }
+
+    // ── Integration: pendingApprovals survive the queued path ──────────────
+
+    public function test_queue_path_preserves_pending_approvals_through_postprocess(): void
+    {
+        // Regression: AiRun::finish() never persisted pendingApprovals into `response`, and
+        // PostprocessAiResult::handle() never reconstructed it from the stored run — a pause
+        // dispatched via AI::queue() silently lost $response->pendingApprovals by the time
+        // postprocess()/onCompleted() ran, always seeing an empty array instead.
+        $task = new class extends AiTask {
+            public static ?AiResponse $seen = null;
+            public function modality(): string { return 'text'; }
+            public function toPayload(): AiPayload { return new AiPayload('text'); }
+            public function postprocess(AiResponse $response): AiResponse|array
+            {
+                static::$seen = $response;
+                return $response;
+            }
+        };
+
+        $run = AiRun::startAsQueue('driverA', $task->toPayload(), $task->context(), $task);
+        $run->finish(new AiResponse(
+            ok: true,
+            content: 'Order preview: 2x Widget, $40 total. Confirm?',
+            pendingApprovals: [
+                ['id' => 'call_abc', 'tool' => 'order-create', 'arguments' => ['qty' => 2], 'reason' => null],
+            ],
+        ));
+
+        (new PostprocessAiResult($run->id, $task::class, $task->serializeForQueue(), attempt: 0))->handle();
+
+        $this->assertNotEmpty($task::$seen->pendingApprovals);
+        $this->assertSame('call_abc', $task::$seen->pendingApprovals[0]['id']);
+        $this->assertSame('order-create', $task::$seen->pendingApprovals[0]['tool']);
     }
 }
