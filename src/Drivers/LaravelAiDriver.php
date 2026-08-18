@@ -62,7 +62,7 @@ final class LaravelAiDriver implements AiDriver
             // Резюм паузи на tool-approval: немає нового текстового промпту —
             // весь $messages (включно з paused tool_use-ходом) стає історією агента,
             // а Decisions передається в prompt() замість тексту.
-            $agent = $this->makeAgent($p, $this->toLabMessages($p->messages));
+            $agent = $this->makeAgent($p, $this->toLabMessages($p->messages), $displayProvider, $model);
 
             $response = $agent->prompt(
                 prompt: $p->decisions,
@@ -76,7 +76,7 @@ final class LaravelAiDriver implements AiDriver
 
         [$history, $prompt] = $this->splitMessages($p->messages);
 
-        $agent = $this->makeAgent($p, $history);
+        $agent = $this->makeAgent($p, $history, $displayProvider, $model);
 
         $response = $agent->prompt(
             prompt: $prompt,
@@ -112,7 +112,7 @@ final class LaravelAiDriver implements AiDriver
         );
     }
 
-    private function makeAgent(AiPayload $p, array $history): AnonymousAgent
+    private function makeAgent(AiPayload $p, array $history, string $displayProvider, ?string $model): AnonymousAgent
     {
         if ($p->schema !== null) {
             $agent = new StructuredToolChoiceAgent($p->systemPrompt ?? '', $history, $p->tools, $p->schema->getClosure(), $p->options['provider_options'] ?? []);
@@ -122,13 +122,37 @@ final class LaravelAiDriver implements AiDriver
             $agent = new AnonymousToolChoiceAgent($p->systemPrompt ?? '', $history, $p->tools);
         }
 
+        $temperature = isset($p->options['temperature']) ? (float) $p->options['temperature'] : null;
+        $topP        = isset($p->options['top_p']) ? (float) $p->options['top_p'] : null;
+
+        // OpenAI reasoning models (gpt-5* крім gpt-5-chat, o1, o3, o4-mini) відхиляють
+        // temperature/top_p 400-кою ("Unsupported parameter") — laravel/ai сам це не фільтрує
+        // (isReasoningModel() у його BuildsTextRequests застосовується лише для
+        // reasoning.encrypted_content), тож не даємо цим параметрам дійти до провайдера.
+        if ($this->isOpenAiReasoningModel($displayProvider, $model)) {
+            $temperature = null;
+            $topP        = null;
+        }
+
         return $agent
             ->withToolChoice($p->toolChoice)
             ->withGenerationOptions(
-                isset($p->options['temperature']) ? (float) $p->options['temperature'] : null,
+                $temperature,
                 isset($p->options['max_tokens']) ? (int) $p->options['max_tokens'] : null,
-                isset($p->options['top_p']) ? (float) $p->options['top_p'] : null,
+                $topP,
             );
+    }
+
+    private function isOpenAiReasoningModel(string $displayProvider, ?string $model): bool
+    {
+        if ($displayProvider !== 'openai' || $model === null) {
+            return false;
+        }
+
+        return (str_starts_with($model, 'gpt-5') && !str_starts_with($model, 'gpt-5-chat'))
+            || str_starts_with($model, 'o4-mini')
+            || str_starts_with($model, 'o3')
+            || str_starts_with($model, 'o1');
     }
 
     private function streamText(AiPayload $p, callable $onChunk): AiResponse
@@ -138,7 +162,7 @@ final class LaravelAiDriver implements AiDriver
         $model           = $p->options['model'] ?? $p->providerOverride['model'] ?? $this->cfg['model'];
         [$history, $prompt] = $this->splitMessages($p->messages);
 
-        $streamable = $this->makeAgent($p, $history)
+        $streamable = $this->makeAgent($p, $history, $displayProvider, $model)
             ->stream(
                 prompt: $prompt,
                 attachments: $p->options['attachments'] ?? [],

@@ -70,7 +70,7 @@ class ToolChoiceTest extends TestCase
         $method = new \ReflectionMethod($driver, 'makeAgent');
         $method->setAccessible(true);
 
-        return $method->invoke($driver, $payload, []);
+        return $method->invoke($driver, $payload, [], 'openai', 'gpt-4o-mini');
     }
 
     // ── Unit: AiTask::toolChoice() ────────────────────────────────────────

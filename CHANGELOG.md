@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [3.24.2] — 2026-08-18
+
+### Fixed
+- `temperature`/`top_p` set in `AiPayload` options are no longer sent to OpenAI's reasoning models (`gpt-5*` except `gpt-5-chat`, `o1`, `o3`, `o4-mini`) — those reject the parameters with a 400 (`Unsupported parameter`), and `laravel/ai`'s own OpenAI gateway doesn't filter them out. Other providers/models are unaffected.
+
 ## [3.24.1] — 2026-08-17
 
 ### Fixed
