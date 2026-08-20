@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Fomvasss\AiTasks\Core;
 
-use Fomvasss\AiTasks\Contracts\ShouldQueueAi;
 use Fomvasss\AiTasks\DTO\AiContext;
 use Fomvasss\AiTasks\DTO\AiPayload;
 use Fomvasss\AiTasks\DTO\AiResponse;
@@ -19,6 +18,7 @@ use Fomvasss\AiTasks\Jobs\ProcessAiPayload;
 use Fomvasss\AiTasks\Models\AiRun;
 use Fomvasss\AiTasks\Support\Budget;
 use Fomvasss\AiTasks\Support\ModelLister;
+use Fomvasss\AiTasks\Support\QueueDispatch;
 use Fomvasss\AiTasks\Tasks\AiTask;
 use Fomvasss\AiTasks\Tasks\PromptTask;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -84,6 +84,7 @@ class AI
 
             if (! $this->isConfigured($driverName) && ! ($payload->providerOverride['key'] ?? null)) {
                 $run->skip("driver_not_configured: {$driverName}");
+                $errors[] = "driver_not_configured: {$driverName}";
                 continue;
             }
 
@@ -101,9 +102,10 @@ class AI
 
                 app(Budget::class)->ensureNotExceeded($ctx->tenantId, (float) ($resp->usage['cost'] ?? 0.0));
             } catch (BudgetExceededException $e) {
-                // Виклик провайдера вже відбувся й оплачений — зберігаємо cost через finish(),
-                // інакше витрата випадає з майбутніх підрахунків бюджету (issue #7).
-                $run->finish($resp);
+                // Виклик провайдера вже відбувся й оплачений — статус чесний ('error'), але
+                // cost зберігається через fail($usage), щоб витрата не випала з майбутніх
+                // підрахунків бюджету (issue #7): Budget сумує по cost, не по status.
+                $run->fail($e->getMessage(), $resp->usage);
                 event(new AiTaskFailed($task, $e->getMessage(), $run));
                 throw $e;
             } catch (\Throwable $e) {
@@ -161,14 +163,7 @@ class AI
             timeout: $task->jobTimeout(),
         );
 
-        if ($task instanceof ShouldQueueAi) {
-            if ($conn = $task->preferredConnection()) {
-                $job->onConnection($conn);
-            }
-            $job->onQueue($task->preferredQueueFor('request', config('ai-tasks.queues.default')));
-        } else {
-            $job->onQueue(config('ai-tasks.queues.default'));
-        }
+        QueueDispatch::configure($job, $task, 'request', config('ai-tasks.queues.default'));
 
         $pending = dispatch($job);
 
@@ -192,12 +187,13 @@ class AI
         $errors = [];
 
         foreach ($list as $driverName) {
+            $run = AiRun::start($driverName, $payload, $ctx, $task);
+
             if (! $this->isConfigured($driverName) && ! ($payload->providerOverride['key'] ?? null)) {
+                $run->skip("driver_not_configured: {$driverName}");
                 $errors[] = "driver_not_configured: {$driverName}";
                 continue;
             }
-
-            $run = AiRun::start($driverName, $payload, $ctx, $task);
 
             event(new AiTaskStarted($task, $ctx, $run));
 
@@ -206,7 +202,8 @@ class AI
 
                 app(Budget::class)->ensureNotExceeded($ctx->tenantId, (float) ($resp->usage['cost'] ?? 0.0));
             } catch (BudgetExceededException $e) {
-                $run->finish($resp);
+                // див. коментар в send() — статус 'error', cost зберігається для бюджету
+                $run->fail($e->getMessage(), $resp->usage);
                 event(new AiTaskFailed($task, $e->getMessage(), $run));
                 throw $e;
             } catch (\Throwable $e) {
@@ -218,6 +215,7 @@ class AI
 
             $run->finish($resp);
 
+            $resp = $this->runPostprocess($resp);
             $result = $task->postprocess($resp);
             $finalResponse = $result instanceof AiResponse
                 ? $result

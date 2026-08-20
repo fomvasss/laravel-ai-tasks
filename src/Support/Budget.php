@@ -26,12 +26,16 @@ class Budget
         return $this->getSpentBetween($tenantId, $when->copy()->startOfMonth(), $when->copy()->endOfMonth());
     }
 
+    /**
+     * Sums by cost IS NOT NULL rather than status='ok' — a run that was billed by the
+     * provider but then rejected by a post-call budget check ends up status='error' with
+     * its cost still recorded (see AiRun::fail()), and must still count as spend.
+     */
     public function getSpentBetween(string $tenantId, Carbon $from, Carbon $to): float
     {
         $sum = AiRun::query()
             ->where('tenant_id', $tenantId)
             ->whereBetween('created_at', [$from, $to])
-            ->where('status', 'ok')
             ->whereNotNull('cost')
             ->sum('cost');
 

@@ -4,14 +4,15 @@ declare(strict_types=1);
 
 namespace Fomvasss\AiTasks\Jobs;
 
-use Fomvasss\AiTasks\Contracts\ShouldQueueAi;
 use Fomvasss\AiTasks\Core\AI;
 use Fomvasss\AiTasks\DTO\AiResponse;
 use Fomvasss\AiTasks\Models\AiRun;
+use Fomvasss\AiTasks\Support\QueueDispatch;
 use Fomvasss\AiTasks\Tasks\AiTask;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Pipeline\Pipeline;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
@@ -43,11 +44,14 @@ class PostprocessAiResult implements ShouldQueue
             toolCalls: $run->response['tool_calls'] ?? [],
             structured: $run->response['structured'] ?? null,
             finishReason: $run->response['finish_reason'] ?? null,
+            pendingApprovals: $run->response['pending_approvals'] ?? [],
         );
 
         /** @var class-string<AiTask> $cls */
         $cls  = $this->taskClass;
         $task = $cls::fromQueueArgs($this->taskCtorArgs);
+
+        $resp = $this->runPostprocess($resp);
 
         $result = $task->postprocess($resp);
 
@@ -83,7 +87,9 @@ class PostprocessAiResult implements ShouldQueue
                 $payload,
                 $ctx,
                 $task,
-                idempotencyKey: $task->idempotencyKey() . '-retry' . $nextAttempt,
+                // fall back to the original run id so tasks without an idempotency key
+                // don't all collide on the same '-retryN' value
+                idempotencyKey: ($task->idempotencyKey() ?? $run->id) . '-retry' . $nextAttempt,
             );
         } catch (UniqueConstraintViolationException) {
             // this retry generation was already dispatched (e.g. re-processed job) — nothing to do
@@ -109,15 +115,20 @@ class PostprocessAiResult implements ShouldQueue
             attempt: $nextAttempt,
         );
 
-        if ($task instanceof ShouldQueueAi) {
-            if ($conn = $task->preferredConnection()) {
-                $job->onConnection($conn);
-            }
-            $job->onQueue($task->preferredQueueFor('request', config('ai-tasks.queues.default')));
-        } else {
-            $job->onQueue(config('ai-tasks.queues.default'));
-        }
+        QueueDispatch::configure($job, $task, 'request', config('ai-tasks.queues.default'));
 
         dispatch($job);
+    }
+
+    private function runPostprocess(AiResponse $resp): AiResponse
+    {
+        if (! config('ai-tasks.postprocess.enabled', false)) {
+            return $resp;
+        }
+
+        return app(Pipeline::class)
+            ->send($resp)
+            ->through(config('ai-tasks.postprocess.pipes', []))
+            ->thenReturn();
     }
 }

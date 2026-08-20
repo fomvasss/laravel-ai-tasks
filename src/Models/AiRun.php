@@ -50,7 +50,7 @@ class AiRun extends Model
             'dispatch'        => 'sync',
             'status'          => 'running',
             'idempotency_key' => null,
-            'request'         => static::minifyRequest($p),
+            'request'         => static::minifyRequest($p, $task),
             'started_at'      => now(),
         ]);
     }
@@ -67,7 +67,7 @@ class AiRun extends Model
             'dispatch'        => 'queue',
             'status'          => 'queued',
             'idempotency_key' => $idempotencyKey ?? $task->idempotencyKey(),
-            'request'         => static::minifyRequest($p),
+            'request'         => static::minifyRequest($p, $task),
         ]);
     }
 
@@ -101,6 +101,7 @@ class AiRun extends Model
                 'structured' => $resp->structured,
                 'tool_calls' => $resp->toolCalls ?: null,
                 'finish_reason' => $resp->finishReason,
+                'pending_approvals' => $resp->pendingApprovals ?: null,
             ], fn (mixed $v): bool => $v !== null),
             'tokens_in'         => $resp->usage['tokens_in']          ?? null,
             'tokens_out'        => $resp->usage['tokens_out']         ?? null,
@@ -123,6 +124,12 @@ class AiRun extends Model
         ]);
     }
 
+    /**
+     * $usage may carry cost/cache tokens even for a failed run — e.g. a provider call that
+     * completed and was billed, but was then rejected by a post-call check (budget exceeded).
+     * Storing them here keeps the run's status honest ('error') while still letting Budget
+     * count the spend — see getSpentBetween(), which sums by cost IS NOT NULL, not by status.
+     */
     public function fail(string $error, array $usage = []): void
     {
         $ms = $this->started_at
@@ -130,12 +137,16 @@ class AiRun extends Model
             : null;
 
         $this->update([
-            'status'      => 'error',
-            'error'       => $error,
-            'tokens_in'   => $usage['tokens_in']  ?? null,
-            'tokens_out'  => $usage['tokens_out'] ?? null,
-            'finished_at' => now(),
-            'duration_ms' => $ms,
+            'status'             => 'error',
+            'error'              => $error,
+            'model'              => $usage['model'] ?? $this->model,
+            'tokens_in'          => $usage['tokens_in']  ?? null,
+            'tokens_out'         => $usage['tokens_out'] ?? null,
+            'cache_read_tokens'  => $usage['cache_read_tokens']  ?? null,
+            'cache_write_tokens' => $usage['cache_write_tokens'] ?? null,
+            'cost'               => $usage['cost'] ?? null,
+            'finished_at'        => now(),
+            'duration_ms'        => $ms,
         ]);
 
         event(new AiRunFailed($this));
@@ -154,15 +165,28 @@ class AiRun extends Model
         }
     }
 
-    private static function minifyRequest(AiPayload $p): array
+    private static function minifyRequest(AiPayload $p, AiTask $task): array
     {
+        $options = $p->options;
+
+        // attachments can hold base64/binary payloads (vision, transcription) — storing them
+        // would bloat ai_runs.request; task reconstruction uses task_args, not options
+        if (! empty($options['attachments'])) {
+            $options['attachments'] = '[' . count((array) $options['attachments']) . ' attachment(s) omitted]';
+        }
+
         $data = [
-            'modality' => $p->modality,
-            'options'  => $p->options,
-            'meta'     => $p->meta,
+            'modality'   => $p->modality,
+            'options'    => $options,
+            'meta'       => $p->meta,
+            'task_class' => $task::class,
         ];
 
         if (config('ai-tasks.store_request')) {
+            // needed to reconstruct the task for ai:retry and webhook completion;
+            // gated by store_request because ctor args usually contain the prompt text
+            $data['task_args'] = $task->serializeForQueue();
+
             if ($p->systemPrompt !== null) {
                 $data['system'] = $p->systemPrompt;
             }

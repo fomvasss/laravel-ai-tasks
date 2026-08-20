@@ -165,12 +165,31 @@ abstract class AiTask
             return null;
         }
 
-        return hash('xxh3', json_encode([
+        $parts = [
             $this->context()->tenantId,
             $this->name(),
             $this->modality(),
             $args,
-        ]));
+        ];
+
+        // appended only when set, so existing keys of tasks without a window stay stable
+        if (($window = $this->idempotencyWindow()) !== null) {
+            $parts[] = $window;
+        }
+
+        return hash('xxh3', json_encode($parts));
+    }
+
+    /**
+     * Scope idempotency deduplication to a time window instead of forever. The returned
+     * string becomes part of idempotencyKey(), so the same task+args may run again once
+     * the window changes. Return e.g. now()->format('Y-m-d') to allow one run per day,
+     * now()->format('Y-\WW') per week. Default null = deduplicate forever (a queued
+     * task with identical args is never dispatched twice).
+     */
+    public function idempotencyWindow(): ?string
+    {
+        return null;
     }
 
     public function serializeForQueue(): array

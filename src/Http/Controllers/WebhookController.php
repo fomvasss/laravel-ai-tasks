@@ -7,10 +7,12 @@ namespace Fomvasss\AiTasks\Http\Controllers;
 use Fomvasss\AiTasks\DTO\AiResponse;
 use Fomvasss\AiTasks\Jobs\PostprocessAiResult;
 use Fomvasss\AiTasks\Models\AiRun;
+use Fomvasss\AiTasks\Support\QueueArgs;
 use Fomvasss\AiTasks\Support\WebhookRegistry;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\Log;
 
 class WebhookController extends Controller
 {
@@ -40,8 +42,26 @@ class WebhookController extends Controller
 
             $run->finish(new AiResponse(true, $content, $payload->usage));
 
-            dispatch(new PostprocessAiResult($run->id, $run->task, []))
-                ->onQueue(config('ai-tasks.queues.post'));
+            $taskClass = $run->request['task_class'] ?? null;
+            $taskArgs  = $run->request['task_args'] ?? null;
+
+            $canReconstruct = $taskClass && class_exists($taskClass) && (
+                $taskArgs !== null
+                || ((new \ReflectionClass($taskClass))->getConstructor()?->getNumberOfRequiredParameters() ?? 0) === 0
+            );
+
+            if ($canReconstruct) {
+                dispatch(new PostprocessAiResult($run->id, $taskClass, QueueArgs::revive($taskArgs ?? [])))
+                    ->onQueue(config('ai-tasks.queues.post'));
+            } else {
+                // run predates task_class storage, or task args weren't stored
+                // (AI_STORE_REQUEST=false) — the run is finished, but postprocess()/
+                // onCompleted() can't be executed without reconstructing the task
+                Log::warning('ai-tasks webhook: run finished without postprocess (task not reconstructable)', [
+                    'run_id' => $run->id,
+                    'task_class' => $taskClass,
+                ]);
+            }
 
             return response()->json(['ok' => true]);
         }

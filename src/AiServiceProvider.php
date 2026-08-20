@@ -120,13 +120,36 @@ class AiServiceProvider extends ServiceProvider
             return;
         }
 
-        $this->app['events']->listen(\Laravel\Octane\Events\RequestReceived::class, function () {
+        $flush = function (): void {
             $this->app->make(AiManager::class)->forgetDrivers();
-        });
+            $this->flushCustomProviderAliases();
+        };
 
-        $this->app['events']->listen(\Laravel\Octane\Events\TaskReceived::class, function () {
-            $this->app->make(AiManager::class)->forgetDrivers();
-        });
+        $this->app['events']->listen(\Laravel\Octane\Events\RequestReceived::class, $flush);
+        $this->app['events']->listen(\Laravel\Octane\Events\TaskReceived::class, $flush);
+    }
+
+    /**
+     * Removes the runtime-registered custom_* provider aliases (created per providerOverride
+     * call in the driver) from config and from laravel/ai's instance cache — on Octane both
+     * survive between requests and would otherwise accumulate one entry per unique
+     * driver+key pair for the worker's lifetime.
+     */
+    private function flushCustomProviderAliases(): void
+    {
+        $providers = config('ai.providers', []);
+        $aiManager = $this->app->bound(\Laravel\Ai\AiManager::class)
+            ? $this->app->make(\Laravel\Ai\AiManager::class)
+            : null;
+
+        foreach (array_keys($providers) as $name) {
+            if (str_starts_with((string) $name, 'custom_')) {
+                unset($providers[$name]);
+                $aiManager?->forgetInstance($name);
+            }
+        }
+
+        config(['ai.providers' => $providers]);
     }
 
     private function registerWebhookHandlers(): void
@@ -135,12 +158,9 @@ class AiServiceProvider extends ServiceProvider
             if (config('ai-tasks.drivers.openai')) {
                 $registry->extend('openai', function (\Illuminate\Http\Request $r) {
                     $secret = config('ai-tasks.drivers.openai.webhook.secret');
-                    $sigHdr = config('ai-tasks.drivers.openai.webhook.signature_header', 'X-OpenAI-Signature');
 
                     if ($secret) {
-                        $sig  = (string) $r->header($sigHdr);
-                        $calc = hash_hmac('sha256', $r->getContent(), $secret);
-                        abort_unless(hash_equals($calc, $sig), 401);
+                        abort_unless(\Fomvasss\AiTasks\Support\StandardWebhookVerifier::verify($r, $secret), 401);
                     }
 
                     $event = $r->json()->all();

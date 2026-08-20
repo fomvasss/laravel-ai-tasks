@@ -27,6 +27,8 @@ Configurable via `config/ai-tasks.php`:
 ],
 ```
 
+> **Security:** the default `middleware => ['web']` leaves the dashboard open to anyone who can reach the URL — including stored prompts and responses. In production add your auth middleware: `['web', 'auth']`, or e.g. `['web', 'auth', 'role:admin']` with spatie/laravel-permission.
+
 ## Requirements
 
 - PHP ^8.3
@@ -280,6 +282,20 @@ class HeavyAnalysisTask extends AiTask
 
 The value is passed to `ProcessAiPayload` at dispatch time. Make sure the Horizon supervisor `timeout` is at least as large as your highest `jobTimeout()`.
 
+## Generation Options
+
+For text tasks, `temperature`, `max_tokens` and `top_p` set in `AiPayload` options are passed through to the provider (any of them may be omitted):
+
+```php
+return new AiPayload(
+    modality: 'text',
+    messages: [new UserMessage($this->text)],
+    options: ['temperature' => 0.3, 'max_tokens' => 1024, 'top_p' => 0.9],
+);
+```
+
+> **Upgrade note:** before v3.23.0 these options were silently ignored. If your existing tasks already declare `temperature`, their outputs will change after upgrading — the value now actually reaches the provider.
+
 ## Driver Routing
 
 Tasks are routed to drivers via `config/ai-tasks.php`:
@@ -313,6 +329,8 @@ The `TenantResolver` picks up tenant ID from `X-Tenant-Id` header, authenticated
 $this->app->scoped(\Fomvasss\AiTasks\Support\TenantResolver::class, fn() => new MyTenantResolver());
 ```
 
+> **Security:** the default resolver trusts the client-supplied `X-Tenant-Id` header — any caller can bill another tenant's budget (or dodge their own) by setting it. If budgets matter and the header isn't set by trusted infrastructure only, bind a resolver that derives the tenant from the authenticated user instead of the header.
+
 A custom `TenantResolver` only has access to the current request/auth state — nothing task-specific. When a task already knows its own tenant (e.g. it holds an Eloquent model with an `organization_id`), override `tenantId()` on the task itself instead — no service provider binding needed, and it takes priority over `TenantResolver`:
 
 ```php
@@ -329,7 +347,9 @@ protected function subjectType(): ?string { return 'order'; }
 protected function subjectId(): ?string { return $this->order->id; }
 ```
 
-`Fomvasss\AiTasks\Exceptions\BudgetExceededException` is thrown once a tenant's monthly spend would exceed `monthly_usd` — checked both pre-flight (before the provider call, using prior spend) and post-call (after, using the actual cost of the response) on `send()`, `stream()`, and the queued job. If the exception fires post-call, the response was already billed, so the run is still recorded as `ok` with its real `cost` — otherwise that spend would vanish from future budget checks.
+`Fomvasss\AiTasks\Exceptions\BudgetExceededException` is thrown once a tenant's monthly spend would exceed `monthly_usd` — checked both pre-flight (before the provider call, using prior spend) and post-call (after, using the actual cost of the response) on `send()`, `stream()`, and the queued job. If the exception fires post-call, the response was already billed — the run is recorded as `error` but keeps its real `cost`/token usage, and spend tracking counts every run with a recorded cost regardless of status, so nothing vanishes from future budget checks.
+
+> **Note:** budget checks are advisory, not a hard guarantee — concurrent jobs each pass the pre-flight check against the same prior spend, so several in-flight requests can collectively overshoot the limit by up to their combined cost. Treat `monthly_usd` as a soft cap with at most a few requests of drift, not an exact billing ceiling.
 
 ## Cost Tracking
 
@@ -591,6 +611,10 @@ class AnalyzeTask extends AiTask implements ShouldQueueAi
 }
 ```
 
+The `request` stage is the API call (`ProcessAiPayload`), `post` is the postprocess job (`PostprocessAiResult`). Make sure your Horizon supervisors actually consume every queue name you return here — a job dispatched to a queue nobody listens to sits there forever.
+
+> **Upgrade note:** before v3.23.0 the `post` stage was ignored and postprocess jobs always went to `config('ai-tasks.queues.post')`. If your tasks already declare a custom `post` queue, it takes effect after upgrading — add it to your worker config first.
+
 > **Note:** `serializeForQueue()` must return only scalar values (strings, ints, arrays of scalars) — this array is passed back into the constructor on the worker via `new static(...$args)`. `SummarizeTask` in [Creating a Task](#creating-a-task) shows the easier path — `use SerializesModelsAi;` lets the constructor take an Eloquent model directly (a promoted property), instead of an id you'd reload by hand in `toPayload()`. `serializeForQueue()` also drives idempotency — see [Idempotency](#idempotency).
 
 ### Delayed dispatch
@@ -648,6 +672,17 @@ class ChatTask extends AiTask
 ```
 
 For chat/assistant integrations where the same question can be asked multiple times: as long as the conversation history (or a `messageId`) is part of the constructor, each turn produces a different key and idempotency works correctly — it only blocks genuine technical duplicates (double-send, queue retry).
+
+**Deduplication window.** By default the unique key never expires — the same task+args will never be dispatched twice, ever. Override `idempotencyWindow()` to scope deduplication to a period; the returned string becomes part of the key, so the task may run again once the window changes:
+
+```php
+public function idempotencyWindow(): ?string
+{
+    return now()->format('Y-m-d'); // at most one run per day for the same args
+}
+```
+
+Tasks that keep the default `null` are unaffected — their existing keys stay stable across upgrades.
 
 ### Retrying an Unacceptable Result
 
@@ -792,7 +827,7 @@ Set `modality()` and `toPayload()` accordingly. For image generation, embeddings
 | `ai:request "prompt"` | Ad-hoc sync or queued request |
 | `ai:runs` | List recent ai_runs |
 | `ai:budget {tenant}` | Show monthly spend vs limit |
-| `ai:retry` | List failed runs for retry |
+| `ai:retry` | Re-dispatch failed runs (`--dry-run` to list only) |
 
 ### ai:models
 
@@ -830,6 +865,36 @@ use Fomvasss\AiTasks\Support\ModelLister;
 
 $models = app(ModelLister::class)->forDriver('openai', ['api_key' => config('ai.providers.openai.key')], filter: 'gpt');
 ```
+
+### ai:retry
+
+Re-dispatches runs with status `error` or `dead` by reconstructing the task from the `task_class`/`task_args` stored in `ai_runs.request` and re-queuing `ProcessAiPayload` for the same run (status is reset to `queued`):
+
+```bash
+php artisan ai:retry                 # retry failures from the last 24h
+php artisan ai:retry --since=1h --limit=10
+php artisan ai:retry --dry-run       # list what would be retried, change nothing
+```
+
+Task ctor args are stored only when `AI_STORE_REQUEST=true` (they usually contain the prompt text) — runs recorded without them are listed as skipped. Tasks whose constructor takes no required parameters can always be retried.
+
+## Async Providers & Webhooks
+
+For providers that finish work out-of-band (batch APIs, long-running generations), a run can wait for a webhook instead of blocking a worker. The flow is app-driven:
+
+1. Your driver/task code submits the provider job, then parks the run:
+
+```php
+$run->markWaiting(['provider_run_id' => $providerJobId]);
+```
+
+2. The provider calls `POST /ai-webhooks/{driver}`. The built-in handler (registered for `openai`; add your own via `WebhookRegistry::extend()`) verifies the signature when `ai-tasks.drivers.{driver}.webhook.secret` is set, finds the waiting run by `provider_run_id`, and finishes it.
+
+3. If the run's task can be reconstructed (its `task_class` is stored automatically; ctor args require `AI_STORE_REQUEST=true`, or a task with no required ctor params), a `PostprocessAiResult` job is dispatched — `postprocess()`, `isAcceptable()`/retries and `onCompleted()` run exactly as on the normal queued path. Otherwise the run is finished as-is and a warning is logged.
+
+The OpenAI handler verifies [Standard Webhooks](https://www.standardwebhooks.com/) signatures (`webhook-id`/`webhook-timestamp`/`webhook-signature` headers, HMAC-SHA256, ±5 min replay tolerance) using the `whsec_...` secret from your OpenAI dashboard webhook settings — set it as `OPENAI_WEBHOOK_SECRET`. `Fomvasss\AiTasks\Support\StandardWebhookVerifier::verify()` is reusable for a custom handler that needs the same scheme.
+
+> **Security:** without a configured `webhook.secret` the endpoint accepts unsigned requests. Set the secret in production. If you register a handler for a provider that doesn't use Standard Webhooks, verify with that provider's own scheme inside your `WebhookRegistry::extend()` closure instead.
 
 ## Supported Providers
 

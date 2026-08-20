@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Fomvasss\AiTasks\Drivers;
 
 use Closure;
+use Fomvasss\AiTasks\Drivers\Concerns\HasGenerationOptions;
 use Fomvasss\AiTasks\Drivers\Concerns\HasToolChoice;
 use Laravel\Ai\Contracts\HasProviderOptions;
 use Laravel\Ai\Enums\Lab;
@@ -12,7 +13,7 @@ use Laravel\Ai\StructuredAnonymousAgent;
 
 final class StructuredToolChoiceAgent extends StructuredAnonymousAgent implements HasProviderOptions
 {
-    use HasToolChoice;
+    use HasGenerationOptions, HasToolChoice;
 
     /**
      * @param array<string, array<string, mixed>> $providerOptions keyed by driver name (Lab value), e.g. ['deepseek' => ['thinking' => ['type' => 'disabled']]]

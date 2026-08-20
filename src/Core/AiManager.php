@@ -27,6 +27,6 @@ class AiManager extends Manager
             return new LaravelAiDriver($driver, config("ai-tasks.drivers.{$driver}", []));
         }
 
-        throw new AiDriverException("Driver [{$driver}] is not configured in config/ai.php.");
+        throw new AiDriverException("Driver [{$driver}] is not configured in config/ai-tasks.php.");
     }
 }
