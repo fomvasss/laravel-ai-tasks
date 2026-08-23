@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [3.24.3] — 2026-08-23
+
+### Changed
+- Minimum `laravel/ai` version raised to `^0.11` — picks up its fix for stripping markdown code fences (and surrounding prose) from OpenAI-compatible structured output, which also benefits the DeepSeek gateway.
+
 ## [3.24.2] — 2026-08-18
 
 ### Fixed
