@@ -329,6 +329,19 @@ protected function subjectId(): ?string { return $this->order->id; }
 
 Вартість розраховується після кожного запиту і зберігається в `ai_runs.cost`. Якщо `price` не задано — `cost` буде `null`, але кількість токенів завжди записується.
 
+`tokens_in` завжди означає **лише вхідні токени за повною ціною** — кешовані йдуть окремо в `cache_read_tokens`/`cache_write_tokens` і ніколи не входять сюди, незалежно від драйвера. Провайдери в цьому розходяться (Anthropic і Bedrock Converse не включають кеш у свій лічильник вхідних, а OpenAI, Gemini, DeepSeek, Groq і OpenAI-сумісні API — включають), як і gateway'ї в `laravel/ai`, тому різниця нормалізується тут. Перекрити для конкретного драйвера, якщо ваша версія `laravel/ai` поводиться інакше:
+
+```php
+'deepseek' => [
+    'model' => 'deepseek-v4-flash',
+    // laravel/ai < 0.11 віддавав prompt-токени DeepSeek разом з кешованими
+    'cache_inclusive_prompt_tokens' => true,
+    'price' => ['in' => 0.22, 'out' => 0.66, 'cache_read' => 0.007],
+],
+```
+
+> `mistral` — відома прогалина: `laravel/ai` взагалі не читає його `cached_tokens`, тож кеш там рахується за повною ціною вхідних токенів.
+
 Аналітика витрат по тенанту через SQL:
 
 ```php

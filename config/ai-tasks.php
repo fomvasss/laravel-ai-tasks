@@ -75,6 +75,12 @@ return [
     |               per_char — per 1M input characters, for 'audio' (TTS) modality only —
     |               OpenAI's TTS endpoint returns no usage data, so cost is an approximation
     |               based on input text length; verify the rate against current OpenAI pricing
+    |
+    | cache_inclusive_prompt_tokens — bool, optional. Whether this driver's gateway reports
+    |               prompt tokens INCLUDING cached ones, so they must be subtracted to keep
+    |               tokens_in meaning "input tokens billed at full price". Detected automatically
+    |               (groq/openrouter/openai-compatible); set explicitly only to override — e.g.
+    |               true on 'deepseek' when pinned to laravel/ai < 0.11.
     */
     'drivers' => [
 

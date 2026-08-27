@@ -369,6 +369,19 @@ Set pricing per driver in `config/ai-tasks.php` (per 1M tokens):
 
 Cost is calculated after each response and stored in `ai_runs.cost`. If `price` is not set, `cost` is `null` but token counts are always saved.
 
+`tokens_in` always counts **only input tokens billed at full price** — cached ones are reported separately as `cache_read_tokens`/`cache_write_tokens` and never included, whichever driver you use. Providers disagree on this (Anthropic and Bedrock Converse exclude cache hits from their input count; OpenAI, Gemini, DeepSeek, Groq and the OpenAI-compatible APIs include them), and so do the gateways in `laravel/ai`, so the difference is normalized here. Override per driver if your `laravel/ai` version behaves differently:
+
+```php
+'deepseek' => [
+    'model' => 'deepseek-v4-flash',
+    // laravel/ai < 0.11 reported DeepSeek prompt tokens inclusive of cache hits
+    'cache_inclusive_prompt_tokens' => true,
+    'price' => ['in' => 0.22, 'out' => 0.66, 'cache_read' => 0.007],
+],
+```
+
+> `mistral` is a known gap: `laravel/ai` does not read its `cached_tokens` at all, so cache hits there are costed at the full input price.
+
 Query spend per tenant:
 
 ```php

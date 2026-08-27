@@ -389,19 +389,64 @@ final class LaravelAiDriver implements AiDriver
         return '';
     }
 
+    /**
+     * Драйвери, чий gateway у laravel/ai лишає Usage::promptTokens ВКЛЮЧНО з кешованими
+     * вхідними токенами — попри те, що решта gateway'їв нормалізує їх до "без кешу"
+     * (OpenAi/Xai/Gemini/AzureOpenAi/DeepSeek віднімають кеш явно, Anthropic і Bedrock
+     * Converse віддають exclusive нативно, бо таку семантику мають самі API).
+     *
+     * Без нормалізації кешовані токени рахуються ДВІЧІ: повною ціною всередині tokens_in
+     * і ще раз окремо як cache_read/cache_write — Cost::calc() складає їх як незалежні
+     * доданки. Семантика tokens_in при цьому різна від драйвера до драйвера, тож зміна
+     * провайдера мовчки зсувала б і облік вартості, і будь-яку тарифікацію поверх tokens_in.
+     *
+     * Список звірений з laravel/ai v0.11 — у нижчих версіях сюди належав ще й `deepseek`
+     * (виправлений upstream у 0.11.0). Для таких випадків, і на майбутні зміни upstream,
+     * поведінка перекривається в конфігу драйвера ключем `cache_inclusive_prompt_tokens`
+     * (bool) — без очікування на реліз пакета.
+     *
+     * Окремий випадок — `mistral`: його gateway взагалі не читає prompt_tokens_details.
+     * cached_tokens, тож кеш там не видно (cache_read завжди 0) і виправити це тут нічим —
+     * потрібен фікс upstream.
+     */
+    private const CACHE_INCLUSIVE_DRIVERS = [
+        'groq',
+        'openrouter',
+        'openai-compatible',
+        'openai_compatible',
+        'openaicompatible',
+    ];
+
     private function mapUsage(?Usage $usage, string $provider, ?string $model = null): array
     {
         if ($usage === null) {
             return ['driver' => $provider, 'model' => $model];
         }
 
+        $cacheRead  = $usage->cacheReadInputTokens;
+        $cacheWrite = $usage->cacheWriteInputTokens;
+        $tokensIn   = $usage->promptTokens;
+
+        // Єдина семантика для всіх драйверів: tokens_in — лише вхідні токени, за які платимо
+        // повну ціну. Кеш віднімаємо обома боками (read і write) — так само, як це робить
+        // OpenAi-gateway: у провайдерів з інклюзивним promptTokens там сидить і те, і те.
+        if (($cacheRead > 0 || $cacheWrite > 0) && $this->promptTokensIncludeCache($provider)) {
+            $tokensIn = max(0, $tokensIn - $cacheRead - $cacheWrite);
+        }
+
         return [
             'driver'             => $provider,
             'model'              => $model,
-            'tokens_in'          => $usage->promptTokens ?: null,
+            'tokens_in'          => $tokensIn ?: null,
             'tokens_out'         => $usage->completionTokens ?: null,
-            'cache_read_tokens'  => $usage->cacheReadInputTokens ?: null,
-            'cache_write_tokens' => $usage->cacheWriteInputTokens ?: null,
+            'cache_read_tokens'  => $cacheRead ?: null,
+            'cache_write_tokens' => $cacheWrite ?: null,
         ];
+    }
+
+    private function promptTokensIncludeCache(string $provider): bool
+    {
+        return (bool) ($this->cfg['cache_inclusive_prompt_tokens']
+            ?? in_array(strtolower($provider), self::CACHE_INCLUSIVE_DRIVERS, true));
     }
 }

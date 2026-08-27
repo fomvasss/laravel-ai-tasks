@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [3.25.0] — 2026-08-27
+
+### Fixed
+- `tokens_in` now means the same thing on every driver: input tokens billed at full price, never including cached ones. The `groq`, `openrouter` and `openai-compatible` gateways in `laravel/ai` return prompt tokens *inclusive* of cache hits, so those runs recorded inflated `tokens_in` and `cost` double-counted the cached part (once at full price inside `tokens_in`, once again as `cache_read_tokens`). Runs already stored keep their old values — only new runs are affected.
+
+### Added
+- `cache_inclusive_prompt_tokens` (bool) per driver in `config/ai-tasks.php`, overriding the built-in list above. Set it to `true` on `deepseek` if you are pinned to `laravel/ai` < 0.11 (its DeepSeek gateway was inclusive until 0.11.0); set it to `false` to opt a driver out if upstream changes again.
+
+### Note
+- `mistral` never reports cache hits at all (`laravel/ai` does not read `prompt_tokens_details.cached_tokens` for it), so cached tokens there are still costed at the full input price. Not fixable from this package — needs an upstream change.
+
 ## [3.24.3] — 2026-08-23
 
 ### Changed
