@@ -10,6 +10,7 @@ use Fomvasss\AiTasks\DTO\AiResponse;
 use Fomvasss\AiTasks\Events\AiRunFailed;
 use Fomvasss\AiTasks\Events\AiRunFinished;
 use Fomvasss\AiTasks\Tasks\AiTask;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 
@@ -68,6 +69,61 @@ class AiRun extends Model
             'status'          => 'queued',
             'idempotency_key' => $idempotencyKey ?? $task->idempotencyKey(),
             'request'         => static::minifyRequest($p, $task),
+        ]);
+    }
+
+    /**
+     * Runs that should have progressed by now: queued/running, untouched for longer than the
+     * threshold. Catches the case a lost queue payload leaves behind — the row stays 'queued'
+     * forever because nothing ever picks it up to fail it.
+     *
+     * COALESCE(started_at, created_at) is the last known moment of progress (created_at while
+     * queued, started_at once running). It is also the reason this is not written as a plain
+     * `started_at` comparison: NULL ordering/comparison differs between MySQL and Postgres.
+     */
+    public function scopeStuck(Builder $query, ?int $minutes = null): Builder
+    {
+        $minutes ??= (int) config('ai-tasks.dashboard.stuck_after_minutes', 15);
+
+        return $query->whereIn('status', ['queued', 'running'])
+            ->whereRaw('COALESCE(started_at, created_at) < ?', [now()->subMinutes($minutes)]);
+    }
+
+    public function isStuck(?int $minutes = null): bool
+    {
+        if (! in_array($this->status, ['queued', 'running'], true)) {
+            return false;
+        }
+
+        $minutes ??= (int) config('ai-tasks.dashboard.stuck_after_minutes', 15);
+
+        return ($this->started_at ?? $this->created_at)?->lt(now()->subMinutes($minutes)) ?? false;
+    }
+
+    /**
+     * A 'running' run is only retryable once stuck — otherwise a re-dispatch would duplicate work
+     * a worker is doing right now.
+     */
+    public function canRetry(): bool
+    {
+        return match ($this->status) {
+            'error', 'dead' => true,
+            'queued', 'running' => $this->isStuck(),
+            default => false,
+        };
+    }
+
+    /**
+     * Closes a run a human gave up on. Unlike fail()/markAsDead() this fires no AiRunFailed:
+     * the event means "the run failed on its own", and consumers may notify on it — the real
+     * failure here happened earlier and silently, this is only bookkeeping catching up.
+     */
+    public function abandon(string $reason): void
+    {
+        $this->update([
+            'status'      => 'dead',
+            'error'       => $reason,
+            'finished_at' => now(),
         ]);
     }
 

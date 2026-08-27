@@ -5,11 +5,12 @@
 @section('content')
 
 {{-- Stats --}}
-<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+<div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
     @foreach([
         ['label' => 'Today total', 'value' => $stats['today_total'], 'color' => '', 'key' => 'today_total'],
         ['label' => 'Today OK', 'value' => $stats['today_ok'], 'color' => 'text-green-600', 'key' => 'today_ok'],
         ['label' => 'Today errors', 'value' => $stats['today_error'], 'color' => 'text-red-600', 'key' => 'today_error'],
+        ['label' => 'Stuck', 'value' => $stats['stuck'], 'color' => $stats['stuck'] > 0 ? 'text-orange-600' : '', 'key' => 'stuck'],
         ['label' => 'Month cost', 'value' => '$' . $stats['month_cost'], 'color' => '', 'key' => 'month_cost'],
     ] as $s)
     <div class="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 px-4 py-3">
@@ -33,6 +34,8 @@
             @foreach(['ok','error','dead','running','queued','waiting','skipped'] as $s)
                 <option value="{{ $s }}" @selected(request('status') === $s)>{{ $s }}</option>
             @endforeach
+            {{-- derived from time, not a value in the status column --}}
+            <option value="stuck" @selected(request('status') === 'stuck')>stuck</option>
         </select>
     </div>
     <div>
@@ -105,7 +108,7 @@
     <table class="min-w-full text-sm">
         <thead class="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
             <tr>
-                @foreach(['Task','Driver','Model','Tenant','Dispatch','Status','Tok in','Tok out','Cost','Duration','Started'] as $col)
+                @foreach(['','Task','Driver','Model','Tenant','Dispatch','Status','Tok in','Tok out','Cost','Duration','Started'] as $col)
                 <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">{{ $col }}</th>
                 @endforeach
             </tr>
@@ -126,6 +129,9 @@
                 $durStr = $dur === null ? '—' : ($dur < 1000 ? "{$dur}ms" : number_format($dur / 1000, 1) . 's');
             @endphp
             <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                <td class="px-3 py-2 w-8">
+                    @include('ai-tasks::partials.actions', ['run' => $run])
+                </td>
                 <td class="px-3 py-2">
                     <a href="{{ route('ai-tasks.show', $run->id) }}" class="text-blue-600 dark:text-blue-400 hover:underline font-medium">
                         {{ $run->task }}
@@ -153,8 +159,11 @@
                         : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'; @endphp
                     <span class="inline-flex px-2 py-0.5 rounded text-xs font-medium {{ $dispatchBadge }}">{{ $run->dispatch }}</span>
                 </td>
-                <td class="px-3 py-2">
+                <td class="px-3 py-2 whitespace-nowrap">
                     <span class="inline-flex px-2 py-0.5 rounded text-xs font-medium {{ $badge }}">{{ $run->status }}</span>
+                    @if($run->isStuck())
+                        <span class="inline-flex px-1.5 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-400">stuck</span>
+                    @endif
                 </td>
                 <td class="px-3 py-2 text-gray-600 dark:text-gray-300">{{ $run->tokens_in ?? '—' }}</td>
                 <td class="px-3 py-2 text-gray-600 dark:text-gray-300">{{ $run->tokens_out ?? '—' }}</td>
@@ -166,7 +175,7 @@
             </tr>
             @empty
             <tr>
-                <td colspan="11" class="px-3 py-8 text-center text-gray-400 dark:text-gray-500">No runs found.</td>
+                <td colspan="12" class="px-3 py-8 text-center text-gray-400 dark:text-gray-500">No runs found.</td>
             </tr>
             @endforelse
         </tbody>
@@ -181,6 +190,7 @@
 (function () {
     const dataUrl = '{{ route('ai-tasks.data') }}';
     const showBase = '{{ rtrim(route('ai-tasks.index'), '/') }}/';
+    const csrf = document.querySelector('meta[name="csrf-token"]').content;
 
     const statusClass = {
         ok:      'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400',
@@ -198,6 +208,30 @@
     };
     const gray = 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400';
 
+    // Mirrors resources/views/partials/actions.blade.php — the poll below replaces the whole
+    // tbody, so a menu rendered only in Blade would vanish on the first refresh.
+    function renderActions(r) {
+        const token = `<input type="hidden" name="_token" value="${csrf}">`;
+        const retry = r.can_retry
+            ? `<form method="POST" action="${showBase}${r.id}/retry">${token}
+                 <button type="submit" class="w-full text-left px-3 py-1.5 text-sm text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30">Retry</button>
+               </form>`
+            : '';
+        const dead = r.is_open
+            ? `<form method="POST" action="${showBase}${r.id}/dead" onsubmit="return confirm('Mark this run dead?')">${token}
+                 <button type="submit" class="w-full text-left px-3 py-1.5 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30">Dead</button>
+               </form>`
+            : '';
+
+        return `<div class="dropdown relative inline-block">
+            <button type="button" title="Actions" class="dropdown-toggle w-7 h-7 inline-flex items-center justify-center rounded border border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800">&#8942;</button>
+            <div class="dropdown-menu hidden w-40 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-lg py-1 z-20">
+                <a href="${showBase}${r.id}" class="block px-3 py-1.5 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">View</a>
+                ${retry}${dead}
+            </div>
+        </div>`;
+    }
+
     function renderRow(r) {
         const dur = r.duration_ms === null ? '—' : (r.duration_ms < 1000 ? r.duration_ms + 'ms' : (r.duration_ms / 1000).toFixed(1) + 's');
         const cost = r.cost !== null ? '$' + parseFloat(r.cost).toFixed(6) : '—';
@@ -205,8 +239,10 @@
         const badge = statusClass[r.status] || gray;
         const mc = modalityClass[r.modality] || 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400';
         const dc = r.dispatch === 'queue' ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-400' : gray;
+        const stuck = r.is_stuck ? ' <span class="inline-flex px-1.5 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-400">stuck</span>' : '';
 
         return `<tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+            <td class="px-3 py-2 w-8">${renderActions(r)}</td>
             <td class="px-3 py-2">
                 <a href="${showBase}${r.id}" class="text-blue-600 dark:text-blue-400 hover:underline font-medium">${r.task}</a>
                 <div class="flex gap-1 mt-0.5 flex-wrap">
@@ -218,7 +254,7 @@
             <td class="px-3 py-2 text-gray-500 dark:text-gray-400 text-xs">${r.model ?? '—'}</td>
             <td class="px-3 py-2 text-gray-500 dark:text-gray-400 text-xs">${r.tenant_id ?? ''}</td>
             <td class="px-3 py-2"><span class="inline-flex px-2 py-0.5 rounded text-xs font-medium ${dc}">${r.dispatch}</span></td>
-            <td class="px-3 py-2"><span class="inline-flex px-2 py-0.5 rounded text-xs font-medium ${badge}">${r.status}</span></td>
+            <td class="px-3 py-2 whitespace-nowrap"><span class="inline-flex px-2 py-0.5 rounded text-xs font-medium ${badge}">${r.status}</span>${stuck}</td>
             <td class="px-3 py-2 text-gray-600 dark:text-gray-300">${r.tokens_in ?? '—'}</td>
             <td class="px-3 py-2 text-gray-600 dark:text-gray-300">${r.tokens_out ?? '—'}</td>
             <td class="px-3 py-2 text-gray-600 dark:text-gray-300">${cost}</td>
@@ -260,7 +296,9 @@
 
     const pollInterval = {{ (int) config('ai-tasks.dashboard.poll_interval', 3) }};
     if (pollInterval > 0) {
-        setInterval(refresh, pollInterval * 1000);
+        // Skipped while a menu is open: the refresh replaces the whole tbody, which would
+        // close the menu under the pointer mid-click.
+        setInterval(() => { if (! document.querySelector('.dropdown-menu:not(.hidden)')) refresh(); }, pollInterval * 1000);
     }
 })();
 </script>

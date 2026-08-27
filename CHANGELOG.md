@@ -4,6 +4,32 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [3.26.0] — 2026-08-27
+
+### Added
+- Dashboard actions for runs that cannot recover on their own, in a per-row menu (also on the run page): **Retry** rebuilds the task from `ai_runs.request` and re-dispatches it into the same row, **Dead** closes a run you gave up on. Retry covers `error`/`dead` runs and stuck `queued`/`running` ones; a `running` run that is not stuck is left alone, since a worker is still on it. Retry needs `store_request` to have been enabled when the run was recorded — without it there are no constructor arguments to revive. **These run under `dashboard.middleware`, which defaults to `['web']` — no authorization. If you left that default, add your own auth middleware before upgrading, or anyone who can reach the URL can re-dispatch jobs.**
+- `stuck` as a first-class state: a run `queued`/`running` for longer than `dashboard.stuck_after_minutes` (new config key, default 15) without progress — the shape a dropped queue payload leaves behind, since nothing remains to fail it. Exposed as a stat card, a status filter, a row badge, `AiRun::stuck()` / `isStuck()` / `canRetry()`, and a `--stuck` flag on `ai:retry`, which previously could not reach these runs at all.
+- `AiRun::abandon($reason)` — marks a run dead without firing `AiRunFailed`. The event means the run failed on its own; a human closing a stale row hours later should not notify listeners of a new failure.
+
+### Changed
+- The dashboard list now orders by `COALESCE(started_at, created_at)` instead of `started_at`. A never-started run has no `started_at`, and `DESC` puts NULLs first on Postgres but last on MySQL — the same data ordered differently per driver. Queued runs now sort by when they were created, on both.
+
+## [3.25.1] — 2026-08-27
+
+### Fixed
+- Default `price` for `openai` and `deepseek` in the shipped config now matches the default model of each and the providers' current published rates (they had drifted to figures from older models). Both gained their cache rates, which were missing entirely: without them a reused prompt is costed as if caching were free, which understates `cost` by several times once a long prefix is being cached — on GPT-5.6 and later a cache *write* is billed at 1.25x the uncached input rate, a read at 0.1x. Republish the config (or copy the `price` blocks) to pick this up; your own values are never overwritten.
+
+## [3.25.0] — 2026-08-27
+
+### Fixed
+- `tokens_in` now means the same thing on every driver: input tokens billed at full price, never including cached ones. The `groq`, `openrouter` and `openai-compatible` gateways in `laravel/ai` return prompt tokens *inclusive* of cache hits, so those runs recorded inflated `tokens_in` and `cost` double-counted the cached part (once at full price inside `tokens_in`, once again as `cache_read_tokens`). Runs already stored keep their old values — only new runs are affected.
+
+### Added
+- `cache_inclusive_prompt_tokens` (bool) per driver in `config/ai-tasks.php`, overriding the built-in list above. Set it to `true` on `deepseek` if you are pinned to `laravel/ai` < 0.11 (its DeepSeek gateway was inclusive until 0.11.0); set it to `false` to opt a driver out if upstream changes again.
+
+### Note
+- `mistral` never reports cache hits at all (`laravel/ai` does not read `prompt_tokens_details.cached_tokens` for it), so cached tokens there are still costed at the full input price. Not fixable from this package — needs an upstream change.
+
 ## [3.24.3] — 2026-08-23
 
 ### Changed

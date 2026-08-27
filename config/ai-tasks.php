@@ -42,6 +42,10 @@ return [
         // User's manual toggle is always saved to localStorage and takes priority.
         'theme'    => env('AI_DASHBOARD_THEME', 'system'),
         'per_page' => env('AI_DASHBOARD_PER_PAGE', 50),
+        // A run counts as stuck once it has been queued/running this long without progress —
+        // the shape a dropped queue payload leaves behind, since nothing is left to fail it.
+        // Raise it above your slowest task's runtime, or long legitimate runs will be flagged.
+        'stuck_after_minutes' => env('AI_DASHBOARD_STUCK_AFTER', 15),
     ],
 
     /*
@@ -75,6 +79,12 @@ return [
     |               per_char — per 1M input characters, for 'audio' (TTS) modality only —
     |               OpenAI's TTS endpoint returns no usage data, so cost is an approximation
     |               based on input text length; verify the rate against current OpenAI pricing
+    |
+    | cache_inclusive_prompt_tokens — bool, optional. Whether this driver's gateway reports
+    |               prompt tokens INCLUDING cached ones, so they must be subtracted to keep
+    |               tokens_in meaning "input tokens billed at full price". Detected automatically
+    |               (groq/openrouter/openai-compatible); set explicitly only to override — e.g.
+    |               true on 'deepseek' when pinned to laravel/ai < 0.11.
     */
     'drivers' => [
 
@@ -83,10 +93,15 @@ return [
             'embed_model' => env('OPENAI_EMBED_MODEL', 'text-embedding-3-small'),
             'image_model' => env('OPENAI_IMAGE_MODEL', 'gpt-image-2'),
             'audio_model' => env('OPENAI_AUDIO_MODEL', 'gpt-4o-mini-tts'),
+            // Rates for the default model above (verified 2026-08-27). From GPT-5.6 on, a cache
+            // write costs 1.25x the uncached input rate and a read 0.1x — both are billed, so
+            // leaving them unset would undercount long reused prompts several times over.
             'price' => [
-                'in'       => 1.00,
-                'out'      => 6.00,
-                'per_char' => env('OPENAI_TTS_PRICE_PER_CHAR', 15.0), // approximate, verify against current pricing
+                'in'          => 0.20,
+                'out'         => 1.20,
+                'cache_write' => 0.25, // 1.25x in
+                'cache_read'  => 0.02, // 0.1x in
+                'per_char'    => env('OPENAI_TTS_PRICE_PER_CHAR', 15.0), // approximate, verify against current pricing
             ],
             // Webhook signature verification (optional).
             // Standard Webhooks scheme, as sent by OpenAI — the "whsec_..." secret
@@ -115,11 +130,16 @@ return [
             ],
         ],
 
+        // Off-peak rates for the default model (verified 2026-08-27). DeepSeek doubles them during
+        // peak hours (01:00-04:00 and 06:00-10:00 UTC, Mon-Fri) — Cost::calc() has no time-of-day
+        // tiering, so cost is understated for calls that land in those windows. No `cache_write`:
+        // DeepSeek does not charge separately for filling the cache.
         'deepseek' => [
             'model' => env('DEEPSEEK_MODEL', 'deepseek-v4-flash'),
             'price' => [
-                'in'  => 0.27,
-                'out' => 1.10,
+                'in'         => 0.22,  // cache miss
+                'out'        => 0.66,
+                'cache_read' => 0.007, // cache hit — 31x cheaper than a miss
             ],
         ],
 

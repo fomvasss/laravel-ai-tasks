@@ -24,10 +24,37 @@ Configurable via `config/ai-tasks.php`:
     'poll_interval' => env('AI_DASHBOARD_POLL', 3),       // seconds; 0 = off
     'theme'         => env('AI_DASHBOARD_THEME', 'system'), // light|dark|system
     'per_page'      => env('AI_DASHBOARD_PER_PAGE', 50),
+    'stuck_after_minutes' => env('AI_DASHBOARD_STUCK_AFTER', 15),
 ],
 ```
 
-> **Security:** the default `middleware => ['web']` leaves the dashboard open to anyone who can reach the URL — including stored prompts and responses. In production add your auth middleware: `['web', 'auth']`, or e.g. `['web', 'auth', 'role:admin']` with spatie/laravel-permission.
+> **Security:** the default `middleware => ['web']` leaves the dashboard open to anyone who can reach the URL — including stored prompts and responses, **and the Retry / Dead buttons below**. In production add your auth middleware: `['web', 'auth']`, or e.g. `['web', 'auth', 'role:admin']` with spatie/laravel-permission.
+
+### Stuck runs
+
+A run counts as **stuck** once it has been `queued` or `running` for longer than `stuck_after_minutes`
+without progress. The usual cause is a queue payload that never reached a worker (a Redis restart
+between `AI::queue()` writing the row and the worker picking it up): nothing is left to fail the run,
+so it stays `queued` forever and no retry mechanism reaches it.
+
+Stuck runs get their own stat card, a `stuck` status filter and a badge on the row. Raise the threshold
+above your slowest task's runtime, or long legitimate runs are flagged too.
+
+Two actions are available on each row and on the run page:
+
+- **Retry** — rebuilds the task from `ai_runs.request` and re-dispatches it, reusing the same row.
+  Available for `error`/`dead` runs and for stuck `queued`/`running` ones (a `running` run that is not
+  stuck is left alone — a worker is still on it). Requires `store_request` to have been enabled when the
+  run was recorded, otherwise there are no constructor arguments to revive.
+- **Dead** — closes a run you have given up on: `status = dead`, with the reason in `error`. It fires no
+  `AiRunFailed` event — the actual failure happened earlier and silently, and consumers listening on that
+  event should not be notified about an admin's button click.
+
+The same reconstruct-and-redispatch path is available from the CLI, including stuck runs:
+
+```bash
+php artisan ai:retry --since=24h --stuck --dry-run
+```
 
 ## Requirements
 
@@ -368,6 +395,19 @@ Set pricing per driver in `config/ai-tasks.php` (per 1M tokens):
 ```
 
 Cost is calculated after each response and stored in `ai_runs.cost`. If `price` is not set, `cost` is `null` but token counts are always saved.
+
+`tokens_in` always counts **only input tokens billed at full price** — cached ones are reported separately as `cache_read_tokens`/`cache_write_tokens` and never included, whichever driver you use. Providers disagree on this (Anthropic and Bedrock Converse exclude cache hits from their input count; OpenAI, Gemini, DeepSeek, Groq and the OpenAI-compatible APIs include them), and so do the gateways in `laravel/ai`, so the difference is normalized here. Override per driver if your `laravel/ai` version behaves differently:
+
+```php
+'deepseek' => [
+    'model' => 'deepseek-v4-flash',
+    // laravel/ai < 0.11 reported DeepSeek prompt tokens inclusive of cache hits
+    'cache_inclusive_prompt_tokens' => true,
+    'price' => ['in' => 0.22, 'out' => 0.66, 'cache_read' => 0.007],
+],
+```
+
+> `mistral` is a known gap: `laravel/ai` does not read its `cached_tokens` at all, so cache hits there are costed at the full input price.
 
 Query spend per tenant:
 
