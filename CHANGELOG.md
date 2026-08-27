@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [3.25.1] — 2026-08-27
+
+### Fixed
+- Default `price` for `openai` and `deepseek` in the shipped config now matches the default model of each and the providers' current published rates (they had drifted to figures from older models). Both gained their cache rates, which were missing entirely: without them a reused prompt is costed as if caching were free, which understates `cost` by several times once a long prefix is being cached — on GPT-5.6 and later a cache *write* is billed at 1.25x the uncached input rate, a read at 0.1x. Republish the config (or copy the `price` blocks) to pick this up; your own values are never overwritten.
+
 ## [3.25.0] — 2026-08-27
 
 ### Fixed
