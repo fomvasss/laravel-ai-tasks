@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>AI Tasks — @yield('title', 'Dashboard')</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -56,10 +57,59 @@
 </nav>
 
 <main class="max-w-7xl mx-auto px-6 py-6">
+    @if(session('ai-tasks-flash'))
+        @php([$flashType, $flashText] = session('ai-tasks-flash'))
+        <div class="mb-4 px-4 py-3 rounded-lg border text-sm {{ $flashType === 'ok'
+            ? 'bg-green-50 dark:bg-green-950/40 border-green-200 dark:border-green-800 text-green-800 dark:text-green-300'
+            : 'bg-red-50 dark:bg-red-950/40 border-red-200 dark:border-red-800 text-red-800 dark:text-red-300' }}">
+            {{ $flashText }}
+        </div>
+    @endif
     @yield('content')
 </main>
 
 <script>
+    // Row action menus. Delegated from the document because the runs table replaces its rows
+    // on every poll — a handler bound to a button would not survive the first refresh.
+    (function () {
+        function closeAll() {
+            document.querySelectorAll('.dropdown-menu').forEach(m => {
+                m.classList.add('hidden');
+                m.removeAttribute('style');
+            });
+        }
+
+        // Going back restores the page from the bfcache with the DOM exactly as it was left —
+        // including the menu that was open when its link was followed, still pinned to
+        // coordinates from the previous viewport.
+        window.addEventListener('pageshow', closeAll);
+
+        document.addEventListener('click', function (e) {
+            const toggle = e.target.closest('.dropdown-toggle');
+
+            if (! toggle) {
+                if (! e.target.closest('.dropdown-menu')) closeAll();
+                return;
+            }
+
+            const menu = toggle.parentElement.querySelector('.dropdown-menu');
+            const wasOpen = ! menu.classList.contains('hidden');
+            closeAll();
+            if (wasOpen) return;
+
+            // Fixed, not absolute: the table scrolls inside overflow-x-auto, which clips an
+            // absolutely positioned menu instead of letting it overhang the row.
+            const rect = toggle.getBoundingClientRect();
+            menu.style.position = 'fixed';
+            menu.style.top = (rect.bottom + 4) + 'px';
+            menu.style.left = rect.left + 'px';
+            menu.classList.remove('hidden');
+        });
+
+        document.addEventListener('keydown', e => { if (e.key === 'Escape') closeAll(); });
+        window.addEventListener('scroll', closeAll, true);
+    })();
+
     function toggleTheme() {
         const html = document.documentElement;
         if (html.classList.contains('dark')) {

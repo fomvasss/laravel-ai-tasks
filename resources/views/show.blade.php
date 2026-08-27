@@ -23,7 +23,13 @@ $durStr = $dur === null ? '—' : ($dur < 1000 ? "{$dur}ms" : number_format($dur
     <a href="{{ route('ai-tasks.index') }}" class="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 text-sm">← Back</a>
     <h1 class="text-lg font-semibold text-gray-900 dark:text-gray-100">{{ $run->task }}</h1>
     <span class="inline-flex px-2 py-0.5 rounded text-xs font-medium {{ $badge }}">{{ $run->status }}</span>
+    @if($run->isStuck())
+        <span class="inline-flex px-1.5 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-400">stuck</span>
+    @endif
     <span class="text-xs text-gray-400 dark:text-gray-500 font-mono">{{ $run->id }}</span>
+    <div class="ml-auto">
+        @include('ai-tasks::partials.actions', ['run' => $run, 'withView' => false])
+    </div>
 </div>
 
 {{-- Meta --}}

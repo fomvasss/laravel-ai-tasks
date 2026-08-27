@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [3.26.0] — 2026-08-27
+
+### Added
+- Dashboard actions for runs that cannot recover on their own, in a per-row menu (also on the run page): **Retry** rebuilds the task from `ai_runs.request` and re-dispatches it into the same row, **Dead** closes a run you gave up on. Retry covers `error`/`dead` runs and stuck `queued`/`running` ones; a `running` run that is not stuck is left alone, since a worker is still on it. Retry needs `store_request` to have been enabled when the run was recorded — without it there are no constructor arguments to revive. **These run under `dashboard.middleware`, which defaults to `['web']` — no authorization. If you left that default, add your own auth middleware before upgrading, or anyone who can reach the URL can re-dispatch jobs.**
+- `stuck` as a first-class state: a run `queued`/`running` for longer than `dashboard.stuck_after_minutes` (new config key, default 15) without progress — the shape a dropped queue payload leaves behind, since nothing remains to fail it. Exposed as a stat card, a status filter, a row badge, `AiRun::stuck()` / `isStuck()` / `canRetry()`, and a `--stuck` flag on `ai:retry`, which previously could not reach these runs at all.
+- `AiRun::abandon($reason)` — marks a run dead without firing `AiRunFailed`. The event means the run failed on its own; a human closing a stale row hours later should not notify listeners of a new failure.
+
+### Changed
+- The dashboard list now orders by `COALESCE(started_at, created_at)` instead of `started_at`. A never-started run has no `started_at`, and `DESC` puts NULLs first on Postgres but last on MySQL — the same data ordered differently per driver. Queued runs now sort by when they were created, on both.
+
 ## [3.25.1] — 2026-08-27
 
 ### Fixed

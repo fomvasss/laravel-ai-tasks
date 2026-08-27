@@ -42,6 +42,10 @@ return [
         // User's manual toggle is always saved to localStorage and takes priority.
         'theme'    => env('AI_DASHBOARD_THEME', 'system'),
         'per_page' => env('AI_DASHBOARD_PER_PAGE', 50),
+        // A run counts as stuck once it has been queued/running this long without progress —
+        // the shape a dropped queue payload leaves behind, since nothing is left to fail it.
+        // Raise it above your slowest task's runtime, or long legitimate runs will be flagged.
+        'stuck_after_minutes' => env('AI_DASHBOARD_STUCK_AFTER', 15),
     ],
 
     /*

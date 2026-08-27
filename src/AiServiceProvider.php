@@ -76,6 +76,10 @@ class AiServiceProvider extends ServiceProvider
                     Route::get('/', [DashboardController::class, 'index'])->name('index');
                     Route::get('/data', [DashboardController::class, 'data'])->name('data');
                     Route::get('/{id}', [DashboardController::class, 'show'])->name('show');
+                    // Write actions run under the same middleware as the dashboard itself — which
+                    // defaults to ['web'], i.e. no authorization. Add your own auth there.
+                    Route::post('/{id}/retry', [DashboardController::class, 'retry'])->name('retry');
+                    Route::post('/{id}/dead', [DashboardController::class, 'markDead'])->name('dead');
                 });
         }
 

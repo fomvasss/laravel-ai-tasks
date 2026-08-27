@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace Fomvasss\AiTasks\Http\Controllers;
 
 use Fomvasss\AiTasks\Models\AiRun;
+use Fomvasss\AiTasks\Support\RunRetrier;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\View\View;
@@ -49,19 +51,29 @@ class DashboardController extends Controller
                 'cost' => $r->cost,
                 'duration_ms' => $r->duration_ms,
                 'started_at' => $r->started_at?->format('m-d H:i:s'),
+                'is_stuck' => $r->isStuck(),
+                'can_retry' => $r->canRetry(),
+                'is_open' => ! in_array($r->status, ['ok', 'dead', 'skipped'], true),
             ]),
         ]);
     }
 
     private function buildQuery(Request $request): Builder
     {
-        $query = AiRun::query()->latest('started_at')->select([
+        // COALESCE, not latest('started_at'): a queued run has no started_at, and DESC puts NULLs
+        // first on Postgres but last on MySQL — the same data would order differently per driver.
+        $query = AiRun::query()->orderByRaw('COALESCE(started_at, created_at) DESC')->select([
             'id', 'tenant_id', 'task', 'driver', 'model', 'modality', 'dispatch', 'status',
             'subject_type', 'subject_id', 'tokens_in', 'tokens_out', 'cost',
-            'started_at', 'finished_at', 'duration_ms',
+            'started_at', 'finished_at', 'duration_ms', 'created_at',
         ]);
 
-        if ($v = $request->input('status')) { $query->where('status', $v); }
+        // 'stuck' is a pseudo-status: a state derived from time, not a value in the column
+        if (($v = $request->input('status')) === 'stuck') {
+            $query->stuck();
+        } elseif ($v) {
+            $query->where('status', $v);
+        }
         if ($v = $request->input('driver')) { $query->where('driver', $v); }
         if ($v = $request->input('tenant')) { $query->where('tenant_id', $v); }
         if ($v = $request->input('dispatch')) { $query->where('dispatch', $v); }
@@ -83,6 +95,8 @@ class DashboardController extends Controller
             'month_cost' => round((float) AiRun::where('status', 'ok')
                 ->whereBetween('started_at', [now()->startOfMonth(), now()->endOfMonth()])
                 ->sum('cost'), 6),
+            // Not scoped to today: a stuck run is stuck until someone deals with it
+            'stuck' => AiRun::query()->stuck()->count(),
         ];
     }
 
@@ -109,5 +123,29 @@ class DashboardController extends Controller
         $run = AiRun::findOrFail($id);
 
         return view('ai-tasks::show', compact('run'));
+    }
+
+    public function retry(string $id): RedirectResponse
+    {
+        $run = AiRun::findOrFail($id);
+
+        if (! $run->canRetry()) {
+            return back()->with('ai-tasks-flash', ['error', "Run in status '{$run->status}' cannot be retried."]);
+        }
+
+        if (! RunRetrier::retry($run)) {
+            return back()->with('ai-tasks-flash', ['error', 'Task cannot be reconstructed — this run was recorded with store_request disabled.']);
+        }
+
+        return back()->with('ai-tasks-flash', ['ok', 'Run re-dispatched.']);
+    }
+
+    public function markDead(string $id): RedirectResponse
+    {
+        $run = AiRun::findOrFail($id);
+
+        $run->abandon('Marked dead from the dashboard.');
+
+        return back()->with('ai-tasks-flash', ['ok', 'Run marked dead.']);
     }
 }
