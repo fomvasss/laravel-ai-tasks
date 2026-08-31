@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [3.26.1] — 2026-08-31
+
+### Changed
+- `ai:request --temperature` no longer defaults to `0.3` — the parameter is sent only when you pass it. Previously every ad-hoc request carried a temperature nobody asked for, which on many current models is either ignored or rejected. Ad-hoc output will differ slightly from before on providers that honour the parameter; pass `--temperature=0.3` to keep the old behaviour.
+- `ai:make-task` stubs and the shipped example tasks no longer declare a `temperature` — they are copied as-is into user code, and the default routing model does not accept it.
+
+### Fixed
+- `temperature`/`top_p` set in `AiPayload` options are no longer sent to the Claude models where Anthropic removed sampling parameters (`claude-fable-5`, `claude-mythos-5`, `claude-opus-5`, `claude-opus-4-8`, `claude-opus-4-7`, `claude-sonnet-5`, also recognised behind a gateway prefix such as `anthropic/claude-sonnet-5`) — those reject the parameters with a 400, and `laravel/ai`'s Anthropic gateway passes them through verbatim. This affected the shipped `anthropic` config out of the box, whose default model is `claude-sonnet-5`, and every built-in task that declares a temperature (`ai:request`, `ai:make-task` stubs, the chat and vision examples). Claude models that still accept sampling (Haiku 4.5, Sonnet 4.6, Opus 4.6) and other providers are unaffected.
+
 ## [3.26.0] — 2026-08-27
 
 ### Added

@@ -177,7 +177,6 @@ class SummarizeTask extends AiTask implements ShouldQueueAi
             modality: $this->modality(),
             messages: [new UserMessage("Стисни текст: {$this->article->body}")],
             systemPrompt: 'Ти помічник-редактор. Відповідай максимум 3 реченнями.',
-            options: ['temperature' => 0.3],
         );
     }
 
@@ -439,7 +438,6 @@ return new AiPayload(
     messages: [new UserMessage($this->text)],
     systemPrompt: $this->instructions,
     options: [
-        'temperature' => 0.3,
         'provider_options' => [
             'deepseek' => ['thinking' => ['type' => 'disabled']], // тільки для DeepSeek, інші драйвери ігнорують
         ],
@@ -537,7 +535,6 @@ return new AiPayload(
     modality: 'text',
     messages: [new UserMessage($this->text)],
     systemPrompt: 'Класифікуй текст. Відповідай у форматі {"category": "...", "confidence": 0.0-1.0}.',
-    options: ['temperature' => 0.0],
     jsonMode: true,
 );
 ```
@@ -780,6 +777,8 @@ return new AiPayload(
 ```
 
 > **Примітка при оновленні:** до v3.23.0 ці опції мовчки ігнорувались. Якщо твої задачі вже декларують `temperature` — після оновлення вихід моделей зміниться, бо значення тепер реально доходить до провайдера.
+
+`temperature` і `top_p` не потрапляють у запит, якщо цільова модель відхиляє їх 400-кою — reasoning-моделі OpenAI (`gpt-5*` крім `gpt-5-chat`, `o1`, `o3`, `o4-mini`) і Claude-моделі, де Anthropic прибрала sampling-параметри (`claude-fable-5`, `claude-mythos-5`, `claude-opus-5`, `claude-opus-4-8`, `claude-opus-4-7`, `claude-sonnet-5`, у тому числі з вендорним префіксом шлюзу — `anthropic/claude-sonnet-5`). Тому задача з `temperature` лишається переносною між моделями: там опція просто ігнорується, а не валить запуск. `max_tokens` передається завжди.
 
 ## Laravel Octane
 

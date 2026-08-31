@@ -46,7 +46,6 @@ class ChatAssistTask extends AiTask
             modality: $this->modality(),
             messages: $messages,
             systemPrompt: "You are a support assistant. Answer briefly in locale: {$this->locale}.",
-            options: ['temperature' => 0.2],
         );
     }
 
