@@ -114,4 +114,57 @@ class GenerationOptionsTest extends TestCase
 
         $this->assertSame(0.7, $agent->temperature());
     }
+
+    // ── Claude models with sampling parameters removed ───────────────────────
+
+    public function test_strips_temperature_and_top_p_for_sampling_free_claude_models(): void
+    {
+        // Regression: Anthropic removed temperature/top_p/top_k on these models — a request
+        // carrying them is rejected with a 400, and laravel/ai's Anthropic gateway passes
+        // them through verbatim.
+        $models = [
+            'claude-fable-5',
+            'claude-mythos-5',
+            'claude-opus-5',
+            'claude-opus-4-8',
+            'claude-opus-4-7',
+            'claude-sonnet-5',
+        ];
+
+        foreach ($models as $model) {
+            $agent = $this->callMakeAgent(
+                new AiPayload('text', options: ['temperature' => 0.3, 'top_p' => 0.9]),
+                displayProvider: 'anthropic',
+                model: $model,
+            );
+
+            $this->assertNull($agent->temperature(), "expected null temperature for model [{$model}]");
+            $this->assertNull($agent->topP(), "expected null top_p for model [{$model}]");
+        }
+    }
+
+    public function test_strips_temperature_for_claude_model_behind_a_gateway_prefix(): void
+    {
+        // openrouter and friends address the same model as anthropic/claude-sonnet-5.
+        $agent = $this->callMakeAgent(
+            new AiPayload('text', options: ['temperature' => 0.3]),
+            displayProvider: 'openrouter',
+            model: 'anthropic/claude-sonnet-5',
+        );
+
+        $this->assertNull($agent->temperature());
+    }
+
+    public function test_keeps_temperature_for_claude_models_that_still_accept_it(): void
+    {
+        foreach (['claude-haiku-4-5', 'claude-sonnet-4-6', 'claude-opus-4-6'] as $model) {
+            $agent = $this->callMakeAgent(
+                new AiPayload('text', options: ['temperature' => 0.4]),
+                displayProvider: 'anthropic',
+                model: $model,
+            );
+
+            $this->assertSame(0.4, $agent->temperature(), "expected temperature kept for model [{$model}]");
+        }
+    }
 }

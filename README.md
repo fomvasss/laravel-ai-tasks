@@ -177,7 +177,6 @@ class SummarizeTask extends AiTask implements ShouldQueueAi
             modality: $this->modality(),
             messages: [new UserMessage("Summarize: {$this->article->body}")],
             systemPrompt: 'You are a concise summarizer. Reply in 3 sentences max.',
-            options: ['temperature' => 0.3],
         );
     }
 
@@ -322,6 +321,8 @@ return new AiPayload(
 ```
 
 > **Upgrade note:** before v3.23.0 these options were silently ignored. If your existing tasks already declare `temperature`, their outputs will change after upgrading — the value now actually reaches the provider.
+
+`temperature` and `top_p` are dropped from the request when the target model rejects them outright with a 400 — OpenAI's reasoning models (`gpt-5*` except `gpt-5-chat`, `o1`, `o3`, `o4-mini`) and the Claude models where Anthropic removed sampling parameters (`claude-fable-5`, `claude-mythos-5`, `claude-opus-5`, `claude-opus-4-8`, `claude-opus-4-7`, `claude-sonnet-5`, also behind a gateway prefix such as `anthropic/claude-sonnet-5`). A task declaring `temperature` therefore stays portable across models: the option is simply ignored on those, instead of failing the run. `max_tokens` is always passed through.
 
 ## Driver Routing
 
@@ -479,7 +480,6 @@ return new AiPayload(
     messages: [new UserMessage($this->text)],
     systemPrompt: $this->instructions,
     options: [
-        'temperature' => 0.3,
         'provider_options' => [
             'deepseek' => ['thinking' => ['type' => 'disabled']], // DeepSeek-only, ignored by other drivers
         ],
@@ -577,7 +577,6 @@ return new AiPayload(
     modality: 'text',
     messages: [new UserMessage($this->text)],
     systemPrompt: 'Classify the text. Reply with {"category": "...", "confidence": 0.0-1.0}.',
-    options: ['temperature' => 0.0],
     jsonMode: true,
 );
 ```

@@ -15,7 +15,7 @@ class AiRequestCommand extends Command
         {prompt? : Prompt text}
         {--driver=    : Driver name (openai|anthropic|gemini|...)}
         {--modality=text : text|embed}
-        {--temperature=0.3}
+        {--temperature= : Sampling temperature; omitted by default (some models reject it)}
         {--tenant=    : Tenant ID override}
         {--queue      : Dispatch to queue instead of sync}
         {--json       : Output content only}
@@ -34,7 +34,7 @@ class AiRequestCommand extends Command
 
         $driver   = $this->option('driver');
         $modality = (string) ($this->option('modality') ?: 'text');
-        $temp     = (float) $this->option('temperature');
+        $temp     = ($t = $this->option('temperature')) !== null ? (float) $t : null;
         $tenant   = $this->option('tenant');
 
         $task = new AdhocRequestTask($prompt, $modality, $temp, $tenant);

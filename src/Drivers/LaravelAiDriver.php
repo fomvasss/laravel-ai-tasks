@@ -24,6 +24,16 @@ use Laravel\Ai\Transcription;
 
 final class LaravelAiDriver implements AiDriver
 {
+    /** Claude-моделі, де temperature/top_p/top_k прибрані з API (запит із ними — 400) */
+    private const SAMPLING_FREE_CLAUDE_MODELS = [
+        'claude-fable-5',
+        'claude-mythos-5',
+        'claude-opus-5',
+        'claude-opus-4-8',
+        'claude-opus-4-7',
+        'claude-sonnet-5',
+    ];
+
     public function __construct(
         private readonly string $provider,
         private readonly array  $cfg,
@@ -125,11 +135,12 @@ final class LaravelAiDriver implements AiDriver
         $temperature = isset($p->options['temperature']) ? (float) $p->options['temperature'] : null;
         $topP        = isset($p->options['top_p']) ? (float) $p->options['top_p'] : null;
 
-        // OpenAI reasoning models (gpt-5* крім gpt-5-chat, o1, o3, o4-mini) відхиляють
-        // temperature/top_p 400-кою ("Unsupported parameter") — laravel/ai сам це не фільтрує
-        // (isReasoningModel() у його BuildsTextRequests застосовується лише для
-        // reasoning.encrypted_content), тож не даємо цим параметрам дійти до провайдера.
-        if ($this->isOpenAiReasoningModel($displayProvider, $model)) {
+        // Частина моделей відхиляє temperature/top_p 400-кою, а laravel/ai їх не фільтрує:
+        // OpenAI reasoning models (gpt-5* крім gpt-5-chat, o1, o3, o4-mini) — "Unsupported
+        // parameter" (isReasoningModel() у його BuildsTextRequests застосовується лише для
+        // reasoning.encrypted_content); Claude, де sampling-параметри прибрані з API. Тож не
+        // даємо цим параметрам дійти до провайдера.
+        if ($this->isOpenAiReasoningModel($displayProvider, $model) || $this->isSamplingFreeClaudeModel($model)) {
             $temperature = null;
             $topP        = null;
         }
@@ -153,6 +164,24 @@ final class LaravelAiDriver implements AiDriver
             || str_starts_with($model, 'o4-mini')
             || str_starts_with($model, 'o3')
             || str_starts_with($model, 'o1');
+    }
+
+    private function isSamplingFreeClaudeModel(?string $model): bool
+    {
+        if ($model === null) {
+            return false;
+        }
+
+        // Шлюзи на кшталт openrouter додають вендорний префікс: anthropic/claude-sonnet-5
+        $model = str_contains($model, '/') ? substr($model, (int) strrpos($model, '/') + 1) : $model;
+
+        foreach (self::SAMPLING_FREE_CLAUDE_MODELS as $prefix) {
+            if (str_starts_with($model, $prefix)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function streamText(AiPayload $p, callable $onChunk): AiResponse

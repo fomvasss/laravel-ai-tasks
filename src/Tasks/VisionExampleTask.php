@@ -32,10 +32,7 @@ class VisionExampleTask extends AiTask implements ShouldQueueAi
         return new AiPayload(
             modality: $this->modality(),
             messages: [new UserMessage($this->prompt)],
-            options: [
-                'temperature'  => 0.2,
-                'attachments'  => [AiImage::fromUrl($this->imageUrl)],
-            ],
+            options: ['attachments' => [AiImage::fromUrl($this->imageUrl)]],
         );
     }
 

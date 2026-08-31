@@ -86,7 +86,6 @@ class {$class} extends AiTask{$implements}
             modality: \$this->modality(),
             messages: [new UserMessage('Your prompt here')],
             systemPrompt: null,
-            options: ['temperature' => 0.3],
         );
     }
 
