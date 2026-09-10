@@ -359,7 +359,7 @@ protected function subjectId(): ?string { return $this->order->id; }
 
 ```php
 'deepseek' => [
-    'model' => 'deepseek-v4-flash',
+    'model' => 'deepseek-flash',
     // laravel/ai < 0.11 віддавав prompt-токени DeepSeek разом з кешованими
     'cache_inclusive_prompt_tokens' => true,
     'price' => ['in' => 0.22, 'out' => 0.66, 'cache_read' => 0.007],
@@ -563,7 +563,7 @@ return new AiPayload(
     providerOverride: [
         'driver' => 'deepseek',      // будь-який драйвер laravel/ai
         'key'    => $this->apiKey,   // ключ від користувача
-        'model'  => 'deepseek-v4-flash', // опціонально; перекриває дефолт драйвера
+        'model'  => 'deepseek-flash', // опціонально; перекриває дефолт драйвера
         // 'url'          => '...',  // опціонально; кастомний base URL
         // 'organization' => '...',  // опціонально; OpenAI org
     ],

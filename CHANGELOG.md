@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [3.26.2] — 2026-09-10
+
+### Changed
+- Default `deepseek` model in the shipped config is now `deepseek-flash` — the canonical name for V4.1 Flash, released 2026-09-10. The previous default `deepseek-v4-flash` still resolves (DeepSeek routes the legacy name), but it is no longer among the model names the API reports as supported, so pinning to it is a bet on an undocumented alias.
+- Default `deepseek` `price` updated to the V4.1 Flash off-peak rates: `in` 0.22 → 0.15, `out` 0.66 → 0.60, `cache_read` 0.007 → 0.003. Republish the config (or copy the `price` block) to pick this up; your own values are never overwritten.
+
 ## [3.26.1] — 2026-08-31
 
 ### Changed

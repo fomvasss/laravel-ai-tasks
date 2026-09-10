@@ -401,7 +401,7 @@ Cost is calculated after each response and stored in `ai_runs.cost`. If `price` 
 
 ```php
 'deepseek' => [
-    'model' => 'deepseek-v4-flash',
+    'model' => 'deepseek-flash',
     // laravel/ai < 0.11 reported DeepSeek prompt tokens inclusive of cache hits
     'cache_inclusive_prompt_tokens' => true,
     'price' => ['in' => 0.22, 'out' => 0.66, 'cache_read' => 0.007],
@@ -605,7 +605,7 @@ return new AiPayload(
     providerOverride: [
         'driver' => 'deepseek',      // any driver supported by laravel/ai
         'key'    => $this->apiKey,   // user-supplied API key
-        'model'  => 'deepseek-v4-flash', // optional; overrides driver default
+        'model'  => 'deepseek-flash', // optional; overrides driver default
         // 'url'          => '...',  // optional; custom base URL
         // 'organization' => '...',  // optional; OpenAI org scoping
     ],
