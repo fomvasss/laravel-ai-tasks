@@ -130,16 +130,16 @@ return [
             ],
         ],
 
-        // Off-peak rates for the default model (verified 2026-08-27). DeepSeek doubles them during
+        // Off-peak rates for the default model (verified 2026-09-10). DeepSeek doubles them during
         // peak hours (01:00-04:00 and 06:00-10:00 UTC, Mon-Fri) — Cost::calc() has no time-of-day
         // tiering, so cost is understated for calls that land in those windows. No `cache_write`:
         // DeepSeek does not charge separately for filling the cache.
         'deepseek' => [
-            'model' => env('DEEPSEEK_MODEL', 'deepseek-v4-flash'),
+            'model' => env('DEEPSEEK_MODEL', 'deepseek-flash'),
             'price' => [
-                'in'         => 0.22,  // cache miss
-                'out'        => 0.66,
-                'cache_read' => 0.007, // cache hit — 31x cheaper than a miss
+                'in'         => 0.15,  // cache miss
+                'out'        => 0.60,
+                'cache_read' => 0.003, // cache hit — 50x cheaper than a miss
             ],
         ],
 
