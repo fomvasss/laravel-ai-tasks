@@ -13,7 +13,9 @@ use Fomvasss\AiTasks\Support\Budget;
 use Fomvasss\AiTasks\Support\ModelLister;
 use Fomvasss\AiTasks\Support\TenantResolver;
 use Fomvasss\AiTasks\Support\WebhookRegistry;
+use Illuminate\Foundation\Console\AboutCommand;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\ServiceProvider;
 
 class AiServiceProvider extends ServiceProvider
@@ -93,6 +95,8 @@ class AiServiceProvider extends ServiceProvider
             ->post('{driver}', [WebhookController::class, 'handle'])
             ->name('ai.webhooks');
 
+        $this->registerAboutSection();
+
         if ($this->app->runningInConsole()) {
             $this->commands([
                 Console\AiMakeTaskCommand::class,
@@ -103,6 +107,45 @@ class AiServiceProvider extends ServiceProvider
                 Console\AiRequestCommand::class,
             ]);
         }
+    }
+
+    /**
+     * Рядок у `php artisan about` — єдине місце, де про недопубліковану міграцію можна дізнатись,
+     * не читаючи CHANGELOG. Міграції пакета публікуються, тож після `composer update` схема
+     * лишається старою, поки хтось про це не згадає; нові колонки при цьому мовчки не пишуться.
+     *
+     * Запит до схеми робиться лише в момент виконання `about`, і будь-яка помилка (немає БД,
+     * немає таблиці) гаситься — діагностика не має ронити команду, якою діагностують.
+     */
+    private function registerAboutSection(): void
+    {
+        if (! class_exists(AboutCommand::class)) {
+            return;
+        }
+
+        AboutCommand::add('AI Tasks', function (): array {
+            $table = config('ai-tasks.table', 'ai_runs');
+
+            try {
+                if (! Schema::hasTable($table)) {
+                    return ['Schema' => "<fg=yellow;options=bold>table {$table} is missing — publish and run migrations</>"];
+                }
+
+                $missing = array_values(array_filter(
+                    ['cost_rates'],
+                    fn (string $column): bool => ! Schema::hasColumn($table, $column),
+                ));
+
+                return [
+                    'Table'  => $table,
+                    'Schema' => $missing === []
+                        ? '<fg=green;options=bold>UP TO DATE</>'
+                        : '<fg=yellow;options=bold>missing ' . implode(', ', $missing) . ' — vendor:publish --tag=ai-migrations, then migrate</>',
+                ];
+            } catch (\Throwable) {
+                return ['Schema' => 'unknown (no database connection)'];
+            }
+        });
     }
 
     /**

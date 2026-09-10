@@ -13,6 +13,7 @@ use Fomvasss\AiTasks\Tasks\AiTask;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Log;
 
 class AiRun extends Model
 {
@@ -150,7 +151,7 @@ class AiRun extends Model
             ? (int) now()->diffInMilliseconds($this->started_at, true)
             : null;
 
-        $this->update([
+        $this->update($this->withoutMissingColumns([
             'status'            => 'ok',
             'model'             => $resp->usage['model'] ?? null,
             'response'          => array_filter([
@@ -170,9 +171,66 @@ class AiRun extends Model
             'cost_rates'        => $resp->usage['cost_rates']         ?? null,
             'finished_at'       => now(),
             'duration_ms'       => $ms,
-        ]);
+        ]));
 
         event(new AiRunFinished($this));
+    }
+
+    /**
+     * Колонки, додані пізніше за саму таблицю. Міграції пакета ПУБЛІКУЮТЬСЯ, а не завантажуються,
+     * тож між `composer update` і `migrate` завжди є вікно, коли код новіший за схему — а на
+     * чужому проєкті воно може тривати довго, бо про потребу опублікувати міграцію ніхто не
+     * попереджає. Писати в неіснуючу колонку означало б валити КОЖЕН прогін SQL-помилкою через
+     * необов'язкове поле, тому воно просто випадає із запису.
+     */
+    private const OPTIONAL_COLUMNS = ['cost_rates'];
+
+    /** @var array<string, true> кеш на процес: hasColumn() — це запит до схеми */
+    private static array $columnExists = [];
+
+    /** @var array<string, true> попередження про відсутню колонку — один раз на процес, не на прогін */
+    private static array $columnWarned = [];
+
+    /**
+     * Скидає кеш наявності колонок. Потрібен там, де схема змінюється всередині живого процесу:
+     * тести й довгі воркери (Octane), яким прогнали `migrate` без перезапуску.
+     */
+    public static function forgetSchemaCache(): void
+    {
+        self::$columnExists = [];
+        self::$columnWarned = [];
+    }
+
+    private function withoutMissingColumns(array $attributes): array
+    {
+        foreach (self::OPTIONAL_COLUMNS as $column) {
+            if (! array_key_exists($column, $attributes)) {
+                continue;
+            }
+
+            $key = $this->getConnectionName() . '|' . $this->getTable() . '|' . $column;
+
+            // Кешується лише ПОЗИТИВНА відповідь: інакше процес, який стартував до `migrate`,
+            // до самого перезапуску писав би прогони без колонки, вже маючи її в схемі.
+            if (isset(self::$columnExists[$key])) {
+                continue;
+            }
+
+            if ($this->getConnection()->getSchemaBuilder()->hasColumn($this->getTable(), $column)) {
+                self::$columnExists[$key] = true;
+
+                continue;
+            }
+
+            if (! isset(self::$columnWarned[$key])) {
+                self::$columnWarned[$key] = true;
+                Log::warning("[ai-tasks] {$this->getTable()}.{$column} is missing — run `php artisan vendor:publish --tag=ai-migrations` and `php artisan migrate`. Runs are stored without it.");
+            }
+
+            unset($attributes[$column]);
+        }
+
+        return $attributes;
     }
 
     public function skip(string $reason): void
@@ -196,7 +254,7 @@ class AiRun extends Model
             ? (int) now()->diffInMilliseconds($this->started_at, true)
             : null;
 
-        $this->update([
+        $this->update($this->withoutMissingColumns([
             'status'             => 'error',
             'error'              => $error,
             'model'              => $usage['model'] ?? $this->model,
@@ -208,7 +266,7 @@ class AiRun extends Model
             'cost_rates'         => $usage['cost_rates'] ?? null,
             'finished_at'        => now(),
             'duration_ms'        => $ms,
-        ]);
+        ]));
 
         event(new AiRunFailed($this));
     }

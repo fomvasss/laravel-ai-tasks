@@ -8,6 +8,7 @@ use Fomvasss\AiTasks\AiServiceProvider;
 use Fomvasss\AiTasks\Drivers\LaravelAiDriver;
 use Fomvasss\AiTasks\DTO\AiResponse;
 use Fomvasss\AiTasks\Models\AiRun;
+use Illuminate\Support\Facades\Schema;
 use Orchestra\Testbench\TestCase;
 
 /**
@@ -81,6 +82,41 @@ class CostRatesSnapshotTest extends TestCase
 
         $this->assertSame('model:gpt-mini', $fresh->cost_rates['source']);
         $this->assertSame(0.15, $fresh->cost_rates['in']);
+    }
+
+    /**
+     * Міграції пакета публікуються, тож між `composer update` і `migrate` схема відстає від коду.
+     * Прогін має записатись і без нової колонки — інакше оновлення пакета валило б кожен запит.
+     */
+    public function test_run_is_stored_even_when_the_column_is_not_migrated_yet(): void
+    {
+        Schema::table('ai_runs', fn ($t) => $t->dropColumn('cost_rates'));
+        AiRun::forgetSchemaCache();
+
+        $run = AiRun::create([
+            'tenant_id' => 't1',
+            'task'      => 'demo',
+            'driver'    => 'openai',
+            'modality'  => 'text',
+            'status'    => 'running',
+        ]);
+
+        $run->finish(new AiResponse(true, 'ok', [
+            'model'      => 'gpt-mini',
+            'tokens_in'  => 1_000,
+            'cost'       => 0.00015,
+            'cost_rates' => ['model' => 'gpt-mini', 'source' => 'driver', 'in' => 0.15],
+        ]));
+
+        $fresh = $run->fresh();
+
+        $this->assertSame('ok', $fresh->status);
+        $this->assertSame(1_000, $fresh->tokens_in);
+        $this->assertEqualsWithDelta(0.00015, $fresh->cost, 0.0000001);
+
+        // повертаємо колонку, інакше відкат міграцій у teardown спіткнеться об її відсутність
+        Schema::table('ai_runs', fn ($t) => $t->json('cost_rates')->nullable());
+        AiRun::forgetSchemaCache();
     }
 
     public function test_failed_run_keeps_the_snapshot_too(): void

@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [3.27.1] — 2026-09-10
+
+### Fixed
+- Upgrading to 3.27.0 without publishing and running its migration no longer breaks every run: `cost_rates` is simply left out of the write when the column is not there yet, with one warning in the log telling you what to run. Package migrations are published rather than autoloaded, so there is always a window between `composer update` and `migrate` — and on someone else's project that window can last until they happen to read the changelog. Only the positive answer is cached per process, so runs start recording the column right after `migrate`, without waiting for a worker restart.
+
+### Added
+- `php artisan about` now has an **AI Tasks** section showing the runs table and whether its schema is up to date — the place where a pending migration becomes visible without reading release notes.
+- `AiRun::forgetSchemaCache()` — drops the cached column check, for tests and for long-lived processes (Octane) that were migrated without a reload.
+
 ## [3.27.0] — 2026-09-10
 
 ### Added
