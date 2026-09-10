@@ -66,6 +66,11 @@ class AiServiceProvider extends ServiceProvider
                 __DIR__ . '/../database/migrations/2026_07_29_000000_add_model_to_ai_runs_table.php',
                 'add_model_to_ai_runs_table',
             );
+
+            $this->publishMigrationOnceMissing(
+                __DIR__ . '/../database/migrations/2026_09_10_000000_add_cost_rates_to_ai_runs_table.php',
+                'add_cost_rates_to_ai_runs_table',
+            );
         }
 
         if (config('ai-tasks.dashboard.enabled', true)) {

@@ -397,6 +397,22 @@ Set pricing per driver in `config/ai-tasks.php` (per 1M tokens):
 
 Cost is calculated after each response and stored in `ai_runs.cost`. If `price` is not set, `cost` is `null` but token counts are always saved.
 
+**Per-model rates.** `price` is one set of rates per driver, while the model itself comes from `.env` — so pinning a pricier model silently keeps costing the old rates. List the exceptions under `prices`, keyed by model name; anything not listed falls back to `price`:
+
+```php
+'deepseek' => [
+    'model'  => env('DEEPSEEK_MODEL', 'deepseek-flash'),
+    'prices' => [
+        'deepseek-reasoner' => ['in' => 0.55, 'out' => 2.19, 'cache_read' => 0.11],
+    ],
+    'price' => ['in' => 0.15, 'out' => 0.60, 'cache_read' => 0.003],
+],
+```
+
+Keys match both the full model name and the part after `/`, so a gateway-prefixed `anthropic/claude-sonnet-5` also matches a `claude-sonnet-5` entry.
+
+**The rates used are stored with the run**, in `ai_runs.cost_rates`: `{"model": "...", "source": "model:...|driver", "in": ..., "out": ...}`. `cost` is computed from config at run time, so without this snapshot a row written before a provider price change or a model switch cannot be explained afterwards — the config already holds different numbers. It also makes drift detectable: recompute the period from tokens at today's rates and compare with the stored `cost`.
+
 `tokens_in` always counts **only input tokens billed at full price** — cached ones are reported separately as `cache_read_tokens`/`cache_write_tokens` and never included, whichever driver you use. Providers disagree on this (Anthropic and Bedrock Converse exclude cache hits from their input count; OpenAI, Gemini, DeepSeek, Groq and the OpenAI-compatible APIs include them), and so do the gateways in `laravel/ai`, so the difference is normalized here. Override per driver if your `laravel/ai` version behaves differently:
 
 ```php

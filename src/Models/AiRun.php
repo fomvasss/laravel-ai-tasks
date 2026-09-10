@@ -30,6 +30,7 @@ class AiRun extends Model
         'started_at' => 'datetime',
         'finished_at'=> 'datetime',
         'cost'       => 'float',
+        'cost_rates' => 'array',
     ];
 
     public function __construct(array $attributes = [])
@@ -164,6 +165,9 @@ class AiRun extends Model
             'cache_read_tokens' => $resp->usage['cache_read_tokens']  ?? null,
             'cache_write_tokens'=> $resp->usage['cache_write_tokens'] ?? null,
             'cost'              => $resp->usage['cost']               ?? null,
+            // Ставки, за якими пораховано cost — знімок на момент прогону: тарифи провайдера
+            // й модель у .env міняються, і без нього старий рядок нічим не пояснити.
+            'cost_rates'        => $resp->usage['cost_rates']         ?? null,
             'finished_at'       => now(),
             'duration_ms'       => $ms,
         ]);
@@ -201,6 +205,7 @@ class AiRun extends Model
             'cache_read_tokens'  => $usage['cache_read_tokens']  ?? null,
             'cache_write_tokens' => $usage['cache_write_tokens'] ?? null,
             'cost'               => $usage['cost'] ?? null,
+            'cost_rates'         => $usage['cost_rates'] ?? null,
             'finished_at'        => now(),
             'duration_ms'        => $ms,
         ]);

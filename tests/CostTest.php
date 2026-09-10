@@ -46,6 +46,66 @@ class CostTest extends TestCase
         $this->assertNull($cost);
     }
 
+    public function test_per_model_rates_win_over_driver_price(): void
+    {
+        $cfg = $this->cfg + ['prices' => ['gpt-mini' => ['in' => 0.15, 'out' => 0.60]]];
+
+        $cost = Cost::calc('openai', ['model' => 'gpt-mini', 'tokens_in' => 1_000_000, 'tokens_out' => 1_000_000], $cfg);
+
+        $this->assertEquals(0.75, $cost);
+    }
+
+    /** Модель, якої немає в prices, рахується спільними ставками драйвера — як і до появи prices. */
+    public function test_unlisted_model_falls_back_to_driver_price(): void
+    {
+        $cfg = $this->cfg + ['prices' => ['gpt-mini' => ['in' => 0.15, 'out' => 0.60]]];
+
+        $cost = Cost::calc('openai', ['model' => 'other-model', 'tokens_in' => 1_000_000, 'tokens_out' => 1_000_000], $cfg);
+
+        $this->assertEquals(18.0, $cost);
+    }
+
+    /** Моделі через шлюз приходять з префіксом, а в конфізі пишуть голе ім'я. */
+    public function test_gateway_prefixed_model_matches_bare_key(): void
+    {
+        $cfg = ['prices' => ['claude-sonnet-5' => ['in' => 3.0, 'out' => 15.0]]];
+
+        $rates = Cost::ratesFor($cfg, 'anthropic/claude-sonnet-5');
+
+        $this->assertSame('model:claude-sonnet-5', $rates['source']);
+        $this->assertSame(3.0, $rates['in']);
+    }
+
+    public function test_rates_snapshot_records_model_and_source(): void
+    {
+        $rates = Cost::ratesFor($this->cfg, 'gpt-5.6-luna');
+
+        $this->assertSame([
+            'model'       => 'gpt-5.6-luna',
+            'source'      => 'driver',
+            'in'          => 3.00,
+            'out'         => 15.00,
+            'cache_read'  => 0.30,
+            'cache_write' => 3.75,
+        ], $rates);
+    }
+
+    public function test_rates_are_null_without_any_price_config(): void
+    {
+        $this->assertNull(Cost::ratesFor([], 'gpt-mini'));
+    }
+
+    public function test_char_cost_uses_per_model_rate(): void
+    {
+        $cfg = [
+            'price'  => ['per_char' => 15.0],
+            'prices' => ['tts-cheap' => ['per_char' => 5.0]],
+        ];
+
+        $this->assertEquals(5.0, Cost::calcByChars('openai', 1_000_000, $cfg, 'tts-cheap'));
+        $this->assertEquals(15.0, Cost::calcByChars('openai', 1_000_000, $cfg, 'tts-other'));
+    }
+
     public function test_small_token_count(): void
     {
         $usage = ['tokens_in' => 500, 'tokens_out' => 200];

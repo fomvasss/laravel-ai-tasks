@@ -79,6 +79,13 @@ return [
     |               per_char — per 1M input characters, for 'audio' (TTS) modality only —
     |               OpenAI's TTS endpoint returns no usage data, so cost is an approximation
     |               based on input text length; verify the rate against current OpenAI pricing
+    | prices      — optional per-model overrides, keyed by model name: ['gpt-5.6-luna' => [...]].
+    |               `price` above is a single set of rates per DRIVER, while the model comes from
+    |               .env — so switching to a pricier model silently keeps costing the old rates.
+    |               A model listed here wins; anything not listed falls back to `price`. Keys are
+    |               matched by the full name and by the part after '/', so a gateway-prefixed
+    |               'anthropic/claude-sonnet-5' also matches a 'claude-sonnet-5' entry.
+    |               The rates actually used are stored per run in ai_runs.cost_rates.
     |
     | cache_inclusive_prompt_tokens — bool, optional. Whether this driver's gateway reports
     |               prompt tokens INCLUDING cached ones, so they must be subtracted to keep
@@ -136,6 +143,12 @@ return [
         // DeepSeek does not charge separately for filling the cache.
         'deepseek' => [
             'model' => env('DEEPSEEK_MODEL', 'deepseek-flash'),
+            // Per-model rates take priority over 'price' below — fill this in when you pin a
+            // model whose rates differ from the default one, so cost does not stay silently
+            // wrong after the DEEPSEEK_MODEL switch.
+            // 'prices' => [
+            //     'deepseek-reasoner' => ['in' => 0.55, 'out' => 2.19, 'cache_read' => 0.11],
+            // ],
             'price' => [
                 'in'         => 0.15,  // cache miss
                 'out'        => 0.60,

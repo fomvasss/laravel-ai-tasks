@@ -107,7 +107,7 @@ final class LaravelAiDriver implements AiDriver
     private function buildTextResponse(AgentResponse $response, string $displayProvider, ?string $model): AiResponse
     {
         $usage         = $this->mapUsage($response->usage, $displayProvider, $model);
-        $usage['cost'] = Cost::calc($displayProvider, $usage, $this->cfg);
+        $usage = $this->withCost($usage, $displayProvider);
         $structured    = $response instanceof StructuredAgentResponse ? $response->structured : null;
         $finishReason  = $response->steps->last()?->finishReason?->value;
 
@@ -206,7 +206,7 @@ final class LaravelAiDriver implements AiDriver
         $streamable->then(function ($streamed) use (&$text, &$usage, $displayProvider, $model) {
             $text          = $streamed->text ?? '';
             $usage         = $this->mapUsage($streamed->usage, $displayProvider, $model);
-            $usage['cost'] = Cost::calc($displayProvider, $usage, $this->cfg);
+            $usage = $this->withCost($usage, $displayProvider);
         });
 
         foreach ($streamable as $event) {
@@ -235,7 +235,7 @@ final class LaravelAiDriver implements AiDriver
             ->generate($provider, $model);
 
         $usage         = ['driver' => $displayProvider, 'model' => $model, 'tokens_in' => $response->tokens ?: null];
-        $usage['cost'] = Cost::calc($displayProvider, $usage, $this->cfg);
+        $usage = $this->withCost($usage, $displayProvider);
 
         return new AiResponse(ok: true, content: json_encode($response->first()), usage: $usage);
     }
@@ -263,7 +263,7 @@ final class LaravelAiDriver implements AiDriver
         $response      = $pending->generate($provider, $model);
         $image         = $response->firstImage();
         $usage         = $this->mapUsage($response->usage, $displayProvider, $model);
-        $usage['cost'] = Cost::calc($displayProvider, $usage, $this->cfg);
+        $usage = $this->withCost($usage, $displayProvider);
 
         return new AiResponse(true, $image->image, $usage);
     }
@@ -290,7 +290,7 @@ final class LaravelAiDriver implements AiDriver
         $response = $pending->generate($provider, $model);
 
         $usage         = ['driver' => $displayProvider, 'model' => $model];
-        $usage['cost'] = Cost::calcByChars($displayProvider, mb_strlen($text), $this->cfg);
+        $usage = $this->withCharCost($usage, $displayProvider, mb_strlen($text));
 
         return new AiResponse(true, $response->audio, $usage);
     }
@@ -318,7 +318,7 @@ final class LaravelAiDriver implements AiDriver
 
         $response      = $pending->generate($provider, $model);
         $usage         = $this->mapUsage($response->usage, $displayProvider, $model);
-        $usage['cost'] = Cost::calc($displayProvider, $usage, $this->cfg);
+        $usage = $this->withCost($usage, $displayProvider);
 
         return new AiResponse(true, $response->text, $usage);
     }
@@ -416,6 +416,39 @@ final class LaravelAiDriver implements AiDriver
         if (is_object($m) && property_exists($m, 'content')) return (string) $m->content;
         if (is_array($m)) return (string) ($m['content'] ?? '');
         return '';
+    }
+
+    /**
+     * Собівартість і знімок ставок, за якими її пораховано, — в одному місці, бо це одна
+     * відповідь на одне питання «скільки коштував цей прогін».
+     *
+     * `cost` рахується з конфіга В МОМЕНТ прогону, тож без збережених ставок рядок,
+     * записаний до зміни тарифів провайдера чи до переходу на іншу модель, заднім числом
+     * уже не пояснити: у конфізі вже інші числа, і невідомо, які діяли тоді. Знімок робить
+     * рядок самодостатнім — і заодно показує, звідки взялися ставки (`prices[<model>]` чи
+     * спільний `price` драйвера).
+     */
+    private function withCost(array $usage, string $provider): array
+    {
+        $usage['cost'] = Cost::calc($provider, $usage, $this->cfg);
+
+        if ($usage['cost'] !== null) {
+            $usage['cost_rates'] = Cost::ratesFor($this->cfg, $usage['model'] ?? null);
+        }
+
+        return $usage;
+    }
+
+    /** Те саме для посимвольної тарифікації (audio/TTS): там немає токенів, лише `per_char`. */
+    private function withCharCost(array $usage, string $provider, int $chars): array
+    {
+        $usage['cost'] = Cost::calcByChars($provider, $chars, $this->cfg, $usage['model'] ?? null);
+
+        if ($usage['cost'] !== null) {
+            $usage['cost_rates'] = Cost::ratesFor($this->cfg, $usage['model'] ?? null);
+        }
+
+        return $usage;
     }
 
     /**

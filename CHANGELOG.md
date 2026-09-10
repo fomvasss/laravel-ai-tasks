@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [3.27.0] — 2026-09-10
+
+### Added
+- Per-model rates: `drivers.<driver>.prices` — a map keyed by model name, checked before the driver-wide `price`. Until now `price` was one set of rates per driver while the model came from `.env`, so pinning a pricier model silently kept costing the old rates and nothing in the data showed it. Keys match both the full model name and the part after `/`, so a gateway-prefixed `anthropic/claude-sonnet-5` matches a `claude-sonnet-5` entry. Models not listed fall back to `price` exactly as before.
+- `ai_runs.cost_rates` (new nullable json column) — the rates a run was actually costed with, plus the model and where they came from (`model:<name>` or `driver`). `cost` is computed from config at run time, so without this a row written before a provider price change or a model switch cannot be explained afterwards. It also makes drift detectable: recompute a period from tokens at today's rates and compare with the stored `cost` — a gap means the config changed (or was wrong).
+- `Cost::ratesFor($driverCfg, $model)` — resolves the rates for a model and returns the snapshot; `Cost::calcByChars()` now takes an optional `$model` and honours per-model rates too.
+
+### Upgrading
+Publish and run the new migration:
+
+```
+php artisan vendor:publish --tag=ai-migrations
+php artisan migrate
+```
+
+Nothing else changes: without `prices` the cost of every run is exactly what it was, and `cost_rates` simply starts filling in from the next run. Existing rows keep `cost_rates = null` — their rates are whatever the config held at the time, which is precisely the ambiguity this column removes going forward.
+
 ## [3.26.2] — 2026-09-10
 
 ### Changed
