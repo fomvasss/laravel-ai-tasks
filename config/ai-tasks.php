@@ -80,6 +80,9 @@ return [
     |               per_char — per 1M input characters, for 'audio' (TTS) modality only —
     |               OpenAI's TTS endpoint returns no usage data, so cost is an approximation
     |               based on input text length; verify the rate against current OpenAI pricing
+    |               per_minute — per minute of audio, for 'transcription' modality: used when set
+    |               and the provider reports the duration; otherwise transcription is costed
+    |               by tokens (gpt-4o-transcribe, Gemini). Usage gets `audio_seconds`.
     | prices      — optional per-model overrides, keyed by model name: ['gpt-5.6-luna' => [...]].
     |               `price` above is a single set of rates per DRIVER, while the model comes from
     |               .env — so switching to a pricier model silently keeps costing the old rates.

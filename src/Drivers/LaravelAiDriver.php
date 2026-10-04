@@ -317,8 +317,16 @@ final class LaravelAiDriver implements AiDriver
         }
 
         $response      = $pending->generate($provider, $model);
-        $usage         = $this->mapUsage($response->usage, $displayProvider, $model);
-        $usage = $this->withCost($usage, $displayProvider);
+        $usage         = $this->mapUsage($response->usage, $displayProvider, $model ?? $response->meta->model);
+        $seconds       = $response->usage->audioSeconds;
+
+        if ($seconds !== null) {
+            $usage['audio_seconds'] = $seconds;
+        }
+
+        $usage = $seconds !== null && isset(Cost::ratesFor($this->cfg, $usage['model'] ?? null)['per_minute'])
+            ? $this->withSecondsCost($usage, $seconds)
+            : $this->withCost($usage, $displayProvider);
 
         return new AiResponse(true, $response->text, $usage);
     }
@@ -435,6 +443,15 @@ final class LaravelAiDriver implements AiDriver
         if ($usage['cost'] !== null) {
             $usage['cost_rates'] = Cost::ratesFor($this->cfg, $usage['model'] ?? null);
         }
+
+        return $usage;
+    }
+
+    /** Те саме для поминутної тарифікації транскрипції (`per_minute`). */
+    private function withSecondsCost(array $usage, float $seconds): array
+    {
+        $usage['cost']       = Cost::calcBySeconds($seconds, $this->cfg, $usage['model'] ?? null);
+        $usage['cost_rates'] = Cost::ratesFor($this->cfg, $usage['model'] ?? null);
 
         return $usage;
     }

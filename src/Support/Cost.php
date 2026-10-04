@@ -21,7 +21,7 @@ class Cost
      * як знімок: без нього рядок, записаний до зміни тарифів провайдера, заднім числом уже
      * не пояснити (числа в конфізі вже інші, і невідомо, які діяли тоді).
      *
-     * @return array{model?: string, source: string, in?: float, out?: float, cache_read?: float, cache_write?: float, per_char?: float}|null
+     * @return array{model?: string, source: string, in?: float, out?: float, cache_read?: float, cache_write?: float, per_char?: float, per_minute?: float}|null
      */
     public static function ratesFor(array $driverCfg, ?string $model = null): ?array
     {
@@ -47,7 +47,7 @@ class Cost
 
         $rates = ['model' => $model, 'source' => $source];
 
-        foreach (['in', 'out', 'cache_read', 'cache_write', 'per_char'] as $key) {
+        foreach (['in', 'out', 'cache_read', 'cache_write', 'per_char', 'per_minute'] as $key) {
             if (isset($price[$key]) && is_numeric($price[$key])) {
                 $rates[$key] = (float) $price[$key];
             }
@@ -92,6 +92,20 @@ class Cost
         }
 
         return round(($chars / 1_000_000) * (float) $rate, 8);
+    }
+
+    /**
+     * Cost for duration-billed transcription (whisper-1, Groq/ElevenLabs/Mistral STT).
+     * Rate is per minute of audio, configured under price.per_minute.
+     */
+    public static function calcBySeconds(float $seconds, array $driverCfg, ?string $model = null): ?float
+    {
+        $rate = self::ratesFor($driverCfg, $model)['per_minute'] ?? null;
+        if ($rate === null) {
+            return null;
+        }
+
+        return round(($seconds / 60) * (float) $rate, 8);
     }
 
     /** @return list<string> */

@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [3.29.0] — 2026-10-04
+
+### Added
+- Transcription cost by audio length: `price.per_minute` (or per model under `prices`) is used when the provider reports the duration — whisper-1, Groq, ElevenLabs, Mistral. Without it, or without a duration, transcription is costed by tokens as before (gpt-4o-transcribe, Gemini).
+- Transcription usage carries `audio_seconds`, and `model` falls back to the model the provider actually used when the payload sets none.
+
 ## [3.28.0] — 2026-10-04
 
 ### Changed
