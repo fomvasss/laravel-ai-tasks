@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [3.30.0] — 2026-10-04
+
+### Added
+- `AiTask::onFailed(\Throwable|string $reason)` — the counterpart of `onCompleted()`, called exactly once when a task ends without a result: every driver failed (for a queued task, after the queue's last retry), the provider rejected the request, a stream broke off midway, or the budget was exceeded. Until now a task had no way to react to a provider outage — `onCompleted()` only runs once a response exists. An exception thrown from it is logged and never replaces the original error.
+- `AiTaskFailedFinally` event — fired together with `onFailed()`; `$run` is `null` when the budget was exceeded before anything started.
+
+### Fixed
+- A queued run no longer fires `AiRunFailed` on every failed attempt (up to four times with the default `tries = 3`), nor flips between `dead` and `running` while it retries: between attempts it stays `running` with the last error recorded, and becomes `dead` — firing `AiRunFailed` once — only when the queue gives up. Listeners that notified on `AiRunFailed` were notified repeatedly about one run, sometimes one that then succeeded.
+
+### Changed
+- `AI::queue()` now uses the whole `routing` chain, not only its first configured driver: when a driver fails transiently (connection error or timeout, 429, 5xx, insufficient credits), the job tries the next one within the same attempt, and `ai_runs.driver` records the driver that answered. Before, a queued task kept retrying the one provider that was down, and the fallback chain only worked for `send()`/`stream()`. If every driver fails, the job retries the chain from the start (`tries`/`backoff`). Jobs already in the queue at deploy time keep working with their single driver.
+- No fallback when the provider rejects the request itself (4xx other than 408/429) — in `send()`, `stream()` and the queue alike: the next provider would get the same request. `send()`/`stream()` throw `AiDriverException` right away, with the original exception as `getPrevious()`. Previously they moved on to the next driver on any error.
+- `stream()` no longer switches to the next driver once output has started — it throws `AiDriverException` instead of starting the answer over after the partial text the caller already received.
+- A payload with its own key (`providerOverride['key']`) is queued with no fallback drivers: the override replaces the provider for every driver, so a "fallback" would hit the same API with the same key.
+
 ## [3.29.0] — 2026-10-04
 
 ### Added
