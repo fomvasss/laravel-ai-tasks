@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [3.27.2] — 2026-10-04
+
+### Fixed
+- OpenRouter runs no longer under-report `tokens_in` and `cost` when the prompt hits the cache. laravel/ai 0.11.1 started subtracting cached and cache-written tokens from OpenRouter's prompt count itself, while the package kept subtracting them a second time — so any 0.11.1+ install was losing the cached part of the prompt from both the token count and the bill. `openrouter` is dropped from the cache-inclusive list; `cache_inclusive_prompt_tokens` in the driver config still overrides it either way.
+
+### Changed
+- Requires `laravel/ai` `^0.11.1` — the version from which OpenRouter's usage is exclusive. On 0.11.0 the fix above would flip into the opposite error (cache billed twice), so the floor moves with it.
+
 ## [3.27.1] — 2026-09-10
 
 ### Fixed

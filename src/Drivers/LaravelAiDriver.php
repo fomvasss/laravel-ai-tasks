@@ -462,8 +462,8 @@ final class LaravelAiDriver implements AiDriver
      * доданки. Семантика tokens_in при цьому різна від драйвера до драйвера, тож зміна
      * провайдера мовчки зсувала б і облік вартості, і будь-яку тарифікацію поверх tokens_in.
      *
-     * Список звірений з laravel/ai v0.11 — у нижчих версіях сюди належав ще й `deepseek`
-     * (виправлений upstream у 0.11.0). Для таких випадків, і на майбутні зміни upstream,
+     * Список звірений з laravel/ai v0.11.1 — у нижчих версіях сюди належали ще `deepseek`
+     * (виправлений upstream у 0.11.0) і `openrouter` (у 0.11.1). Для таких випадків, і на майбутні зміни upstream,
      * поведінка перекривається в конфігу драйвера ключем `cache_inclusive_prompt_tokens`
      * (bool) — без очікування на реліз пакета.
      *
@@ -473,7 +473,6 @@ final class LaravelAiDriver implements AiDriver
      */
     private const CACHE_INCLUSIVE_DRIVERS = [
         'groq',
-        'openrouter',
         'openai-compatible',
         'openai_compatible',
         'openaicompatible',

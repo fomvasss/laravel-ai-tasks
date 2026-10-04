@@ -90,8 +90,7 @@ return [
     | cache_inclusive_prompt_tokens — bool, optional. Whether this driver's gateway reports
     |               prompt tokens INCLUDING cached ones, so they must be subtracted to keep
     |               tokens_in meaning "input tokens billed at full price". Detected automatically
-    |               (groq/openrouter/openai-compatible); set explicitly only to override — e.g.
-    |               true on 'deepseek' when pinned to laravel/ai < 0.11.
+    |               (groq/openai-compatible); set explicitly only to override.
     */
     'drivers' => [
 

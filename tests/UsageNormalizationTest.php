@@ -12,9 +12,9 @@ use PHPUnit\Framework\TestCase;
 /**
  * tokens_in має скрізь означати одне й те саме — НЕкешовані вхідні токени.
  *
- * Частина gateway'їв laravel/ai (groq, openrouter, openai-compatible) віддає
+ * Частина gateway'їв laravel/ai (groq, openai-compatible) віддає
  * Usage::promptTokens включно з кешованими токенами, решта (openai, xai, gemini, azure,
- * deepseek, anthropic, bedrock) — без них. Без нормалізації кеш рахувався б двічі
+ * deepseek, openrouter, anthropic, bedrock) — без них. Без нормалізації кеш рахувався б двічі
  * в Cost::calc() і будь-яка тарифікація поверх tokens_in залежала б від провайдера.
  */
 class UsageNormalizationTest extends TestCase
@@ -30,7 +30,7 @@ class UsageNormalizationTest extends TestCase
 
     public function test_cache_read_is_subtracted_for_inclusive_drivers(): void
     {
-        foreach (['groq', 'openrouter', 'openai-compatible', 'openai_compatible'] as $provider) {
+        foreach (['groq', 'openai-compatible', 'openai_compatible'] as $provider) {
             // 10 000 усього на вході, з них 8 000 прийшло з кешу → повною ціною платимо за 2 000
             $mapped = $this->mapUsage(new Usage(10_000, 500, 0, 8_000), $provider);
 
@@ -43,17 +43,17 @@ class UsageNormalizationTest extends TestCase
     /** У провайдерів з інклюзивним promptTokens там сидить і cache_write — його теж віднімаємо. */
     public function test_cache_write_is_subtracted_too_for_inclusive_drivers(): void
     {
-        $mapped = $this->mapUsage(new Usage(10_000, 500, 1_500, 6_000), 'openrouter');
+        $mapped = $this->mapUsage(new Usage(10_000, 500, 1_500, 6_000), 'groq');
 
         $this->assertSame(2_500, $mapped['tokens_in']);
         $this->assertSame(6_000, $mapped['cache_read_tokens']);
         $this->assertSame(1_500, $mapped['cache_write_tokens']);
     }
 
-    /** deepseek виправлений upstream у laravel/ai 0.11 — тут віднімати вже не можна. */
+    /** deepseek і openrouter виправлені upstream у laravel/ai 0.11.0 і 0.11.1 — тут віднімати вже не можна. */
     public function test_cache_read_is_left_alone_for_exclusive_drivers(): void
     {
-        foreach (['openai', 'anthropic', 'gemini', 'xai', 'bedrock', 'deepseek'] as $provider) {
+        foreach (['openai', 'anthropic', 'gemini', 'xai', 'bedrock', 'deepseek', 'openrouter'] as $provider) {
             $mapped = $this->mapUsage(new Usage(2_000, 500, 0, 8_000), $provider);
 
             $this->assertSame(2_000, $mapped['tokens_in'], "[{$provider}] tokens_in уже без кешу — віднімати нічого не можна");
