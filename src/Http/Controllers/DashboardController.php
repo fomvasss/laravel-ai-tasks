@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Fomvasss\AiTasks\Http\Controllers;
 
 use Fomvasss\AiTasks\Models\AiRun;
+use Fomvasss\AiTasks\Support\DriverHealth;
 use Fomvasss\AiTasks\Support\RunRetrier;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -24,8 +25,9 @@ class DashboardController extends Controller
 
         $stats = $this->stats();
         $filteredStats = $this->filteredStats($request);
+        $driverHealth = $this->driverHealth();
 
-        return view('ai-tasks::index', compact('runs', 'stats', 'filteredStats', 'drivers', 'tenants'));
+        return view('ai-tasks::index', compact('runs', 'stats', 'filteredStats', 'drivers', 'tenants', 'driverHealth'));
     }
 
     public function data(Request $request): JsonResponse
@@ -98,6 +100,42 @@ class DashboardController extends Controller
             // Not scoped to today: a stuck run is stuck until someone deals with it
             'stuck' => AiRun::query()->stuck()->count(),
         ];
+    }
+
+    /**
+     * Стан кожного драйвера: поточний (DriverHealth — збої поспіль, остання помилка, останній
+     * успіх) плюс прогони за 24 год з ai_runs. Драйвери — ті, що мають ключ, і ті, що працювали
+     * за добу (напр. зі своїм ключем тенанта).
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function driverHealth(): array
+    {
+        $since = now()->subDay();
+
+        $runs = AiRun::query()
+            ->where('created_at', '>=', $since)
+            ->groupBy('driver')
+            ->select('driver', \DB::raw("count(*) as total, sum(case when status in ('error','dead') then 1 else 0 end) as errors, avg(case when status = 'ok' then duration_ms end) as avg_ms"))
+            ->toBase()
+            ->get()
+            ->keyBy('driver');
+
+        $configured = array_filter(
+            array_keys((array) config('ai-tasks.drivers', [])),
+            fn (string $d): bool => $d !== 'null' && filled(config("ai.providers.{$d}.key") ?? config("ai.providers.{$d}.access_key_id")),
+        );
+
+        $names = array_values(array_unique([...$configured, ...$runs->keys()->all()]));
+        sort($names);
+
+        return array_map(fn (string $d): array => [
+            'driver' => $d,
+            ...DriverHealth::get($d),
+            'runs_24h' => (int) ($runs[$d]->total ?? 0),
+            'errors_24h' => (int) ($runs[$d]->errors ?? 0),
+            'avg_ms_24h' => isset($runs[$d]->avg_ms) ? (int) round((float) $runs[$d]->avg_ms) : null,
+        ], $names);
     }
 
     private function filteredStats(Request $request): array

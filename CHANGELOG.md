@@ -4,6 +4,83 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [3.31.0] — 2026-10-04
+
+### Added
+- Driver state on the dashboard: one row per driver with its current state (`ok` / `degraded` / `down` / `unknown`), last successful answer, last error, and runs / errors / average duration over 24 hours. Needed since 3.30.0: a queued run that switched to a fallback driver keeps only the driver that answered in `ai_runs`, so a provider outage covered by the fallback was invisible. The state counts consecutive transient failures in the cache (`down` after three); rejected requests (4xx) and runs with a tenant's own key are not counted. With several servers, use a shared cache store.
+
+## [3.30.0] — 2026-10-04
+
+### Added
+- `AiTask::onFailed(\Throwable|string $reason)` — the counterpart of `onCompleted()`, called exactly once when a task ends without a result: every driver failed (for a queued task, after the queue's last retry), the provider rejected the request, a stream broke off midway, or the budget was exceeded. Until now a task had no way to react to a provider outage — `onCompleted()` only runs once a response exists. An exception thrown from it is logged and never replaces the original error.
+- `AiTaskFailedFinally` event — fired together with `onFailed()`; `$run` is `null` when the budget was exceeded before anything started.
+
+### Fixed
+- A queued run no longer fires `AiRunFailed` on every failed attempt (up to four times with the default `tries = 3`), nor flips between `dead` and `running` while it retries: between attempts it stays `running` with the last error recorded, and becomes `dead` — firing `AiRunFailed` once — only when the queue gives up. Listeners that notified on `AiRunFailed` were notified repeatedly about one run, sometimes one that then succeeded.
+
+### Changed
+- `AI::queue()` now uses the whole `routing` chain, not only its first configured driver: when a driver fails transiently (connection error or timeout, 429, 5xx, insufficient credits), the job tries the next one within the same attempt, and `ai_runs.driver` records the driver that answered. Before, a queued task kept retrying the one provider that was down, and the fallback chain only worked for `send()`/`stream()`. If every driver fails, the job retries the chain from the start (`tries`/`backoff`). Jobs already in the queue at deploy time keep working with their single driver.
+- No fallback when the provider rejects the request itself (4xx other than 408/429) — in `send()`, `stream()` and the queue alike: the next provider would get the same request. `send()`/`stream()` throw `AiDriverException` right away, with the original exception as `getPrevious()`. Previously they moved on to the next driver on any error.
+- `stream()` no longer switches to the next driver once output has started — it throws `AiDriverException` instead of starting the answer over after the partial text the caller already received.
+- A payload with its own key (`providerOverride['key']`) is queued with no fallback drivers: the override replaces the provider for every driver, so a "fallback" would hit the same API with the same key.
+
+## [3.29.0] — 2026-10-04
+
+### Added
+- Transcription cost by audio length: `price.per_minute` (or per model under `prices`) is used when the provider reports the duration — whisper-1, Groq, ElevenLabs, Mistral. Without it, or without a duration, transcription is costed by tokens as before (gpt-4o-transcribe, Gemini).
+- Transcription usage carries `audio_seconds`, and `model` falls back to the model the provider actually used when the payload sets none.
+
+## [3.28.0] — 2026-10-04
+
+### Changed
+- Requires `laravel/ai` `^1.0`. Since 1.0 every gateway reports the full input count (cache included) and exposes `uncachedInputTokens()`, so `tokens_in` is taken from it directly — the per-driver list of gateways with "inclusive" prompt tokens is gone, along with the `cache_inclusive_prompt_tokens` driver option (now ignored). `tokens_in` keeps its meaning: input tokens billed at full price.
+- `tokens_out` now includes reasoning tokens for every provider (laravel/ai 1.0 `outputTokens`). Anthropic thinking used to be reported as 0, so runs with extended thinking will show higher `tokens_out` and `cost` — that is the real bill, not a regression.
+- Gemini JSON mode sends `response_format` with `mime_type: application/json` instead of `response_mime_type` — Gemini moved to the Interactions API in laravel/ai 1.0, where the old field is not accepted.
+
+### Fixed
+- Mistral cache hits are now costed at the cache rate: laravel/ai 1.0 reads its `cached_tokens`.
+- Cached tokens are no longer costed as free when the driver's `price` has no `cache_read`/`cache_write` rate — a missing cache rate now falls back to `in`. Found on real runs: OpenAI reports cache writes and Gemini reports implicit cache hits, and a price without those keys silently dropped thousands of input tokens from `cost`. If you relied on the old behaviour, set the cache rate explicitly (`'cache_read' => 0`).
+- Default Gemini price gains `cache_read` (0.15, 0.1x `in`).
+
+### Upgrading
+- Bedrock: `aws/aws-sdk-php` is no longer installed by laravel/ai — `composer require aws/aws-sdk-php`.
+- Gemini raw `provider_options` must use Interactions API names (`thinkingConfig` → `thinking_level`, etc.) — see the [laravel/ai upgrade guide](https://github.com/laravel/ai/blob/1.x/UPGRADE.md).
+- If the app uses `laravel/mcp` directly, it must be `^1.0`.
+
+## [3.27.2] — 2026-10-04
+
+### Fixed
+- OpenRouter runs no longer under-report `tokens_in` and `cost` when the prompt hits the cache. laravel/ai 0.11.1 started subtracting cached and cache-written tokens from OpenRouter's prompt count itself, while the package kept subtracting them a second time — so any 0.11.1+ install was losing the cached part of the prompt from both the token count and the bill. `openrouter` is dropped from the cache-inclusive list; `cache_inclusive_prompt_tokens` in the driver config still overrides it either way.
+
+### Changed
+- Requires `laravel/ai` `^0.11.1` — the version from which OpenRouter's usage is exclusive. On 0.11.0 the fix above would flip into the opposite error (cache billed twice), so the floor moves with it.
+
+## [3.27.1] — 2026-09-10
+
+### Fixed
+- Upgrading to 3.27.0 without publishing and running its migration no longer breaks every run: `cost_rates` is simply left out of the write when the column is not there yet, with one warning in the log telling you what to run. Package migrations are published rather than autoloaded, so there is always a window between `composer update` and `migrate` — and on someone else's project that window can last until they happen to read the changelog. Only the positive answer is cached per process, so runs start recording the column right after `migrate`, without waiting for a worker restart.
+
+### Added
+- `php artisan about` now has an **AI Tasks** section showing the runs table and whether its schema is up to date — the place where a pending migration becomes visible without reading release notes.
+- `AiRun::forgetSchemaCache()` — drops the cached column check, for tests and for long-lived processes (Octane) that were migrated without a reload.
+
+## [3.27.0] — 2026-09-10
+
+### Added
+- Per-model rates: `drivers.<driver>.prices` — a map keyed by model name, checked before the driver-wide `price`. Until now `price` was one set of rates per driver while the model came from `.env`, so pinning a pricier model silently kept costing the old rates and nothing in the data showed it. Keys match both the full model name and the part after `/`, so a gateway-prefixed `anthropic/claude-sonnet-5` matches a `claude-sonnet-5` entry. Models not listed fall back to `price` exactly as before.
+- `ai_runs.cost_rates` (new nullable json column) — the rates a run was actually costed with, plus the model and where they came from (`model:<name>` or `driver`). `cost` is computed from config at run time, so without this a row written before a provider price change or a model switch cannot be explained afterwards. It also makes drift detectable: recompute a period from tokens at today's rates and compare with the stored `cost` — a gap means the config changed (or was wrong).
+- `Cost::ratesFor($driverCfg, $model)` — resolves the rates for a model and returns the snapshot; `Cost::calcByChars()` now takes an optional `$model` and honours per-model rates too.
+
+### Upgrading
+Publish and run the new migration:
+
+```
+php artisan vendor:publish --tag=ai-migrations
+php artisan migrate
+```
+
+Nothing else changes: without `prices` the cost of every run is exactly what it was, and `cost_rates` simply starts filling in from the next run. Existing rows keep `cost_rates = null` — their rates are whatever the config held at the time, which is precisely the ambiguity this column removes going forward.
+
 ## [3.26.2] — 2026-09-10
 
 ### Changed

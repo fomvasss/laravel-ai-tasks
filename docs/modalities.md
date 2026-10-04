@@ -159,7 +159,7 @@ class TranscribeAudioTask extends AiTask
         return [
             'ok'               => $resp->ok,
             'text'             => $resp->content,
-            'duration_seconds' => round(strlen($resp->content) / 100),
+            'duration_seconds' => $resp->usage['audio_seconds'] ?? null, // as reported by the provider
         ];
     }
 }
@@ -169,3 +169,16 @@ $r = AI::send(new TranscribeAudioTask('/path/to/audio.mp3'), drivers: ['openai']
 ```
 
 Supported formats: MP3, MP4, MPEG, MPGA, M4A, OGG, WAV, WEBM
+
+**Cost.** Duration-billed models (whisper-1, Groq/ElevenLabs/Mistral STT) are costed by `price.per_minute` when the provider reports the audio length; set it per model so it doesn't apply to the driver's text model:
+
+```php
+'openai' => [
+    'prices' => [
+        'whisper-1' => ['per_minute' => 0.006],
+    ],
+    // ...
+],
+```
+
+Without `per_minute` (or without a reported duration) transcription is costed by tokens like any text request — which is how gpt-4o-transcribe and Gemini bill it.

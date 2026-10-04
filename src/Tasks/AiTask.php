@@ -134,6 +134,18 @@ abstract class AiTask
     }
 
     /**
+     * Optional hook called exactly once when the task ends without a result: every driver of
+     * the chain failed (for a queued task — on every retry), the provider rejected the request,
+     * a streamed answer broke off midway, or the budget was exceeded. The counterpart of
+     * onCompleted() — exactly one of the two is called for a task that was not skipped by
+     * shouldRun(). Fires together with the AiTaskFailedFinally event.
+     */
+    public function onFailed(\Throwable|string $reason): void
+    {
+        // no-op — override is optional
+    }
+
+    /**
      * Maximum number of automatic retries when isAcceptable() rejects the postprocessed result —
      * a response the provider returned "successfully" (ok=true, no exception) but that is still
      * unusable (e.g. blank/whitespace content from a reasoning model that spent its whole token

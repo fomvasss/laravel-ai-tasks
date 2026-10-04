@@ -10,6 +10,7 @@ use Fomvasss\AiTasks\DTO\AiResponse;
 use Fomvasss\AiTasks\Events\AiTaskCompleted;
 use Fomvasss\AiTasks\Events\AiTaskCompletedHandlerFailed;
 use Fomvasss\AiTasks\Events\AiTaskFailed;
+use Fomvasss\AiTasks\Events\AiTaskFailedFinally;
 use Fomvasss\AiTasks\Events\AiTaskQueued;
 use Fomvasss\AiTasks\Events\AiTaskStarted;
 use Fomvasss\AiTasks\Exceptions\AiDriverException;
@@ -17,6 +18,8 @@ use Fomvasss\AiTasks\Exceptions\BudgetExceededException;
 use Fomvasss\AiTasks\Jobs\ProcessAiPayload;
 use Fomvasss\AiTasks\Models\AiRun;
 use Fomvasss\AiTasks\Support\Budget;
+use Fomvasss\AiTasks\Support\DriverHealth;
+use Fomvasss\AiTasks\Support\Failover;
 use Fomvasss\AiTasks\Support\ModelLister;
 use Fomvasss\AiTasks\Support\QueueDispatch;
 use Fomvasss\AiTasks\Tasks\AiTask;
@@ -74,10 +77,15 @@ class AI
         $payload = self::payloadWithTools($task);
         $ctx     = $task->context();
 
-        app(Budget::class)->ensureNotExceeded($ctx->tenantId);
+        try {
+            app(Budget::class)->ensureNotExceeded($ctx->tenantId);
+        } catch (BudgetExceededException $e) {
+            throw self::failFinally($task, $e);
+        }
 
         $list   = $this->resolveDrivers($task, $drivers);
         $errors = [];
+        $run    = null;
 
         foreach ($list as $driverName) {
             $run = AiRun::start($driverName, $payload, $ctx, $task);
@@ -93,6 +101,10 @@ class AI
             try {
                 $resp = $this->manager->driver($driverName)->send($payload, $ctx);
 
+                if ($resp->ok) {
+                    DriverHealth::recordSuccess($driverName, $payload);
+                }
+
                 if (! $resp->ok) {
                     $run->fail($resp->error ?? 'unknown_error');
                     event(new AiTaskFailed($task, $resp->error ?? 'unknown_error', $run));
@@ -107,11 +119,17 @@ class AI
                 // підрахунків бюджету (issue #7): Budget сумує по cost, не по status.
                 $run->fail($e->getMessage(), $resp->usage);
                 event(new AiTaskFailed($task, $e->getMessage(), $run));
-                throw $e;
+                throw self::failFinally($task, $e, $run);
             } catch (\Throwable $e) {
                 $run->fail($e->getMessage());
                 event(new AiTaskFailed($task, $e->getMessage(), $run));
+                DriverHealth::recordFailure($driverName, $payload, $e);
                 $errors[] = "{$driverName}: {$e->getMessage()}";
+
+                if (! Failover::shouldTryNext($e)) {
+                    throw self::failFinally($task, new AiDriverException('Provider rejected the request: ' . implode(' | ', $errors), 0, $e), $run);
+                }
+
                 continue;
             }
 
@@ -129,7 +147,7 @@ class AI
             return $finalResponse;
         }
 
-        throw new AiDriverException('All providers failed: ' . implode(' | ', $errors));
+        throw self::failFinally($task, new AiDriverException('All providers failed: ' . implode(' | ', $errors)), $run);
     }
 
     public function queue(AiTask $task, array|string $drivers = [], \DateTimeInterface|\DateInterval|int|null $delay = null): string
@@ -145,7 +163,8 @@ class AI
         $payload = self::payloadWithTools($task);
         $ctx     = $task->context();
 
-        $driverName = $this->resolveFirstConfiguredDriver($task, $drivers, $payload);
+        $chain      = $this->resolveConfiguredChain($task, $drivers, $payload);
+        $driverName = $chain[0];
 
         try {
             $run = AiRun::startAsQueue($driverName, $payload, $ctx, $task);
@@ -161,6 +180,7 @@ class AI
             taskClass: $task::class,
             taskCtorArgs: $task->serializeForQueue(),
             timeout: $task->jobTimeout(),
+            fallbackDrivers: array_slice($chain, 1),
         );
 
         QueueDispatch::configure($job, $task, 'request', config('ai-tasks.queues.default'));
@@ -181,10 +201,15 @@ class AI
         $payload = self::payloadWithTools($task);
         $ctx     = $task->context();
 
-        app(Budget::class)->ensureNotExceeded($ctx->tenantId);
+        try {
+            app(Budget::class)->ensureNotExceeded($ctx->tenantId);
+        } catch (BudgetExceededException $e) {
+            throw self::failFinally($task, $e);
+        }
 
         $list   = $this->resolveDrivers($task, $drivers);
         $errors = [];
+        $run    = null;
 
         foreach ($list as $driverName) {
             $run = AiRun::start($driverName, $payload, $ctx, $task);
@@ -197,19 +222,37 @@ class AI
 
             event(new AiTaskStarted($task, $ctx, $run));
 
+            $streamed = false;
+
             try {
-                $resp = $this->manager->driver($driverName)->stream($payload, $ctx, $onChunk);
+                $resp = $this->manager->driver($driverName)->stream($payload, $ctx, function (string $delta) use ($onChunk, &$streamed): void {
+                    $streamed = true;
+                    $onChunk($delta);
+                });
+
+                DriverHealth::recordSuccess($driverName, $payload);
 
                 app(Budget::class)->ensureNotExceeded($ctx->tenantId, (float) ($resp->usage['cost'] ?? 0.0));
             } catch (BudgetExceededException $e) {
                 // див. коментар в send() — статус 'error', cost зберігається для бюджету
                 $run->fail($e->getMessage(), $resp->usage);
                 event(new AiTaskFailed($task, $e->getMessage(), $run));
-                throw $e;
+                throw self::failFinally($task, $e, $run);
             } catch (\Throwable $e) {
                 $run->fail($e->getMessage());
                 event(new AiTaskFailed($task, $e->getMessage(), $run));
+                DriverHealth::recordFailure($driverName, $payload, $e);
                 $errors[] = "{$driverName}: {$e->getMessage()}";
+
+                if (! Failover::shouldTryNext($e)) {
+                    throw self::failFinally($task, new AiDriverException('Provider rejected the request: ' . implode(' | ', $errors), 0, $e), $run);
+                }
+
+                // Частину відповіді клієнт уже отримав — наступний драйвер почав би її з нуля.
+                if ($streamed) {
+                    throw self::failFinally($task, new AiDriverException('Stream failed after output started: ' . implode(' | ', $errors), 0, $e), $run);
+                }
+
                 continue;
             }
 
@@ -226,7 +269,7 @@ class AI
             return $finalResponse;
         }
 
-        throw new AiDriverException('All providers failed: ' . implode(' | ', $errors));
+        throw self::failFinally($task, new AiDriverException('All providers failed: ' . implode(' | ', $errors)), $run);
     }
 
     /**
@@ -256,6 +299,32 @@ class AI
         event(new AiTaskCompleted($task, $finalResponse, $run, $attemptsExhausted));
     }
 
+    /**
+     * The failure counterpart of complete(): calls AiTask::onFailed() (a throwing hook is
+     * logged, never breaks the pipeline) and fires AiTaskFailedFinally — at every point where
+     * a task ends without a result. Returns the reason so a sync caller can `throw` it inline.
+     *
+     * @template T of \Throwable|string
+     * @param T $reason
+     * @return T
+     */
+    public static function failFinally(AiTask $task, \Throwable|string $reason, ?AiRun $run = null): \Throwable|string
+    {
+        try {
+            $task->onFailed($reason);
+        } catch (\Throwable $e) {
+            Log::error('AiTask::onFailed() threw', [
+                'task' => $task->name(),
+                'run_id' => $run?->id,
+                'exception' => $e->getMessage(),
+            ]);
+        }
+
+        event(new AiTaskFailedFinally($task, $reason, $run));
+
+        return $reason;
+    }
+
     private function resolveDrivers(AiTask $task, array|string $drivers): array
     {
         if ($drivers) {
@@ -265,15 +334,23 @@ class AI
         return $this->router->choose($task);
     }
 
-    private function resolveFirstConfiguredDriver(AiTask $task, array|string $drivers, ?AiPayload $payload = null): string
+    /**
+     * Драйвери ланцюжка, які черговий job може пробувати по черзі. Зі своїм ключем у payload
+     * (providerOverride) ланцюжок — лише перший драйвер: override підміняє провайдера для
+     * будь-якого драйвера, тож "запасний" пішов би в той самий збійний API тим самим ключем.
+     *
+     * @return non-empty-list<string>
+     */
+    private function resolveConfiguredChain(AiTask $task, array|string $drivers, ?AiPayload $payload = null): array
     {
         $list = $this->resolveDrivers($task, $drivers);
-        $hasCustomKey = (bool) ($payload?->providerOverride['key'] ?? null);
 
-        foreach ($list as $name) {
-            if ($this->isConfigured($name) || $hasCustomKey) {
-                return $name;
+        if ($payload?->providerOverride['key'] ?? null) {
+            if ($list) {
+                return [$list[0]];
             }
+        } elseif ($chain = array_values(array_filter($list, fn (string $name): bool => $this->isConfigured($name)))) {
+            return $chain;
         }
 
         throw new AiDriverException("No configured driver for task [{$task->name()}]");

@@ -26,9 +26,9 @@ final class JsonModeAgent extends AnonymousAgent implements HasProviderOptions
             return ['text' => ['format' => ['type' => 'json_object']]];
         }
 
-        // Gemini: провайдерОпції потрапляють у generationConfig
+        // Gemini (Interactions API): response_format — поле верхнього рівня запиту
         if ($value === 'gemini') {
-            return ['response_mime_type' => 'application/json'];
+            return ['response_format' => ['type' => 'text', 'mime_type' => 'application/json']];
         }
 
         if (in_array($value, self::RESPONSE_FORMAT_PROVIDERS, true)) {

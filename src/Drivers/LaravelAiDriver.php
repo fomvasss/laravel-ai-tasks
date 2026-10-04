@@ -17,7 +17,7 @@ use Laravel\Ai\Messages\AssistantMessage;
 use Laravel\Ai\Messages\Message;
 use Laravel\Ai\Messages\UserMessage;
 use Laravel\Ai\Responses\AgentResponse;
-use Laravel\Ai\Responses\Data\Usage;
+use Laravel\Ai\Responses\Data\TextUsage;
 use Laravel\Ai\Responses\StructuredAgentResponse;
 use Laravel\Ai\Streaming\Events\TextDelta;
 use Laravel\Ai\Transcription;
@@ -107,7 +107,7 @@ final class LaravelAiDriver implements AiDriver
     private function buildTextResponse(AgentResponse $response, string $displayProvider, ?string $model): AiResponse
     {
         $usage         = $this->mapUsage($response->usage, $displayProvider, $model);
-        $usage['cost'] = Cost::calc($displayProvider, $usage, $this->cfg);
+        $usage = $this->withCost($usage, $displayProvider);
         $structured    = $response instanceof StructuredAgentResponse ? $response->structured : null;
         $finishReason  = $response->steps->last()?->finishReason?->value;
 
@@ -206,7 +206,7 @@ final class LaravelAiDriver implements AiDriver
         $streamable->then(function ($streamed) use (&$text, &$usage, $displayProvider, $model) {
             $text          = $streamed->text ?? '';
             $usage         = $this->mapUsage($streamed->usage, $displayProvider, $model);
-            $usage['cost'] = Cost::calc($displayProvider, $usage, $this->cfg);
+            $usage = $this->withCost($usage, $displayProvider);
         });
 
         foreach ($streamable as $event) {
@@ -234,8 +234,8 @@ final class LaravelAiDriver implements AiDriver
         $response = Embeddings::for([$this->messageToText($input)])
             ->generate($provider, $model);
 
-        $usage         = ['driver' => $displayProvider, 'model' => $model, 'tokens_in' => $response->tokens ?: null];
-        $usage['cost'] = Cost::calc($displayProvider, $usage, $this->cfg);
+        $usage         = ['driver' => $displayProvider, 'model' => $model, 'tokens_in' => $response->usage->inputTokens ?: null];
+        $usage = $this->withCost($usage, $displayProvider);
 
         return new AiResponse(ok: true, content: json_encode($response->first()), usage: $usage);
     }
@@ -263,7 +263,7 @@ final class LaravelAiDriver implements AiDriver
         $response      = $pending->generate($provider, $model);
         $image         = $response->firstImage();
         $usage         = $this->mapUsage($response->usage, $displayProvider, $model);
-        $usage['cost'] = Cost::calc($displayProvider, $usage, $this->cfg);
+        $usage = $this->withCost($usage, $displayProvider);
 
         return new AiResponse(true, $image->image, $usage);
     }
@@ -290,7 +290,7 @@ final class LaravelAiDriver implements AiDriver
         $response = $pending->generate($provider, $model);
 
         $usage         = ['driver' => $displayProvider, 'model' => $model];
-        $usage['cost'] = Cost::calcByChars($displayProvider, mb_strlen($text), $this->cfg);
+        $usage = $this->withCharCost($usage, $displayProvider, mb_strlen($text));
 
         return new AiResponse(true, $response->audio, $usage);
     }
@@ -317,8 +317,16 @@ final class LaravelAiDriver implements AiDriver
         }
 
         $response      = $pending->generate($provider, $model);
-        $usage         = $this->mapUsage($response->usage, $displayProvider, $model);
-        $usage['cost'] = Cost::calc($displayProvider, $usage, $this->cfg);
+        $usage         = $this->mapUsage($response->usage, $displayProvider, $model ?? $response->meta->model);
+        $seconds       = $response->usage->audioSeconds;
+
+        if ($seconds !== null) {
+            $usage['audio_seconds'] = $seconds;
+        }
+
+        $usage = $seconds !== null && isset(Cost::ratesFor($this->cfg, $usage['model'] ?? null)['per_minute'])
+            ? $this->withSecondsCost($usage, $seconds)
+            : $this->withCost($usage, $displayProvider);
 
         return new AiResponse(true, $response->text, $usage);
     }
@@ -419,63 +427,67 @@ final class LaravelAiDriver implements AiDriver
     }
 
     /**
-     * Драйвери, чий gateway у laravel/ai лишає Usage::promptTokens ВКЛЮЧНО з кешованими
-     * вхідними токенами — попри те, що решта gateway'їв нормалізує їх до "без кешу"
-     * (OpenAi/Xai/Gemini/AzureOpenAi/DeepSeek віднімають кеш явно, Anthropic і Bedrock
-     * Converse віддають exclusive нативно, бо таку семантику мають самі API).
+     * Собівартість і знімок ставок, за якими її пораховано, — в одному місці, бо це одна
+     * відповідь на одне питання «скільки коштував цей прогін».
      *
-     * Без нормалізації кешовані токени рахуються ДВІЧІ: повною ціною всередині tokens_in
-     * і ще раз окремо як cache_read/cache_write — Cost::calc() складає їх як незалежні
-     * доданки. Семантика tokens_in при цьому різна від драйвера до драйвера, тож зміна
-     * провайдера мовчки зсувала б і облік вартості, і будь-яку тарифікацію поверх tokens_in.
-     *
-     * Список звірений з laravel/ai v0.11 — у нижчих версіях сюди належав ще й `deepseek`
-     * (виправлений upstream у 0.11.0). Для таких випадків, і на майбутні зміни upstream,
-     * поведінка перекривається в конфігу драйвера ключем `cache_inclusive_prompt_tokens`
-     * (bool) — без очікування на реліз пакета.
-     *
-     * Окремий випадок — `mistral`: його gateway взагалі не читає prompt_tokens_details.
-     * cached_tokens, тож кеш там не видно (cache_read завжди 0) і виправити це тут нічим —
-     * потрібен фікс upstream.
+     * `cost` рахується з конфіга В МОМЕНТ прогону, тож без збережених ставок рядок,
+     * записаний до зміни тарифів провайдера чи до переходу на іншу модель, заднім числом
+     * уже не пояснити: у конфізі вже інші числа, і невідомо, які діяли тоді. Знімок робить
+     * рядок самодостатнім — і заодно показує, звідки взялися ставки (`prices[<model>]` чи
+     * спільний `price` драйвера).
      */
-    private const CACHE_INCLUSIVE_DRIVERS = [
-        'groq',
-        'openrouter',
-        'openai-compatible',
-        'openai_compatible',
-        'openaicompatible',
-    ];
+    private function withCost(array $usage, string $provider): array
+    {
+        $usage['cost'] = Cost::calc($provider, $usage, $this->cfg);
 
-    private function mapUsage(?Usage $usage, string $provider, ?string $model = null): array
+        if ($usage['cost'] !== null) {
+            $usage['cost_rates'] = Cost::ratesFor($this->cfg, $usage['model'] ?? null);
+        }
+
+        return $usage;
+    }
+
+    /** Те саме для поминутної тарифікації транскрипції (`per_minute`). */
+    private function withSecondsCost(array $usage, float $seconds): array
+    {
+        $usage['cost']       = Cost::calcBySeconds($seconds, $this->cfg, $usage['model'] ?? null);
+        $usage['cost_rates'] = Cost::ratesFor($this->cfg, $usage['model'] ?? null);
+
+        return $usage;
+    }
+
+    /** Те саме для посимвольної тарифікації (audio/TTS): там немає токенів, лише `per_char`. */
+    private function withCharCost(array $usage, string $provider, int $chars): array
+    {
+        $usage['cost'] = Cost::calcByChars($provider, $chars, $this->cfg, $usage['model'] ?? null);
+
+        if ($usage['cost'] !== null) {
+            $usage['cost_rates'] = Cost::ratesFor($this->cfg, $usage['model'] ?? null);
+        }
+
+        return $usage;
+    }
+
+    /**
+     * tokens_in — лише вхідні токени, за які платимо повну ціну; кеш іде окремо в
+     * cache_read/cache_write, бо Cost::calc() складає їх як незалежні доданки.
+     * З laravel/ai 1.0 inputTokens повний у всіх gateway'їв, тож некешовану частину дає
+     * сам uncachedInputTokens() — без переліку провайдерів з різною семантикою.
+     * tokens_out — outputTokens, з 1.0 разом із reasoning, що тарифікується як вихід.
+     */
+    private function mapUsage(?TextUsage $usage, string $provider, ?string $model = null): array
     {
         if ($usage === null) {
             return ['driver' => $provider, 'model' => $model];
         }
 
-        $cacheRead  = $usage->cacheReadInputTokens;
-        $cacheWrite = $usage->cacheWriteInputTokens;
-        $tokensIn   = $usage->promptTokens;
-
-        // Єдина семантика для всіх драйверів: tokens_in — лише вхідні токени, за які платимо
-        // повну ціну. Кеш віднімаємо обома боками (read і write) — так само, як це робить
-        // OpenAi-gateway: у провайдерів з інклюзивним promptTokens там сидить і те, і те.
-        if (($cacheRead > 0 || $cacheWrite > 0) && $this->promptTokensIncludeCache($provider)) {
-            $tokensIn = max(0, $tokensIn - $cacheRead - $cacheWrite);
-        }
-
         return [
             'driver'             => $provider,
             'model'              => $model,
-            'tokens_in'          => $tokensIn ?: null,
-            'tokens_out'         => $usage->completionTokens ?: null,
-            'cache_read_tokens'  => $cacheRead ?: null,
-            'cache_write_tokens' => $cacheWrite ?: null,
+            'tokens_in'          => max(0, $usage->uncachedInputTokens()) ?: null,
+            'tokens_out'         => $usage->outputTokens ?: null,
+            'cache_read_tokens'  => $usage->cacheReadInputTokens ?: null,
+            'cache_write_tokens' => $usage->cacheWriteInputTokens ?: null,
         ];
-    }
-
-    private function promptTokensIncludeCache(string $provider): bool
-    {
-        return (bool) ($this->cfg['cache_inclusive_prompt_tokens']
-            ?? in_array(strtolower($provider), self::CACHE_INCLUSIVE_DRIVERS, true));
     }
 }

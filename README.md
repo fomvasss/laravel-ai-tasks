@@ -30,6 +30,12 @@ Configurable via `config/ai-tasks.php`:
 
 > **Security:** the default `middleware => ['web']` leaves the dashboard open to anyone who can reach the URL — including stored prompts and responses, **and the Retry / Dead buttons below**. In production add your auth middleware: `['web', 'auth']`, or e.g. `['web', 'auth', 'role:admin']` with spatie/laravel-permission.
 
+### Driver state
+
+Above the filters, one row per driver (those with an API key, plus any that ran in the last 24 hours): its current state, last successful answer, last error, and runs / errors / average duration over 24 hours.
+
+The state comes from consecutive transient failures — connection errors, timeouts, 429, 5xx — counted in the cache: `degraded` after one, `down` after three, back to `ok` on the next answer. A queued run that switched to a fallback driver records only the driver that answered in `ai_runs`, so this is where the failure of the first one shows up. Rejected requests (4xx) and runs with a tenant's own key (`providerOverride`) do not count: they say nothing about the shared driver. Use a shared cache store (Redis) when several servers process AI tasks, otherwise each server sees only its own failures.
+
 ### Stuck runs
 
 A run counts as **stuck** once it has been `queued` or `running` for longer than `stuck_after_minutes`
@@ -341,6 +347,12 @@ Or on the task instance:
 AI::send((new SummarizeTask($article))->viaDrivers('gemini'));
 ```
 
+The chain is tried in order by `send()`, `stream()` and `queue()` alike; drivers without an API key are skipped. The next driver is tried when the current one fails transiently — connection error or timeout, 429, 5xx, insufficient credits — but not when the provider rejects the request itself (other 4xx: invalid schema, context too long), since the next provider would get the same request. A queued run records the driver that actually answered in `ai_runs.driver`; if the whole chain is down, the job retries the chain from the start (`tries`/`backoff`).
+
+Exceptions:
+- `stream()` does not switch once output has started — the next driver would start the answer over.
+- A payload with its own key (`providerOverride['key']`) uses only the first driver: the override replaces the provider for every driver in the chain.
+
 ## Multi-tenant Budget Tracking
 
 ```php
@@ -397,18 +409,23 @@ Set pricing per driver in `config/ai-tasks.php` (per 1M tokens):
 
 Cost is calculated after each response and stored in `ai_runs.cost`. If `price` is not set, `cost` is `null` but token counts are always saved.
 
-`tokens_in` always counts **only input tokens billed at full price** — cached ones are reported separately as `cache_read_tokens`/`cache_write_tokens` and never included, whichever driver you use. Providers disagree on this (Anthropic and Bedrock Converse exclude cache hits from their input count; OpenAI, Gemini, DeepSeek, Groq and the OpenAI-compatible APIs include them), and so do the gateways in `laravel/ai`, so the difference is normalized here. Override per driver if your `laravel/ai` version behaves differently:
+**Per-model rates.** `price` is one set of rates per driver, while the model itself comes from `.env` — so pinning a pricier model silently keeps costing the old rates. List the exceptions under `prices`, keyed by model name; anything not listed falls back to `price`:
 
 ```php
 'deepseek' => [
-    'model' => 'deepseek-flash',
-    // laravel/ai < 0.11 reported DeepSeek prompt tokens inclusive of cache hits
-    'cache_inclusive_prompt_tokens' => true,
-    'price' => ['in' => 0.22, 'out' => 0.66, 'cache_read' => 0.007],
+    'model'  => env('DEEPSEEK_MODEL', 'deepseek-flash'),
+    'prices' => [
+        'deepseek-reasoner' => ['in' => 0.55, 'out' => 2.19, 'cache_read' => 0.11],
+    ],
+    'price' => ['in' => 0.15, 'out' => 0.60, 'cache_read' => 0.003],
 ],
 ```
 
-> `mistral` is a known gap: `laravel/ai` does not read its `cached_tokens` at all, so cache hits there are costed at the full input price.
+Keys match both the full model name and the part after `/`, so a gateway-prefixed `anthropic/claude-sonnet-5` also matches a `claude-sonnet-5` entry.
+
+**The rates used are stored with the run**, in `ai_runs.cost_rates` (publish and run the migration after upgrading — `php artisan about` shows whether the schema is up to date; until then runs are stored without this field): `{"model": "...", "source": "model:...|driver", "in": ..., "out": ...}`. `cost` is computed from config at run time, so without this snapshot a row written before a provider price change or a model switch cannot be explained afterwards — the config already holds different numbers. It also makes drift detectable: recompute the period from tokens at today's rates and compare with the stored `cost`.
+
+`tokens_in` always counts **only input tokens billed at full price** — cached ones are reported separately as `cache_read_tokens`/`cache_write_tokens` and never included, whichever driver you use. `tokens_out` includes reasoning tokens, which providers bill at the output rate.
 
 Query spend per tenant:
 
@@ -487,7 +504,7 @@ return new AiPayload(
 );
 ```
 
-Backed by `laravel/ai`'s `HasProviderOptions` contract — `StructuredToolChoiceAgent::providerOptions(Lab|string $provider)` returns the array set for the resolved driver, or `[]` if nothing was configured for it. Useful for provider-native knobs the package doesn't wrap explicitly (DeepSeek `thinking`, Anthropic extended-thinking budgets, Gemini `thinkingConfig`, …). Only applies when `schema()` is used (`StructuredToolChoiceAgent`); has no effect with `jsonMode` or plain-text tasks.
+Backed by `laravel/ai`'s `HasProviderOptions` contract — `StructuredToolChoiceAgent::providerOptions(Lab|string $provider)` returns the array set for the resolved driver, or `[]` if nothing was configured for it. Useful for provider-native knobs the package doesn't wrap explicitly (DeepSeek `thinking`, Anthropic extended-thinking budgets, Gemini `thinking_level`, …). Only applies when `schema()` is used (`StructuredToolChoiceAgent`); has no effect with `jsonMode` or plain-text tasks.
 
 ## Response Metadata
 
@@ -781,6 +798,20 @@ An exception thrown from `onCompleted()` is caught and logged, and fires `AiTask
 
 Keep using an `AiTaskCompleted` listener when several independent consumers need to react to the same task's completion without editing the task itself (e.g. one persists a domain record, another writes to analytics). Both can be used together — the package calls `onCompleted()` and fires the event at the same moment.
 
+### The `onFailed()` Hook
+
+The counterpart of `onCompleted()`: called exactly once when the task ends **without** a result — every driver of the chain failed (for a queued task, on every retry), the provider rejected the request, a streamed answer broke off midway, or the budget was exceeded. For a task not skipped by `shouldRun()`, exactly one of the two hooks is called.
+
+```php
+public function onFailed(\Throwable|string $reason): void
+{
+    // e.g. hand the conversation over to a human
+    $this->chat->assignToManager();
+}
+```
+
+For a queued task it runs once the queue gives up — not on intermediate attempts, which may still succeed. Like `onCompleted()`, an exception thrown from it is logged and never replaces the original error. Listen to `AiTaskFailedFinally` for the same moment from outside the task (`$event->run` is `null` when nothing was started — the budget was already exceeded).
+
 ## Laravel Octane
 
 No configuration needed. The package handles Octane automatically:
@@ -838,10 +869,11 @@ $fake->assertNothingSent();
 | `AiTaskQueued` | Task dispatched to queue |
 | `AiTaskStarted` | API call begins |
 | `AiTaskCompleted` | Postprocess done, response ready |
-| `AiTaskFailed` | All drivers failed |
+| `AiTaskFailed` | One driver's attempt failed (the chain may still succeed) |
+| `AiTaskFailedFinally` | The task ended without a result — alongside `AiTask::onFailed()` |
 | `AiTaskCompletedHandlerFailed` | `AiTask::onCompleted()` threw |
 | `AiRunFinished` | Low-level: single driver call succeeded |
-| `AiRunFailed` | Low-level: single driver call failed |
+| `AiRunFailed` | Low-level: a run failed (a queued run — once, after its retries are exhausted) |
 
 ```php
 Event::listen(AiTaskCompleted::class, function (AiTaskCompleted $event) {
@@ -953,7 +985,7 @@ The following providers are pre-configured in `config/ai-tasks.php` (just add th
 | Ollama (local) | `ollama` | ✅ |
 | OpenRouter | `openrouter` | ✅ |
 | VoyageAI | `voyageai` | add manually |
-| AWS Bedrock | `bedrock` | add manually |
+| AWS Bedrock | `bedrock` | add manually, plus `composer require aws/aws-sdk-php` |
 | Perplexity | `perplexity` | add manually |
 | ElevenLabs | `eleven` | ✅ (audio/tts) |
 | any laravel/ai provider | — | add manually |

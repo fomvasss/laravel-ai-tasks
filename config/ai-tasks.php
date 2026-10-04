@@ -75,16 +75,21 @@ return [
     | image_model — model for 'image' modality
     | audio_model — model for 'audio' (TTS) modality
     | price       — per 1M tokens in USD; null = cost not tracked
-    |               anthropic supports: in, out, cache_write, cache_read
+    |               keys: in, out, cache_read, cache_write; a missing cache rate falls back
+    |               to `in`, so cached tokens are never costed as free
     |               per_char — per 1M input characters, for 'audio' (TTS) modality only —
     |               OpenAI's TTS endpoint returns no usage data, so cost is an approximation
     |               based on input text length; verify the rate against current OpenAI pricing
-    |
-    | cache_inclusive_prompt_tokens — bool, optional. Whether this driver's gateway reports
-    |               prompt tokens INCLUDING cached ones, so they must be subtracted to keep
-    |               tokens_in meaning "input tokens billed at full price". Detected automatically
-    |               (groq/openrouter/openai-compatible); set explicitly only to override — e.g.
-    |               true on 'deepseek' when pinned to laravel/ai < 0.11.
+    |               per_minute — per minute of audio, for 'transcription' modality: used when set
+    |               and the provider reports the duration; otherwise transcription is costed
+    |               by tokens (gpt-4o-transcribe, Gemini). Usage gets `audio_seconds`.
+    | prices      — optional per-model overrides, keyed by model name: ['gpt-5.6-luna' => [...]].
+    |               `price` above is a single set of rates per DRIVER, while the model comes from
+    |               .env — so switching to a pricier model silently keeps costing the old rates.
+    |               A model listed here wins; anything not listed falls back to `price`. Keys are
+    |               matched by the full name and by the part after '/', so a gateway-prefixed
+    |               'anthropic/claude-sonnet-5' also matches a 'claude-sonnet-5' entry.
+    |               The rates actually used are stored per run in ai_runs.cost_rates.
     */
     'drivers' => [
 
@@ -125,8 +130,9 @@ return [
             'model'       => env('GEMINI_MODEL', 'gemini-3.6-flash'),
             'embed_model' => env('GEMINI_EMBED_MODEL', 'gemini-embedding-001'),
             'price' => [
-                'in'  => 1.50,
-                'out' => 7.50,
+                'in'         => 1.50,
+                'out'        => 7.50,
+                'cache_read' => 0.15, // implicit cache hit, 0.1x in
             ],
         ],
 
@@ -136,6 +142,12 @@ return [
         // DeepSeek does not charge separately for filling the cache.
         'deepseek' => [
             'model' => env('DEEPSEEK_MODEL', 'deepseek-flash'),
+            // Per-model rates take priority over 'price' below — fill this in when you pin a
+            // model whose rates differ from the default one, so cost does not stay silently
+            // wrong after the DEEPSEEK_MODEL switch.
+            // 'prices' => [
+            //     'deepseek-reasoner' => ['in' => 0.55, 'out' => 2.19, 'cache_read' => 0.11],
+            // ],
             'price' => [
                 'in'         => 0.15,  // cache miss
                 'out'        => 0.60,
