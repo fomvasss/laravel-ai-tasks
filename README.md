@@ -30,6 +30,12 @@ Configurable via `config/ai-tasks.php`:
 
 > **Security:** the default `middleware => ['web']` leaves the dashboard open to anyone who can reach the URL — including stored prompts and responses, **and the Retry / Dead buttons below**. In production add your auth middleware: `['web', 'auth']`, or e.g. `['web', 'auth', 'role:admin']` with spatie/laravel-permission.
 
+### Driver state
+
+Above the filters, one row per driver (those with an API key, plus any that ran in the last 24 hours): its current state, last successful answer, last error, and runs / errors / average duration over 24 hours.
+
+The state comes from consecutive transient failures — connection errors, timeouts, 429, 5xx — counted in the cache: `degraded` after one, `down` after three, back to `ok` on the next answer. A queued run that switched to a fallback driver records only the driver that answered in `ai_runs`, so this is where the failure of the first one shows up. Rejected requests (4xx) and runs with a tenant's own key (`providerOverride`) do not count: they say nothing about the shared driver. Use a shared cache store (Redis) when several servers process AI tasks, otherwise each server sees only its own failures.
+
 ### Stuck runs
 
 A run counts as **stuck** once it has been `queued` or `running` for longer than `stuck_after_minutes`

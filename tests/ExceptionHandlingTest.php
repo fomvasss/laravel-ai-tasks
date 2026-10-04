@@ -362,6 +362,10 @@ class ExceptionHandlingTest extends TestCase
         $run->refresh();
         $this->assertSame('ok', $run->status);
         $this->assertSame('driverB', $run->driver, 'ai_runs.driver — той, що відповів');
+
+        // У ai_runs збою driverA вже не видно — його показує DriverHealth
+        $this->assertSame('degraded', \Fomvasss\AiTasks\Support\DriverHealth::get('driverA')['status']);
+        $this->assertSame('ok', \Fomvasss\AiTasks\Support\DriverHealth::get('driverB')['status']);
     }
 
     public function test_queued_job_does_not_fall_back_when_request_is_rejected(): void

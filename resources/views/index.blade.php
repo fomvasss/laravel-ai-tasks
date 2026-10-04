@@ -20,6 +20,57 @@
     @endforeach
 </div>
 
+{{-- Drivers --}}
+@if($driverHealth)
+<div class="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 mb-6 overflow-x-auto">
+    <table class="w-full text-sm">
+        <thead>
+            <tr class="text-left text-xs text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">
+                <th class="px-4 py-2 font-medium">Driver</th>
+                <th class="px-4 py-2 font-medium">State</th>
+                <th class="px-4 py-2 font-medium">Last OK</th>
+                <th class="px-4 py-2 font-medium">Last error</th>
+                <th class="px-4 py-2 font-medium text-right">Runs 24h</th>
+                <th class="px-4 py-2 font-medium text-right">Errors 24h</th>
+                <th class="px-4 py-2 font-medium text-right">Avg ms 24h</th>
+            </tr>
+        </thead>
+        <tbody>
+        @foreach($driverHealth as $h)
+            @php
+                $badge = [
+                    'ok' => 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
+                    'degraded' => 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
+                    'down' => 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
+                    'unknown' => 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
+                ][$h['status']];
+            @endphp
+            <tr class="border-b border-gray-100 dark:border-gray-800 last:border-0">
+                <td class="px-4 py-2 font-mono text-gray-800 dark:text-gray-200">{{ $h['driver'] }}</td>
+                <td class="px-4 py-2">
+                    <span class="px-2 py-0.5 rounded text-xs {{ $badge }}">{{ $h['status'] }}</span>
+                    @if($h['failures'] > 0)
+                        <span class="text-xs text-gray-500 dark:text-gray-400">{{ $h['failures'] }} in a row</span>
+                    @endif
+                </td>
+                <td class="px-4 py-2 text-gray-600 dark:text-gray-400">{{ $h['last_ok_at'] ? \Illuminate\Support\Carbon::parse($h['last_ok_at'])->diffForHumans() : '—' }}</td>
+                <td class="px-4 py-2 text-gray-600 dark:text-gray-400 max-w-md">
+                    @if($h['last_error_at'])
+                        <span title="{{ $h['last_error'] }}">{{ \Illuminate\Support\Carbon::parse($h['last_error_at'])->diffForHumans() }}: {{ \Illuminate\Support\Str::limit($h['last_error'], 80) }}</span>
+                    @else
+                        —
+                    @endif
+                </td>
+                <td class="px-4 py-2 text-right">{{ $h['runs_24h'] }}</td>
+                <td class="px-4 py-2 text-right {{ $h['errors_24h'] > 0 ? 'text-red-600' : '' }}">{{ $h['errors_24h'] }}</td>
+                <td class="px-4 py-2 text-right">{{ $h['avg_ms_24h'] ?? '—' }}</td>
+            </tr>
+        @endforeach
+        </tbody>
+    </table>
+</div>
+@endif
+
 {{-- Filters --}}
 <form method="GET" class="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 px-4 py-3 mb-4 flex flex-wrap gap-3 items-end">
     @php

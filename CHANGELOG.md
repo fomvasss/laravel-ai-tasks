@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [3.31.0] — 2026-10-04
+
+### Added
+- Driver state on the dashboard: one row per driver with its current state (`ok` / `degraded` / `down` / `unknown`), last successful answer, last error, and runs / errors / average duration over 24 hours. Needed since 3.30.0: a queued run that switched to a fallback driver keeps only the driver that answered in `ai_runs`, so a provider outage covered by the fallback was invisible. The state counts consecutive transient failures in the cache (`down` after three); rejected requests (4xx) and runs with a tenant's own key are not counted. With several servers, use a shared cache store.
+
 ## [3.30.0] — 2026-10-04
 
 ### Added

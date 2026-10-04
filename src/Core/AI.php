@@ -18,6 +18,7 @@ use Fomvasss\AiTasks\Exceptions\BudgetExceededException;
 use Fomvasss\AiTasks\Jobs\ProcessAiPayload;
 use Fomvasss\AiTasks\Models\AiRun;
 use Fomvasss\AiTasks\Support\Budget;
+use Fomvasss\AiTasks\Support\DriverHealth;
 use Fomvasss\AiTasks\Support\Failover;
 use Fomvasss\AiTasks\Support\ModelLister;
 use Fomvasss\AiTasks\Support\QueueDispatch;
@@ -100,6 +101,10 @@ class AI
             try {
                 $resp = $this->manager->driver($driverName)->send($payload, $ctx);
 
+                if ($resp->ok) {
+                    DriverHealth::recordSuccess($driverName, $payload);
+                }
+
                 if (! $resp->ok) {
                     $run->fail($resp->error ?? 'unknown_error');
                     event(new AiTaskFailed($task, $resp->error ?? 'unknown_error', $run));
@@ -118,6 +123,7 @@ class AI
             } catch (\Throwable $e) {
                 $run->fail($e->getMessage());
                 event(new AiTaskFailed($task, $e->getMessage(), $run));
+                DriverHealth::recordFailure($driverName, $payload, $e);
                 $errors[] = "{$driverName}: {$e->getMessage()}";
 
                 if (! Failover::shouldTryNext($e)) {
@@ -224,6 +230,8 @@ class AI
                     $onChunk($delta);
                 });
 
+                DriverHealth::recordSuccess($driverName, $payload);
+
                 app(Budget::class)->ensureNotExceeded($ctx->tenantId, (float) ($resp->usage['cost'] ?? 0.0));
             } catch (BudgetExceededException $e) {
                 // див. коментар в send() — статус 'error', cost зберігається для бюджету
@@ -233,6 +241,7 @@ class AI
             } catch (\Throwable $e) {
                 $run->fail($e->getMessage());
                 event(new AiTaskFailed($task, $e->getMessage(), $run));
+                DriverHealth::recordFailure($driverName, $payload, $e);
                 $errors[] = "{$driverName}: {$e->getMessage()}";
 
                 if (! Failover::shouldTryNext($e)) {

@@ -14,6 +14,7 @@ use Fomvasss\AiTasks\Events\AiTaskStarted;
 use Fomvasss\AiTasks\Exceptions\BudgetExceededException;
 use Fomvasss\AiTasks\Models\AiRun;
 use Fomvasss\AiTasks\Support\Budget;
+use Fomvasss\AiTasks\Support\DriverHealth;
 use Fomvasss\AiTasks\Support\Failover;
 use Fomvasss\AiTasks\Support\QueueDispatch;
 use Fomvasss\AiTasks\Tasks\AiTask;
@@ -136,6 +137,8 @@ class ProcessAiPayload implements ShouldQueue
             try {
                 $resp = $manager->driver($driverName)->send($this->payload, $this->context);
             } catch (\Throwable $e) {
+                DriverHealth::recordFailure($driverName, $this->payload, $e);
+
                 if ($i === $last || ! Failover::shouldTryNext($e)) {
                     throw $e;
                 }
@@ -151,6 +154,8 @@ class ProcessAiPayload implements ShouldQueue
             }
 
             if ($resp->ok) {
+                DriverHealth::recordSuccess($driverName, $this->payload);
+
                 return $resp;
             }
         }
