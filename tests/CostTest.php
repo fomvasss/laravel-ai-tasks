@@ -39,6 +39,19 @@ class CostTest extends TestCase
         $this->assertEquals(4.05, round((float) $cost, 2));
     }
 
+    public function test_cache_without_own_rate_falls_back_to_input_rate(): void
+    {
+        $usage = [
+            'tokens_in'          => 0,
+            'tokens_out'         => 0,
+            'cache_write_tokens' => 1_000_000,
+            'cache_read_tokens'  => 1_000_000,
+        ];
+        $cost = Cost::calc('openai', $usage, ['price' => ['in' => 1.0, 'out' => 6.0]]);
+
+        $this->assertEquals(2.0, round((float) $cost, 2));
+    }
+
     public function test_returns_null_when_no_price_config(): void
     {
         $cost = Cost::calc('ollama', ['tokens_in' => 100, 'tokens_out' => 50], []);

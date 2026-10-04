@@ -70,10 +70,12 @@ class Cost
 
         $perM = fn(float $rate, int $tokens): float => ($tokens / 1_000_000) * $rate;
 
+        // Без окремої ставки кеш рахується за ставкою `in`: краще переоцінити, ніж записати
+        // кешований вхід безкоштовним — з laravel/ai 1.0 кеш звітують майже всі провайдери.
         $cost = $perM((float) ($price['in']  ?? 0.0), $in)
               + $perM((float) ($price['out'] ?? 0.0), $out)
-              + $perM((float) ($price['cache_read']  ?? 0.0), $cacheRead)
-              + $perM((float) ($price['cache_write'] ?? 0.0), $cacheWrite);
+              + $perM((float) ($price['cache_read']  ?? $price['in'] ?? 0.0), $cacheRead)
+              + $perM((float) ($price['cache_write'] ?? $price['in'] ?? 0.0), $cacheWrite);
 
         return round($cost, 8);
     }

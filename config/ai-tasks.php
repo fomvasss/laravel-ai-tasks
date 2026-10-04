@@ -75,7 +75,8 @@ return [
     | image_model — model for 'image' modality
     | audio_model — model for 'audio' (TTS) modality
     | price       — per 1M tokens in USD; null = cost not tracked
-    |               anthropic supports: in, out, cache_write, cache_read
+    |               keys: in, out, cache_read, cache_write; a missing cache rate falls back
+    |               to `in`, so cached tokens are never costed as free
     |               per_char — per 1M input characters, for 'audio' (TTS) modality only —
     |               OpenAI's TTS endpoint returns no usage data, so cost is an approximation
     |               based on input text length; verify the rate against current OpenAI pricing
@@ -86,11 +87,6 @@ return [
     |               matched by the full name and by the part after '/', so a gateway-prefixed
     |               'anthropic/claude-sonnet-5' also matches a 'claude-sonnet-5' entry.
     |               The rates actually used are stored per run in ai_runs.cost_rates.
-    |
-    | cache_inclusive_prompt_tokens — bool, optional. Whether this driver's gateway reports
-    |               prompt tokens INCLUDING cached ones, so they must be subtracted to keep
-    |               tokens_in meaning "input tokens billed at full price". Detected automatically
-    |               (groq/openai-compatible); set explicitly only to override.
     */
     'drivers' => [
 
@@ -131,8 +127,9 @@ return [
             'model'       => env('GEMINI_MODEL', 'gemini-3.6-flash'),
             'embed_model' => env('GEMINI_EMBED_MODEL', 'gemini-embedding-001'),
             'price' => [
-                'in'  => 1.50,
-                'out' => 7.50,
+                'in'         => 1.50,
+                'out'        => 7.50,
+                'cache_read' => 0.15, // implicit cache hit, 0.1x in
             ],
         ],
 

@@ -23,7 +23,7 @@ use Laravel\Ai\Approvals\PendingApproval;
 use Laravel\Ai\Messages\UserMessage;
 use Laravel\Ai\Responses\AgentResponse;
 use Laravel\Ai\Responses\Data\Meta;
-use Laravel\Ai\Responses\Data\Usage;
+use Laravel\Ai\Responses\Data\TextUsage;
 use Orchestra\Testbench\TestCase;
 
 class DecisionsTest extends TestCase
@@ -118,7 +118,7 @@ class DecisionsTest extends TestCase
     public function test_build_text_response_defaults_pending_approvals_to_empty(): void
     {
         $driver     = new LaravelAiDriver('openai', ['model' => 'gpt-4o-mini']);
-        $response   = new AgentResponse('inv_1', 'ok', new Usage, new Meta);
+        $response   = new AgentResponse('inv_1', 'ok', new TextUsage, new Meta);
         $aiResponse = $this->callBuildTextResponse($driver, $response);
 
         $this->assertSame([], $aiResponse->pendingApprovals);

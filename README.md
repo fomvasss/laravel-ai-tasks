@@ -413,18 +413,7 @@ Keys match both the full model name and the part after `/`, so a gateway-prefixe
 
 **The rates used are stored with the run**, in `ai_runs.cost_rates` (publish and run the migration after upgrading — `php artisan about` shows whether the schema is up to date; until then runs are stored without this field): `{"model": "...", "source": "model:...|driver", "in": ..., "out": ...}`. `cost` is computed from config at run time, so without this snapshot a row written before a provider price change or a model switch cannot be explained afterwards — the config already holds different numbers. It also makes drift detectable: recompute the period from tokens at today's rates and compare with the stored `cost`.
 
-`tokens_in` always counts **only input tokens billed at full price** — cached ones are reported separately as `cache_read_tokens`/`cache_write_tokens` and never included, whichever driver you use. Providers disagree on this (Anthropic and Bedrock Converse exclude cache hits from their input count; OpenAI, Gemini, DeepSeek, Groq and the OpenAI-compatible APIs include them), and so do the gateways in `laravel/ai`, so the difference is normalized here. Override per driver if your `laravel/ai` version behaves differently:
-
-```php
-'deepseek' => [
-    'model' => 'deepseek-flash',
-    // laravel/ai < 0.11 reported DeepSeek prompt tokens inclusive of cache hits
-    'cache_inclusive_prompt_tokens' => true,
-    'price' => ['in' => 0.22, 'out' => 0.66, 'cache_read' => 0.007],
-],
-```
-
-> `mistral` is a known gap: `laravel/ai` does not read its `cached_tokens` at all, so cache hits there are costed at the full input price.
+`tokens_in` always counts **only input tokens billed at full price** — cached ones are reported separately as `cache_read_tokens`/`cache_write_tokens` and never included, whichever driver you use. `tokens_out` includes reasoning tokens, which providers bill at the output rate.
 
 Query spend per tenant:
 
@@ -503,7 +492,7 @@ return new AiPayload(
 );
 ```
 
-Backed by `laravel/ai`'s `HasProviderOptions` contract — `StructuredToolChoiceAgent::providerOptions(Lab|string $provider)` returns the array set for the resolved driver, or `[]` if nothing was configured for it. Useful for provider-native knobs the package doesn't wrap explicitly (DeepSeek `thinking`, Anthropic extended-thinking budgets, Gemini `thinkingConfig`, …). Only applies when `schema()` is used (`StructuredToolChoiceAgent`); has no effect with `jsonMode` or plain-text tasks.
+Backed by `laravel/ai`'s `HasProviderOptions` contract — `StructuredToolChoiceAgent::providerOptions(Lab|string $provider)` returns the array set for the resolved driver, or `[]` if nothing was configured for it. Useful for provider-native knobs the package doesn't wrap explicitly (DeepSeek `thinking`, Anthropic extended-thinking budgets, Gemini `thinking_level`, …). Only applies when `schema()` is used (`StructuredToolChoiceAgent`); has no effect with `jsonMode` or plain-text tasks.
 
 ## Response Metadata
 
@@ -969,7 +958,7 @@ The following providers are pre-configured in `config/ai-tasks.php` (just add th
 | Ollama (local) | `ollama` | ✅ |
 | OpenRouter | `openrouter` | ✅ |
 | VoyageAI | `voyageai` | add manually |
-| AWS Bedrock | `bedrock` | add manually |
+| AWS Bedrock | `bedrock` | add manually, plus `composer require aws/aws-sdk-php` |
 | Perplexity | `perplexity` | add manually |
 | ElevenLabs | `eleven` | ✅ (audio/tts) |
 | any laravel/ai provider | — | add manually |

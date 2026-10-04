@@ -371,18 +371,7 @@ protected function subjectId(): ?string { return $this->order->id; }
 
 **Ставки, за якими пораховано вартість, зберігаються з прогоном** — `ai_runs.cost_rates` (після оновлення пакета опублікуйте й прогоніть міграцію; `php artisan about` показує, чи схема актуальна — доти прогони пишуться без цього поля): `{"model": "...", "source": "model:...|driver", "in": ..., "out": ...}`. `cost` рахується з конфіга в момент прогону, тож без цього знімка рядок, записаний до зміни тарифів провайдера чи до переходу на іншу модель, заднім числом уже не пояснити — у конфізі вже інші числа. Побічно це дає й детектор розходження: перерахуйте період з токенів за поточними ставками й порівняйте зі збереженим `cost`.
 
-`tokens_in` завжди означає **лише вхідні токени за повною ціною** — кешовані йдуть окремо в `cache_read_tokens`/`cache_write_tokens` і ніколи не входять сюди, незалежно від драйвера. Провайдери в цьому розходяться (Anthropic і Bedrock Converse не включають кеш у свій лічильник вхідних, а OpenAI, Gemini, DeepSeek, Groq і OpenAI-сумісні API — включають), як і gateway'ї в `laravel/ai`, тому різниця нормалізується тут. Перекрити для конкретного драйвера, якщо ваша версія `laravel/ai` поводиться інакше:
-
-```php
-'deepseek' => [
-    'model' => 'deepseek-flash',
-    // laravel/ai < 0.11 віддавав prompt-токени DeepSeek разом з кешованими
-    'cache_inclusive_prompt_tokens' => true,
-    'price' => ['in' => 0.22, 'out' => 0.66, 'cache_read' => 0.007],
-],
-```
-
-> `mistral` — відома прогалина: `laravel/ai` взагалі не читає його `cached_tokens`, тож кеш там рахується за повною ціною вхідних токенів.
+`tokens_in` завжди означає **лише вхідні токени за повною ціною** — кешовані йдуть окремо в `cache_read_tokens`/`cache_write_tokens` і ніколи не входять сюди, незалежно від драйвера. `tokens_out` включає reasoning-токени — провайдери тарифікують їх як вихідні.
 
 Аналітика витрат по тенанту через SQL:
 
@@ -461,7 +450,7 @@ return new AiPayload(
 );
 ```
 
-Реалізовано через контракт `HasProviderOptions` пакету `laravel/ai` — `StructuredToolChoiceAgent::providerOptions(Lab|string $provider)` повертає масив, заданий для резолвленого драйвера, або `[]`, якщо для нього нічого не налаштовано. Корисно для нативних параметрів провайдера, які пакет не обгортає явно (DeepSeek `thinking`, Anthropic extended-thinking бюджети, Gemini `thinkingConfig` тощо). Працює лише коли використовується `schema()` (`StructuredToolChoiceAgent`); на `jsonMode` чи звичайні text-задачі не впливає.
+Реалізовано через контракт `HasProviderOptions` пакету `laravel/ai` — `StructuredToolChoiceAgent::providerOptions(Lab|string $provider)` повертає масив, заданий для резолвленого драйвера, або `[]`, якщо для нього нічого не налаштовано. Корисно для нативних параметрів провайдера, які пакет не обгортає явно (DeepSeek `thinking`, Anthropic extended-thinking бюджети, Gemini `thinking_level` тощо). Працює лише коли використовується `schema()` (`StructuredToolChoiceAgent`); на `jsonMode` чи звичайні text-задачі не впливає.
 
 ## Метадані відповіді
 
@@ -968,7 +957,7 @@ $run->markWaiting(['provider_run_id' => $providerJobId]);
 | Ollama (локально) | `ollama` | ✅ |
 | OpenRouter | `openrouter` | ✅ |
 | VoyageAI | `voyageai` | додати вручну |
-| AWS Bedrock | `bedrock` | додати вручну |
+| AWS Bedrock | `bedrock` | додати вручну, плюс `composer require aws/aws-sdk-php` |
 | Perplexity | `perplexity` | додати вручну |
 | ElevenLabs | `eleven` | ✅ (audio/tts) |
 | будь-який laravel/ai провайдер | — | додати вручну |

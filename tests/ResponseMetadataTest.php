@@ -17,7 +17,7 @@ use Laravel\Ai\Responses\Data\FinishReason;
 use Laravel\Ai\Responses\Data\Meta;
 use Laravel\Ai\Responses\Data\Step;
 use Laravel\Ai\Responses\Data\ToolCall;
-use Laravel\Ai\Responses\Data\Usage;
+use Laravel\Ai\Responses\Data\TextUsage;
 use Laravel\Ai\Responses\StructuredAgentResponse;
 use Orchestra\Testbench\TestCase;
 
@@ -72,12 +72,12 @@ class ResponseMetadataTest extends TestCase
 
     public function test_build_text_response_maps_finish_reason_from_last_step(): void
     {
-        $usage = new Usage(10, 5);
+        $usage = new TextUsage(10, 5);
         $meta  = new Meta('openai', 'gpt-4o-mini');
 
         $steps = new Collection([
-            new Step('partial', [], [], FinishReason::ToolCalls, $usage, $meta),
-            new Step('final', [], [], FinishReason::Length, $usage, $meta),
+            new Step('partial', [], [], FinishReason::ToolCalls, $usage, $meta, '', []),
+            new Step('final', [], [], FinishReason::Length, $usage, $meta, '', []),
         ]);
 
         $response = (new AgentResponse('inv-1', 'final', $usage, $meta))->withSteps($steps);
@@ -89,7 +89,7 @@ class ResponseMetadataTest extends TestCase
 
     public function test_build_text_response_defaults_finish_reason_to_null_without_steps(): void
     {
-        $usage    = new Usage(10, 5);
+        $usage    = new TextUsage(10, 5);
         $meta     = new Meta('openai', 'gpt-4o-mini');
         $response = new AgentResponse('inv-1', 'final', $usage, $meta);
 
@@ -100,7 +100,7 @@ class ResponseMetadataTest extends TestCase
 
     public function test_build_text_response_maps_tool_calls(): void
     {
-        $usage    = new Usage(10, 5);
+        $usage    = new TextUsage(10, 5);
         $meta     = new Meta('openai', 'gpt-4o-mini');
         $toolCall = new ToolCall('call-1', 'search', ['q' => 'laravel']);
 
@@ -114,7 +114,7 @@ class ResponseMetadataTest extends TestCase
 
     public function test_build_text_response_defaults_tool_calls_to_empty(): void
     {
-        $usage    = new Usage(10, 5);
+        $usage    = new TextUsage(10, 5);
         $meta     = new Meta('openai', 'gpt-4o-mini');
         $response = new AgentResponse('inv-1', 'final', $usage, $meta);
 
@@ -125,7 +125,7 @@ class ResponseMetadataTest extends TestCase
 
     public function test_build_text_response_reads_structured_only_from_structured_agent_response(): void
     {
-        $usage = new Usage(10, 5);
+        $usage = new TextUsage(10, 5);
         $meta  = new Meta('openai', 'gpt-4o-mini');
 
         $plain = new AgentResponse('inv-1', 'final', $usage, $meta);

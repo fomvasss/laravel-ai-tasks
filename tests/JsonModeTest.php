@@ -86,7 +86,7 @@ class JsonModeTest extends TestCase
         $this->assertSame(['text' => ['format' => ['type' => 'json_object']]], $options);
     }
 
-    // Gemini — response_mime_type у generationConfig
+    // Gemini — response_format з mime_type (Interactions API)
 
     public function test_json_mode_agent_returns_mime_type_for_gemini(): void
     {
@@ -94,7 +94,7 @@ class JsonModeTest extends TestCase
 
         $options = $agent->providerOptions(Lab::Gemini);
 
-        $this->assertSame(['response_mime_type' => 'application/json'], $options);
+        $this->assertSame(['response_format' => ['type' => 'text', 'mime_type' => 'application/json']], $options);
     }
 
     // Chat Completions-сумісні провайдери — response_format
@@ -172,7 +172,7 @@ class JsonModeTest extends TestCase
 
         $this->assertSame(['text' => ['format' => ['type' => 'json_object']]], $agent->providerOptions('openai'));
         $this->assertSame(['text' => ['format' => ['type' => 'json_object']]], $agent->providerOptions('xai'));
-        $this->assertSame(['response_mime_type' => 'application/json'], $agent->providerOptions('gemini'));
+        $this->assertSame(['response_format' => ['type' => 'text', 'mime_type' => 'application/json']], $agent->providerOptions('gemini'));
         $this->assertSame(['response_format' => ['type' => 'json_object']], $agent->providerOptions('deepseek'));
         $this->assertSame(['response_format' => ['type' => 'json_object']], $agent->providerOptions('openai-compatible'));
         $this->assertSame([], $agent->providerOptions('anthropic'));

@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [3.28.0] — 2026-10-04
+
+### Changed
+- Requires `laravel/ai` `^1.0`. Since 1.0 every gateway reports the full input count (cache included) and exposes `uncachedInputTokens()`, so `tokens_in` is taken from it directly — the per-driver list of gateways with "inclusive" prompt tokens is gone, along with the `cache_inclusive_prompt_tokens` driver option (now ignored). `tokens_in` keeps its meaning: input tokens billed at full price.
+- `tokens_out` now includes reasoning tokens for every provider (laravel/ai 1.0 `outputTokens`). Anthropic thinking used to be reported as 0, so runs with extended thinking will show higher `tokens_out` and `cost` — that is the real bill, not a regression.
+- Gemini JSON mode sends `response_format` with `mime_type: application/json` instead of `response_mime_type` — Gemini moved to the Interactions API in laravel/ai 1.0, where the old field is not accepted.
+
+### Fixed
+- Mistral cache hits are now costed at the cache rate: laravel/ai 1.0 reads its `cached_tokens`.
+- Cached tokens are no longer costed as free when the driver's `price` has no `cache_read`/`cache_write` rate — a missing cache rate now falls back to `in`. Found on real runs: OpenAI reports cache writes and Gemini reports implicit cache hits, and a price without those keys silently dropped thousands of input tokens from `cost`. If you relied on the old behaviour, set the cache rate explicitly (`'cache_read' => 0`).
+- Default Gemini price gains `cache_read` (0.15, 0.1x `in`).
+
+### Upgrading
+- Bedrock: `aws/aws-sdk-php` is no longer installed by laravel/ai — `composer require aws/aws-sdk-php`.
+- Gemini raw `provider_options` must use Interactions API names (`thinkingConfig` → `thinking_level`, etc.) — see the [laravel/ai upgrade guide](https://github.com/laravel/ai/blob/1.x/UPGRADE.md).
+- If the app uses `laravel/mcp` directly, it must be `^1.0`.
+
 ## [3.27.2] — 2026-10-04
 
 ### Fixed
