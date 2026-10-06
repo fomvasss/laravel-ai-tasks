@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [3.32.0] — 2026-10-07
+
+### Added
+- `php artisan about` → **AI Tasks** shows two new rows. `Config` lists keys the published `config/ai-tasks.php` lacks compared with the package's, and keys the package no longer uses — `composer update` never updates a published config, so new settings went unnoticed. `Queue` shows the connection the `ai` queue is worked on (the Horizon supervisor's, when Horizon consumes it) with its `retry_after`, and warns when it isn't above the job timeout: Redis then hands a slow provider call out again while the first copy still runs, and the task executes twice. The application's own lists (`drivers`, `routing`, `budgets`, pipes, middleware) are not compared.
+- `AI::fake()` accepts structured answers: an array is returned as `structured` (and as JSON in `content`), an `AiResponse` is returned as is — for testing `schema()` tasks, tool calls and finish reasons through the fake.
+
 ## [3.31.2] — 2026-10-07
 
 ### Fixed

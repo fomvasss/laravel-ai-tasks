@@ -3,6 +3,7 @@
 `AI::fake()` swaps the facade for a fake that makes no API calls, records every call and provides assertions.
 
 ```php
+use Fomvasss\AiTasks\DTO\AiResponse;
 use Fomvasss\AiTasks\Facades\AI;
 
 // Default: every task returns "fake ai response"
@@ -17,7 +18,19 @@ $fake = AI::fake([
     'translate' => 'Це переклад.',
     '*' => 'Default fallback.', // catch-all
 ]);
+
+// Structured output of a schema() task: an array
+$fake = AI::fake([
+    'summarize' => ['summary' => 'Short.', 'confidence' => 0.9],
+]);
+
+// Full control — tool calls, finish reason, a failed response
+$fake = AI::fake([
+    'research' => new AiResponse(ok: true, content: 'Done.', toolCalls: [['id' => 'c1', 'name' => 'search']], finishReason: 'stop'),
+]);
 ```
+
+A top-level array is always a map of task names. Each answer is a string (the text), an array (structured output) or an `AiResponse` (used as is).
 
 ## What the fake does
 
@@ -29,9 +42,9 @@ $fake = AI::fake([
 
 A task without its own entry gets `*`, and without `*` the text `fake ai response`.
 
-The response has `content` set to the fake text, zero tokens and cost, and `structured = null` — a task relying on `schema()` gets no structured data from the fake. No tools are invoked and nothing is written to `ai_runs`. `AI::models()` is not available on the fake.
+A string answer becomes `content` with `structured = null`. An array answer becomes `structured`, and its JSON goes to `content` — what `stream()` passes to `$onChunk` too. Both get zero tokens and cost. No tools are invoked and nothing is written to `ai_runs`. `AI::models()` is not available on the fake.
 
-To test `postprocess()` with structured data, call it directly:
+`postprocess()` can also be tested without the fake, by calling it directly:
 
 ```php
 $result = (new SummarizeTask($article))->postprocess(

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Fomvasss\AiTasks\Facades;
 
+use Fomvasss\AiTasks\DTO\AiResponse;
 use Fomvasss\AiTasks\Testing\FakeAI;
 use Illuminate\Support\Facades\Facade;
 
@@ -14,7 +15,7 @@ class AI extends Facade
         return \Fomvasss\AiTasks\Core\AI::class;
     }
 
-    public static function fake(string|array|null $responses = null): FakeAI
+    public static function fake(string|array|AiResponse|null $responses = null): FakeAI
     {
         $fake = new FakeAI($responses);
         static::swap($fake);

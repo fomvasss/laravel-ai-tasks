@@ -37,7 +37,13 @@ DEEPSEEK_API_KEY=sk-...
 GROQ_API_KEY=gsk_...
 ```
 
-`php artisan about` has an **AI Tasks** section that shows whether the `ai_runs` schema is up to date — useful after upgrading, when a new migration has to be published.
+`php artisan about` has an **AI Tasks** section — check it after installing and after every upgrade:
+
+| Row | Shows |
+|---|---|
+| `Schema` | whether the `ai_runs` table has every column — a new migration to publish |
+| `Config` | keys the published `config/ai-tasks.php` lacks compared with the package's, and keys the package no longer uses. `composer update` never updates a published config. The application's own lists (`drivers`, `routing`, `budgets`, pipes, middleware) are not compared |
+| `Queue` | the connection the `ai` queue is worked on (the Horizon supervisor's, if Horizon consumes it) and its `retry_after`, highlighted when it isn't above the job timeout — see below |
 
 ## Two config files
 

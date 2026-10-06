@@ -196,4 +196,55 @@ class FakeAITest extends TestCase
         $this->assertSame('summary response', $resp->content);
         $fake->assertSent(\Fomvasss\AiTasks\Tasks\PromptTask::class, fn($t) => $t->name() === 'quick_summary');
     }
+
+    public function test_fake_array_answer_fills_structured_output(): void
+    {
+        AI::fake(['summarize' => ['summary' => 'Короткий підсумок.', 'confidence' => 0.9]]);
+
+        $resp = AI::send($this->makeTask('summarize'));
+
+        $this->assertSame(['summary' => 'Короткий підсумок.', 'confidence' => 0.9], $resp->structured);
+        $this->assertSame('{"summary":"Короткий підсумок.","confidence":0.9}', $resp->content);
+    }
+
+    public function test_fake_structured_answer_reaches_postprocess(): void
+    {
+        AI::fake(['summarize' => ['summary' => 'Short.']]);
+
+        $task = (new class extends AiTask {
+            public function modality(): string { return 'text'; }
+            public function toPayload(): AiPayload { return new AiPayload('text', [new UserMessage('x')]); }
+            public function postprocess(\Fomvasss\AiTasks\DTO\AiResponse $response): array
+            {
+                return ['summary' => $response->structured['summary'] ?? null];
+            }
+        })->setName('summarize');
+
+        $this->assertSame('{"summary":"Short."}', AI::send($task)->content);
+    }
+
+    public function test_fake_accepts_a_whole_response(): void
+    {
+        $answer = new \Fomvasss\AiTasks\DTO\AiResponse(ok: true, content: 'Done.', toolCalls: [['id' => 'c1', 'name' => 'search']], finishReason: 'stop');
+
+        AI::fake($answer);
+
+        $resp = AI::send($this->makeTask());
+
+        $this->assertSame('Done.', $resp->content);
+        $this->assertSame('search', $resp->toolCalls[0]['name']);
+        $this->assertSame('stop', $resp->finishReason);
+    }
+
+    public function test_fake_stream_sends_structured_answer_as_json_chunk(): void
+    {
+        AI::fake(['summarize' => ['summary' => 'S']]);
+
+        $chunks = [];
+        AI::stream($this->makeTask('summarize'), function (string $chunk) use (&$chunks) {
+            $chunks[] = $chunk;
+        });
+
+        $this->assertSame(['{"summary":"S"}'], $chunks);
+    }
 }

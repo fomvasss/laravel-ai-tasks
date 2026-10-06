@@ -17,18 +17,21 @@ final class FakeAI
     /** @var array<int, array{method: string, task: AiTask, drivers: array}> */
     private array $recorded = [];
 
-    /** @var array<string, string> task name → response text, '*' = catch-all */
+    /**
+     * Task name → fake answer, '*' = catch-all. An answer is the response text, an array (the
+     * structured output of a schema() task, JSON-encoded into content too) or a whole AiResponse.
+     *
+     * @var array<string, string|array|AiResponse>
+     */
     private array $responses;
 
-    public function __construct(string|array|null $responses = null)
+    public function __construct(string|array|AiResponse|null $responses = null)
     {
-        if (is_string($responses)) {
-            $this->responses = ['*' => $responses];
-        } elseif (is_array($responses)) {
-            $this->responses = $responses;
-        } else {
-            $this->responses = ['*' => 'fake ai response'];
-        }
+        $this->responses = match (true) {
+            is_array($responses) => $responses,
+            $responses !== null => ['*' => $responses],
+            default => ['*' => 'fake ai response'],
+        };
     }
 
     public function prompt(string $prompt, ?string $system = null, array|string $drivers = [], string $name = 'prompt'): AiResponse
@@ -39,19 +42,15 @@ final class FakeAI
     public function send(AiTask $task, array|string $drivers = []): AiResponse
     {
         $this->record('send', $task, $drivers);
-        $text = $this->resolve($task);
-        $resp = new AiResponse(true, $text, ['driver' => 'fake', 'tokens_in' => 0, 'tokens_out' => 0, 'cost' => 0.0]);
 
-        return $this->completeLikeReal($task, $resp);
+        return $this->completeLikeReal($task, $this->resolve($task));
     }
 
     public function stream(AiTask $task, callable $onChunk, array|string $drivers = []): AiResponse
     {
         $this->record('stream', $task, $drivers);
-        $text = $this->resolve($task);
-        $onChunk($text);
-
-        $resp = new AiResponse(true, $text, ['driver' => 'fake', 'tokens_in' => 0, 'tokens_out' => 0, 'cost' => 0.0]);
+        $resp = $this->resolve($task);
+        $onChunk((string) $resp->content);
 
         return $this->completeLikeReal($task, $resp);
     }
@@ -161,9 +160,19 @@ final class FakeAI
 
     // ── Internals ─────────────────────────────────────────────────────────
 
-    private function resolve(AiTask $task): string
+    private function resolve(AiTask $task): AiResponse
     {
-        return $this->responses[$task->name()] ?? $this->responses['*'] ?? 'fake ai response';
+        $answer = $this->responses[$task->name()] ?? $this->responses['*'] ?? 'fake ai response';
+
+        if ($answer instanceof AiResponse) {
+            return $answer;
+        }
+
+        $usage = ['driver' => 'fake', 'tokens_in' => 0, 'tokens_out' => 0, 'cost' => 0.0];
+
+        return is_array($answer)
+            ? new AiResponse(true, json_encode($answer, JSON_UNESCAPED_UNICODE), $usage, structured: $answer)
+            : new AiResponse(true, $answer, $usage);
     }
 
     private function record(string $method, AiTask $task, array|string $drivers): void

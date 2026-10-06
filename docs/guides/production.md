@@ -4,7 +4,7 @@ Lessons from running the package in several production applications. Each item i
 
 ## Queues
 
-- **A dedicated queue connection for `ai`** with `retry_after` above the job timeout. On the default `redis` connection (`retry_after` 90) a provider call running longer than 90 seconds is handed out again, and the user gets two replies. See [Queues and Horizon](../installation.md#queues-and-horizon).
+- **A dedicated queue connection for `ai`** with `retry_after` above the job timeout. On the default `redis` connection (`retry_after` 90) a provider call running longer than 90 seconds is handed out again, and the user gets two replies. The `Queue` row of `php artisan about` warns about it. See [Queues and Horizon](../installation.md#queues-and-horizon).
 - **`ai-post` in a shared pool** of short jobs — it rarely has work, a separate supervisor just holds an idle process.
 - **Watch the job timeout budget.** A queued run may make several provider calls in a row (a fallback chain, a forced second pass), each with its own HTTP timeout, plus the time of the tools. Keep the sum below `jobTimeout()`.
 - **Fan-out vs. one job.** The prompt is built when a task is queued. A batch that dispatches many `AI::queue()` calls at once builds all prompts from the same snapshot — if each prompt should see the results of the previous ones (e.g. duplicate detection against already processed items), run `AI::send()` sequentially inside one queued job instead, with a batch size that fits the job timeout, `withoutOverlapping()` and a lock.
@@ -61,7 +61,7 @@ Lessons from running the package in several production applications. Each item i
 ## Costs
 
 - **List every model under `prices`, including aliases** (`deepseek-flash` and `deepseek-v4-flash`). A model that is not listed falls back to the driver's `price`, visible as `cost_rates.source = "driver"` — query for it after each model switch.
-- **Re-check the published config after upgrading.** `composer update` never touches `config/ai-tasks.php`; new keys, changed default prices and removed options stay out until you diff it against the package's config. Publish new migrations too (`php artisan about` shows a missing column).
+- **Re-check the published config after upgrading.** `composer update` never touches `config/ai-tasks.php`; new keys and removed options are listed in the `Config` row of `php artisan about`, a missing migration in `Schema`. Changed default models and prices are not detected — compare those by hand.
 - Known gaps: DeepSeek peak-hour pricing and TTS costs are approximations, see [Cost tracking](../usage/costs.md#known-approximations).
 
 ## Upgrades
