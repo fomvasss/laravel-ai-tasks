@@ -83,6 +83,9 @@ AI::stream(new SummarizeTask($text), fn (string $chunk) => print($chunk));
 
 ## Documentation
 
+Online: **https://fomvasss.github.io/laravel-ai-tasks/** — the same pages as in [docs/](docs/index.md).
+
+
 - [Installation](docs/installation.md) · [Configuration](docs/configuration.md)
 - [Tasks](docs/usage/tasks.md) · [Running tasks](docs/usage/running-tasks.md) · [Queued tasks](docs/usage/queued-tasks.md) · [Driver routing](docs/usage/routing.md)
 - [Structured output](docs/usage/structured-output.md) · [Tools & MCP](docs/usage/tools.md) · [Tool choice & approval](docs/usage/tool-approval.md) · [Modalities](docs/usage/modalities.md)

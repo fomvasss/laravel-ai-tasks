@@ -8,7 +8,7 @@
 
 [English](README.md)
 
-Документація англійською — у [docs/](docs/index.md).
+Документація англійською — https://fomvasss.github.io/laravel-ai-tasks/ (ті самі сторінки, що в [docs/](docs/index.md)).
 
 ![Dashboard](docs/images/dashboard.gif)
 
