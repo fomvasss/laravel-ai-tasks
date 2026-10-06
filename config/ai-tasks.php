@@ -248,7 +248,7 @@ return [
     | Webhook Middleware
     |--------------------------------------------------------------------------
     |
-    | Applied to POST /ai-tasks/webhook/{driver} routes.
+    | Applied to POST /ai-webhooks/{driver} routes.
     */
     'webhook_middleware' => ['api'],
 

@@ -1,7 +1,5 @@
 # Modalities
 
-[← Back to README](../README.md)
-
 Available modalities: `text` · `image` · `embed` · `audio` · `transcription`
 
 ---

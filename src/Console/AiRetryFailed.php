@@ -34,6 +34,8 @@ class AiRetryFailed extends Command
                     $q->orWhere(fn ($sq) => $sq->stuck());
                 }
             })
+            // a failed attempt of a sync call whose fallback driver answered — the call has its result
+            ->whereNull('response->superseded_by')
             ->where('created_at', '>=', $since)
             ->limit((int) $this->option('limit'))
             ->get();

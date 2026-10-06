@@ -137,6 +137,58 @@ class ExceptionHandlingTest extends TestCase
         $this->assertSame('ok', $runs[1]->status);
     }
 
+    public function test_send_fallback_marks_the_failed_attempt_as_superseded(): void
+    {
+        $this->swapDriverMap([
+            'driverA' => $this->throwingDriver(new \RuntimeException('boom')),
+            'driverB' => $this->okDriver(),
+        ]);
+
+        AIFacade::send($this->makeTask(), ['driverA', 'driverB']);
+
+        $failed = AiRun::query()->where('driver', 'driverA')->first();
+        $ok = AiRun::query()->where('driver', 'driverB')->first();
+
+        $this->assertSame($ok->id, $failed->response['superseded_by']);
+        $this->assertFalse($failed->canRetry());
+
+        $this->artisan('ai:retry', ['--dry-run' => true])
+            ->expectsOutput('No failed runs found.')
+            ->assertSuccessful();
+    }
+
+    public function test_stream_fallback_marks_the_failed_attempt_as_superseded(): void
+    {
+        $this->swapDriverMap([
+            'driverA' => $this->throwingDriver(new \RuntimeException('boom')),
+            'driverB' => $this->okDriver(),
+        ]);
+
+        AIFacade::stream($this->makeTask(), fn ($c) => null, ['driverA', 'driverB']);
+
+        $failed = AiRun::query()->where('driver', 'driverA')->first();
+
+        $this->assertTrue($failed->isSuperseded());
+    }
+
+    public function test_failed_attempts_stay_retryable_when_every_driver_fails(): void
+    {
+        $this->swapDriverMap([
+            'driverA' => $this->throwingDriver(new \RuntimeException('boom')),
+            'driverB' => $this->throwingDriver(new \RuntimeException('boom')),
+        ]);
+
+        try {
+            AIFacade::send($this->makeTask(), ['driverA', 'driverB']);
+        } catch (AiDriverException) {
+        }
+
+        foreach (AiRun::all() as $run) {
+            $this->assertFalse($run->isSuperseded());
+            $this->assertTrue($run->canRetry());
+        }
+    }
+
     public function test_send_rethrows_on_budget_exceeded_and_fails_run_but_keeps_cost(): void
     {
         config(['ai-tasks.budgets.default.monthly_usd' => 0.0]);

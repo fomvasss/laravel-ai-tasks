@@ -109,10 +109,25 @@ class AiRun extends Model
     public function canRetry(): bool
     {
         return match ($this->status) {
-            'error', 'dead' => true,
+            'error' => ! $this->isSuperseded(),
+            'dead' => true,
             'queued', 'running' => $this->isStuck(),
             default => false,
         };
+    }
+
+    /**
+     * A failed attempt of a sync call whose fallback driver then answered. The call already has
+     * its result, so retrying this row would run the task a second time.
+     */
+    public function supersede(string $byRunId): void
+    {
+        $this->update(['response' => [...($this->response ?? []), 'superseded_by' => $byRunId]]);
+    }
+
+    public function isSuperseded(): bool
+    {
+        return isset($this->response['superseded_by']);
     }
 
     /**

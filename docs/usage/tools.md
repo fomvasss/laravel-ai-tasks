@@ -1,7 +1,5 @@
 # Tools & MCP
 
-[← Back to README](../README.md)
-
 ## Which approach do I need?
 
 ```mermaid
@@ -528,3 +526,8 @@ context7-mcp:
 ```
 
 Then set `CONTEXT7_MCP_URL=http://context7-mcp:8808/mcp` in `.env`.
+
+## See also
+
+- [Tool choice & approval](tool-approval.md) — forcing a tool call, pausing before irreversible actions
+- [Job timeout](queued-tasks.md#job-timeout) — long multi-step tool chains need a higher `jobTimeout()`
