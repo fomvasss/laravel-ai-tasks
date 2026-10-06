@@ -10,6 +10,7 @@ use Fomvasss\AiTasks\Core\Router;
 use Fomvasss\AiTasks\Http\Controllers\DashboardController;
 use Fomvasss\AiTasks\Http\Controllers\WebhookController;
 use Fomvasss\AiTasks\Support\Budget;
+use Fomvasss\AiTasks\Support\Diagnostics;
 use Fomvasss\AiTasks\Support\ModelLister;
 use Fomvasss\AiTasks\Support\TenantResolver;
 use Fomvasss\AiTasks\Support\WebhookRegistry;
@@ -123,29 +124,64 @@ class AiServiceProvider extends ServiceProvider
             return;
         }
 
-        AboutCommand::add('AI Tasks', function (): array {
-            $table = config('ai-tasks.table', 'ai_runs');
+        AboutCommand::add('AI Tasks', fn (): array => [
+            ...$this->aboutSchema(),
+            'Config' => $this->aboutConfig(),
+            'Queue' => $this->aboutQueue(),
+        ]);
+    }
 
-            try {
-                if (! Schema::hasTable($table)) {
-                    return ['Schema' => "<fg=yellow;options=bold>table {$table} is missing — publish and run migrations</>"];
-                }
+    private function aboutSchema(): array
+    {
+        $table = config('ai-tasks.table', 'ai_runs');
 
-                $missing = array_values(array_filter(
-                    ['cost_rates'],
-                    fn (string $column): bool => ! Schema::hasColumn($table, $column),
-                ));
-
-                return [
-                    'Table'  => $table,
-                    'Schema' => $missing === []
-                        ? '<fg=green;options=bold>UP TO DATE</>'
-                        : '<fg=yellow;options=bold>missing ' . implode(', ', $missing) . ' — vendor:publish --tag=ai-migrations, then migrate</>',
-                ];
-            } catch (\Throwable) {
-                return ['Schema' => 'unknown (no database connection)'];
+        try {
+            if (! Schema::hasTable($table)) {
+                return ['Schema' => "<fg=yellow;options=bold>table {$table} is missing — publish and run migrations</>"];
             }
-        });
+
+            $missing = array_values(array_filter(
+                ['cost_rates'],
+                fn (string $column): bool => ! Schema::hasColumn($table, $column),
+            ));
+
+            return [
+                'Table' => $table,
+                'Schema' => $missing === []
+                    ? '<fg=green;options=bold>UP TO DATE</>'
+                    : '<fg=yellow;options=bold>missing ' . implode(', ', $missing) . ' — vendor:publish --tag=ai-migrations, then migrate</>',
+            ];
+        } catch (\Throwable) {
+            return ['Schema' => 'unknown (no database connection)'];
+        }
+    }
+
+    private function aboutConfig(): string
+    {
+        $drift = Diagnostics::configDrift();
+
+        if ($drift === null) {
+            return 'not published (package defaults)';
+        }
+
+        if ($drift['missing'] === [] && $drift['unknown'] === []) {
+            return '<fg=green;options=bold>UP TO DATE</>';
+        }
+
+        return '<fg=yellow;options=bold>' . implode('; ', array_filter([
+            $drift['missing'] ? 'missing ' . implode(', ', $drift['missing']) : null,
+            $drift['unknown'] ? 'no longer used ' . implode(', ', $drift['unknown']) : null,
+        ])) . ' — compare with vendor/fomvasss/laravel-ai-tasks/config/ai-tasks.php</>';
+    }
+
+    private function aboutQueue(): string
+    {
+        $queue = Diagnostics::aiQueue();
+        $line = "{$queue['queue']} on {$queue['connection']}, retry_after " . ($queue['retry_after'] ?? 'default');
+
+        return $queue['too_short']
+            ? "<fg=yellow;options=bold>{$line} — not above the job timeout, slow jobs run twice; use a connection with a longer retry_after</>"
+            : $line;
     }
 
     /**

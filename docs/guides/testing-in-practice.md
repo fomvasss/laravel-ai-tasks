@@ -50,7 +50,7 @@ $this->assertTrue($message->chat->fresh()->isHandedOver());
 $task->onFailed(new \RuntimeException('provider down'));
 ```
 
-This is the only way to test structured output: the fake never fills `structured`. It also covers hallucinated ids, legitimate negative results and the superseded checks.
+Since 3.32 the fake can return structured output too (`AI::fake(['chat_reply' => ['message' => 'Hi']])`), but calling the hooks directly is still the quickest way to cover the edge cases: hallucinated ids, legitimate negative results, malformed answers of non-strict providers, the superseded checks.
 
 Check the payload the same way — `$task->toPayload()->options`, `->messages`, `->decisions`.
 
