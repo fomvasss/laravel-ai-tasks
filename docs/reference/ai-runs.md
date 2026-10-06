@@ -19,7 +19,7 @@ A sync call with fallback leaves one row per tried driver; a queued run is one r
 | `status` | See below |
 | `error` | Error message |
 | `idempotency_key` | Unique; queued runs only, see [Idempotency](../usage/queued-tasks.md#idempotency) |
-| `request` | Modality, options, meta, `task_class`; with `store_request` also messages, system prompt and `task_args` |
+| `request` | Modality, options, meta, `task_class`; with `store_request` also messages, system prompt and `task_args`; for queued runs `dispatch_id` and `available_at` (due time of a delayed run) |
 | `response` | Response content and metadata |
 | `tokens_in`, `tokens_out`, `cache_read_tokens`, `cache_write_tokens` | See [Tokens](../usage/costs.md#tokens) |
 | `cost` | USD |

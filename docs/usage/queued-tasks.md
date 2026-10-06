@@ -102,8 +102,9 @@ AI::queue(new SummarizeTask($article), delay: now()->addHours(2)); // Carbon
 AI::queue(new SummarizeTask($article), delay: new \DateInterval('PT10M'));
 ```
 
-> [!WARNING]
-> The run is created as `queued` right away. A delay longer than `dashboard.stuck_after_minutes` makes it look [stuck](dashboard.md#stuck-runs) before it is due. Don't retry such a run from the dashboard or with `ai:retry --stuck` — the delayed job would still run later, and the task would execute twice.
+The run is created as `queued` right away, with the due time in `ai_runs.request.available_at`. It counts as [stuck](dashboard.md#stuck-runs) only once it is overdue by `dashboard.stuck_after_minutes`.
+
+Each dispatch gets an id (`request.dispatch_id`), and a job runs the task only if it carries the run's current id and the run is still `queued`/`running`. So when a run is retried from the dashboard or `ai:retry` while its earlier job still waits in the queue, or closed with **Dead**, that earlier job skips instead of running the task a second time.
 
 ## Job timeout
 

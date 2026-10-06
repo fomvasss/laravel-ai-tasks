@@ -43,6 +43,8 @@ A queued run that switched to a fallback driver records only the driver that ans
 
 A run is **stuck** once it has been `queued` or `running` for longer than `stuck_after_minutes` without progress. The usual cause is a queue payload that never reached a worker (a Redis restart between `AI::queue()` writing the row and the worker picking it up), or a queue no worker consumes: nothing is left to fail the run, so it stays `queued` forever and no retry reaches it.
 
+A [delayed](queued-tasks.md#delayed-dispatch) run is measured from its due time, not from when it was queued.
+
 Stuck runs get their own stat card, a `stuck` status filter and a badge on the row. Raise the threshold above your slowest task's runtime, or long legitimate runs are flagged too.
 
 From code: `AiRun::stuck()` scope and `$run->isStuck()`.

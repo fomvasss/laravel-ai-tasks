@@ -43,6 +43,12 @@ class ProcessAiPayload implements ShouldQueue
      */
     public array $fallbackDrivers = [];
 
+    /**
+     * AiRun::newDispatch() id this job was dispatched with; the same kind of plain property as
+     * $fallbackDrivers — a job queued before it existed unserializes with null and still runs.
+     */
+    public ?string $dispatchId = null;
+
     public function __construct(
         public readonly string    $driverName,
         public readonly AiPayload $payload,
@@ -53,9 +59,11 @@ class ProcessAiPayload implements ShouldQueue
         int                       $timeout = 300,
         public readonly int       $attempt = 0,
         array                     $fallbackDrivers = [],
+        ?string                   $dispatchId = null,
     ) {
         $this->timeout         = $timeout;
         $this->fallbackDrivers = $fallbackDrivers;
+        $this->dispatchId      = $dispatchId;
     }
 
     public function middleware(): array
@@ -68,6 +76,18 @@ class ProcessAiPayload implements ShouldQueue
     public function handle(AiManager $manager): void
     {
         $run  = AiRun::findOrFail($this->runId);
+
+        // A run already finished or closed, or re-dispatched since — e.g. retried from the dashboard
+        // while this delayed job still waited in the queue. Running it would execute the task twice.
+        if (! $run->acceptsDispatch($this->dispatchId)) {
+            Log::info('AI job skipped: run already finished or re-dispatched', [
+                'run_id' => $run->id,
+                'status' => $run->status,
+            ]);
+
+            return;
+        }
+
         $task = $this->resolveTask();
 
         if (! $task->shouldRun()) {

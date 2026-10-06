@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace Fomvasss\AiTasks\Tests;
 
 use Fomvasss\AiTasks\AiServiceProvider;
+use Fomvasss\AiTasks\Core\AiManager;
+use Fomvasss\AiTasks\Facades\AI;
+use Fomvasss\AiTasks\Support\RunRetrier;
 use Fomvasss\AiTasks\DTO\AiPayload;
 use Fomvasss\AiTasks\Events\AiRunFailed;
 use Fomvasss\AiTasks\Jobs\ProcessAiPayload;
@@ -119,6 +122,73 @@ class DashboardActionsTest extends TestCase
         $this->assertSame('queued', $run->status);
         $this->assertNull($run->error);
         Queue::assertPushed(ProcessAiPayload::class, fn (ProcessAiPayload $job) => $job->runId === $run->id);
+    }
+
+    private function delayedRun(\DateTimeInterface $at): AiRun
+    {
+        config(['ai.providers.openai.key' => 'sk-test']);
+
+        return AiRun::findOrFail(AI::queue(new DashboardActionsTestTask('later #'.++$this->seq), 'openai', $at));
+    }
+
+    /** @return list<ProcessAiPayload> */
+    private function pushedJobs(): array
+    {
+        return Queue::pushed(ProcessAiPayload::class)->values()->all();
+    }
+
+    private function managerThatMustNotBeCalled(): AiManager
+    {
+        $manager = \Mockery::mock(AiManager::class);
+        $manager->shouldNotReceive('driver');
+
+        return $manager;
+    }
+
+    public function test_a_delayed_run_is_not_stuck_before_it_is_due(): void
+    {
+        Queue::fake();
+
+        $run = $this->delayedRun(now()->addHours(2));
+
+        $this->travel(1)->hours();
+        $this->assertFalse($run->fresh()->isStuck());
+        $this->assertFalse($run->fresh()->canRetry());
+        $this->assertSame([], AiRun::query()->stuck()->pluck('id')->all());
+
+        $this->travel(80)->minutes();
+        $this->assertTrue($run->fresh()->isStuck());
+        $this->assertSame([$run->id], AiRun::query()->stuck()->pluck('id')->all());
+    }
+
+    public function test_a_delayed_job_superseded_by_a_retry_does_not_run(): void
+    {
+        Queue::fake();
+
+        $run = $this->delayedRun(now()->addHours(2));
+        RunRetrier::retry($run->fresh());
+
+        [$delayed, $retried] = $this->pushedJobs();
+
+        $this->assertFalse($run->fresh()->acceptsDispatch($delayed->dispatchId));
+        $this->assertTrue($run->fresh()->acceptsDispatch($retried->dispatchId));
+
+        $delayed->handle($this->managerThatMustNotBeCalled());
+
+        $this->assertSame('queued', $run->fresh()->status);
+    }
+
+    public function test_a_job_for_a_closed_run_does_not_run(): void
+    {
+        Queue::fake();
+
+        $run = $this->delayedRun(now()->addMinutes(5));
+        $run->abandon('not needed anymore');
+
+        [$job] = $this->pushedJobs();
+        $job->handle($this->managerThatMustNotBeCalled());
+
+        $this->assertSame('dead', $run->fresh()->status);
     }
 
     public function test_retry_is_refused_for_a_run_that_is_neither_failed_nor_stuck(): void
