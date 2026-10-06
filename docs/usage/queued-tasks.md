@@ -166,6 +166,27 @@ public function idempotencyWindow(): ?string
 }
 ```
 
+### Queuing again after a failure
+
+A key that never changes also blocks your own re-dispatch: queuing the same task again after it failed returns the old failed run, and nothing happens. When the application re-queues failed work itself (e.g. a scheduled job picking up items still pending), add a round to the key:
+
+```php
+public function __construct(
+    private readonly Document $document,
+    private readonly string $round = '',
+) {}
+
+public function idempotencyKey(): ?string
+{
+    return 'moderate-'.$this->document->id.'-'.md5($this->document->body).($this->round !== '' ? '-'.$this->round : '');
+}
+
+// the hourly re-queue
+AI::queue(new ModerateTask($document, round: now()->format('YmdH')));
+```
+
+The content hash in the key also makes an edited document get a new run.
+
 ## Failures and job retries
 
 The job tries the whole [routing chain](routing.md): when a driver fails transiently, the next one is tried within the same attempt, and `ai_runs.driver` records the driver that answered.

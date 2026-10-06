@@ -91,6 +91,7 @@ Online: **https://fomvasss.github.io/laravel-ai-tasks/** — the same pages as i
 - [Structured output](docs/usage/structured-output.md) · [Tools & MCP](docs/usage/tools.md) · [Tool choice & approval](docs/usage/tool-approval.md) · [Modalities](docs/usage/modalities.md)
 - [Budgets & tenants](docs/usage/budgets.md) · [Cost tracking](docs/usage/costs.md) · [Provider override](docs/usage/provider-override.md)
 - [Dashboard](docs/usage/dashboard.md) · [Webhooks](docs/usage/webhooks.md) · [Testing](docs/usage/testing.md)
+- Guides: [Production checklist](docs/guides/production.md) · [Chat assistant](docs/guides/chat-assistant.md) · [Tools in practice](docs/guides/tools-in-practice.md) · [Provider quirks](docs/guides/provider-quirks.md) · [Testing in practice](docs/guides/testing-in-practice.md)
 - Reference: [AI facade](docs/reference/facade.md) · [AiTask](docs/reference/task.md) · [AiPayload & AiResponse](docs/reference/payload-response.md) · [ai_runs](docs/reference/ai-runs.md) · [Events](docs/reference/events.md) · [Commands](docs/reference/commands.md) · [Providers](docs/reference/providers.md)
 - [Upgrading](docs/upgrading.md) · [Changelog](CHANGELOG.md)
 
