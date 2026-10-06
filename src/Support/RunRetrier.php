@@ -54,6 +54,8 @@ final class RunRetrier
             'duration_ms' => null,
         ]);
 
+        $dispatchId = $run->newDispatch();
+
         $job = new ProcessAiPayload(
             driverName: $run->driver,
             payload: AI::payloadWithTools($task),
@@ -62,6 +64,7 @@ final class RunRetrier
             taskClass: $task::class,
             taskCtorArgs: $task->serializeForQueue(),
             timeout: $task->jobTimeout(),
+            dispatchId: $dispatchId,
         );
 
         QueueDispatch::configure($job, $task, 'request', config('ai-tasks.queues.default'));

@@ -83,7 +83,7 @@ Example Horizon config:
 ],
 ```
 
-The supervisor `timeout` must be at least as large as the highest [`jobTimeout()`](usage/queued-tasks.md#job-timeout) of your tasks. Tasks can route themselves to other queues via `viaQueues()` — every queue name they return must be consumed by a supervisor.
+The supervisor `timeout` must be at least as large as the highest [`jobTimeout()`](usage/queued-tasks.md#job-timeout) of your tasks. The package jobs set their own `tries` (3) and `backoff`, which take precedence over the supervisor's `tries`, see [Failures and job retries](usage/queued-tasks.md#failures-and-job-retries). Tasks can route themselves to other queues via `viaQueues()` — every queue name they return must be consumed by a supervisor.
 
 ## Laravel Octane
 

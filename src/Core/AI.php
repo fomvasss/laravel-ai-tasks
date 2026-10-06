@@ -180,6 +180,13 @@ class AI
             return AiRun::where('idempotency_key', $task->idempotencyKey())->value('id');
         }
 
+        $dispatchId = $run->newDispatch(match (true) {
+            $delay === null => null,
+            $delay instanceof \DateTimeInterface => $delay,
+            $delay instanceof \DateInterval => now()->add($delay),
+            default => now()->addSeconds($delay),
+        });
+
         $job = new ProcessAiPayload(
             driverName: $driverName,
             payload: $payload,
@@ -189,6 +196,7 @@ class AI
             taskCtorArgs: $task->serializeForQueue(),
             timeout: $task->jobTimeout(),
             fallbackDrivers: array_slice($chain, 1),
+            dispatchId: $dispatchId,
         );
 
         QueueDispatch::configure($job, $task, 'request', config('ai-tasks.queues.default'));

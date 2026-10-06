@@ -50,7 +50,7 @@ See [Queued tasks](../usage/queued-tasks.md#retrying-an-unacceptable-result).
 | `tenantId(): ?string` | `null` → `TenantResolver` | Tenant the run is billed to |
 | `subjectType(): ?string` | `null` | Type of the record the run concerns, e.g. `order` |
 | `subjectId(): ?string` | `null` | Its id |
-| `defaultMeta(): array` | `[]` | Metadata available in `context()->meta` |
+| `defaultMeta(): array` | `[]` | Goes to `context()->meta` — visible in the `AiTaskStarted` event, not stored in `ai_runs` (use `AiPayload::$meta` for that) |
 
 `context(): AiContext` returns the resolved tenant, name, subject and meta; it's computed once per instance.
 

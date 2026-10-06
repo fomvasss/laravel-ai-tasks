@@ -71,11 +71,31 @@ class ResearchTask extends AiTask
 
 The agent decides when and how to invoke tools. Each tool call is executed locally and the result is returned to the model for the next step.
 
+### Tools in queued tasks
+
+`tools()` is called when the task is dispatched, not on the worker: the tool objects are serialized into the queue job together with the rest of the payload. PHP can't serialize anonymous classes, so `AI::queue()` fails right away with `Serialization of 'Laravel\Ai\Contracts\Tool@anonymous' is not allowed`. For a task that may be queued, put each tool in its own class:
+
+```php
+// app/Ai/Tools/WebSearchTool.php
+class WebSearchTool implements Tool
+{
+    public function name(): string { return 'web_search'; }
+    // description(), handle(), schema() as above
+}
+
+public function tools(): array
+{
+    return [new WebSearchTool()];
+}
+```
+
+Keep tool properties serializable too — no closures or open connections. MCP tools from `laravel/mcp` serialize fine.
+
 ---
 
 ## Native MCP via laravel/mcp (recommended)
 
-Since `laravel/ai` >= 0.9, MCP is supported natively through [`laravel/mcp`](https://github.com/laravel/mcp). The package handles the full MCP protocol (handshake, transport negotiation, auth) and `laravel/ai` automatically wraps the returned tool primitives — no manual adapter needed.
+MCP is supported natively through [`laravel/mcp`](https://github.com/laravel/mcp). The package handles the full MCP protocol (handshake, transport negotiation, auth) and `laravel/ai` automatically wraps the returned tool primitives — no manual adapter needed.
 
 **Install:**
 
@@ -111,11 +131,12 @@ Mcp::registerClient('filesystem', fn () =>
 );
 ```
 
-> **Troubleshooting:** `laravel/mcp` 0.9.0 tightened protocol version negotiation — the client now only accepts servers that negotiate `2025-11-25` or `2025-06-18`. A server that negotiates an older version (`2025-03-26`, `2024-11-05`) now throws `Laravel\Mcp\Exceptions\ClientException` on connect instead of working as before. If a previously-working `Client::web()`/`Client::local()` call starts failing right after a `laravel/mcp` upgrade, this is the first thing to check.
+> [!NOTE]
+> The `laravel/mcp` client only accepts servers that negotiate protocol version `2025-11-25` or `2025-06-18`. A server on an older version (`2025-03-26`, `2024-11-05`) throws `Laravel\Mcp\Exceptions\ClientException` on connect. If a `Client::web()`/`Client::local()` call fails right after connecting, check the server's protocol version first.
 
 ### Task example
 
-Return the client's tools directly from `tools()` — `laravel/ai` auto-wraps them into `McpTool` instances:
+Return the client's tools from `tools()` — `laravel/ai` auto-wraps them into `McpTool` instances. `tools()` of the client returns a `Collection`, so call `->all()`:
 
 ```php
 use Laravel\Mcp\Facades\Mcp;
@@ -132,7 +153,7 @@ class NightwatchTask extends AiTask
 
     public function tools(): array
     {
-        return Mcp::client('nightwatch')->tools();
+        return Mcp::client('nightwatch')->tools()->all();
     }
 
     public function toPayload(): AiPayload
@@ -158,8 +179,8 @@ Tools from different sources — local, HTTP server, stdio server — go in the 
 public function tools(): array
 {
     return [
-        ...Mcp::client('nightwatch')->tools(),
-        ...Mcp::client('filesystem')->tools(),
+        ...Mcp::client('nightwatch')->tools()->all(),
+        ...Mcp::client('filesystem')->tools()->all(),
         new SendSlackNotification(),
     ];
 }
@@ -188,29 +209,32 @@ Listing tools makes a round trip to the server. Cache the result to avoid paying
 public function tools(): array
 {
     return cache()->remember('mcp.nightwatch.tools', 300, fn () =>
-        Mcp::client('nightwatch')->tools()
+        Mcp::client('nightwatch')->tools()->all()
     );
 }
 ```
 
 ### Tool name prefix
 
-MCP tools registered via `laravel/mcp` are exposed to the model with the prefix `mcp_tools_`. A tool named `search_issues` becomes `mcp_tools_search_issues`. Keep this in mind when writing system prompts or checking `AI::fake()` assertions.
+MCP tools registered via `laravel/mcp` are exposed to the model with the prefix `mcp_tools_`. A tool named `search_issues` becomes `mcp_tools_search_issues`. Keep this in mind when writing system prompts or reading `AiResponse::$toolCalls`.
 
 ### Testing
 
+`AI::fake()` doesn't call the provider, so no tool is invoked — it returns the fake text right away. Test the task's reaction with the fake and the tools themselves directly:
+
 ```php
-AI::fake([
-    new AssistantMessage('Let me check.', [
-        new ToolCall(id: '1', name: 'mcp_tools_list_issues', arguments: []),
-    ]),
-    new AssistantMessage('Found 3 open issues.'),
-]);
+AI::fake(['nightwatch' => 'Found 3 open issues.']);
 
 $response = AI::send(new NightwatchTask('List open issues'));
 
-expect($response->content)->toContain('3 open issues');
+$this->assertSame('Found 3 open issues.', $response->content);
 ```
+
+```php
+$result = (new WebSearchTool())->handle(new \Laravel\Ai\Tools\Request(['query' => 'laravel']));
+```
+
+See [Testing](testing.md).
 
 ---
 

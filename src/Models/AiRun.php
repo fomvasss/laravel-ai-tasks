@@ -13,7 +13,9 @@ use Fomvasss\AiTasks\Tasks\AiTask;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class AiRun extends Model
 {
@@ -87,8 +89,13 @@ class AiRun extends Model
     {
         $minutes ??= (int) config('ai-tasks.dashboard.stuck_after_minutes', 15);
 
+        $threshold = now()->subMinutes($minutes);
+
+        // A delayed run is not due before request.available_at — until then waiting is expected.
         return $query->whereIn('status', ['queued', 'running'])
-            ->whereRaw('COALESCE(started_at, created_at) < ?', [now()->subMinutes($minutes)]);
+            ->whereRaw('COALESCE(started_at, created_at) < ?', [$threshold])
+            ->where(fn (Builder $q) => $q->whereNull('request->available_at')
+                ->orWhere('request->available_at', '<', $threshold->toDateTimeString()));
     }
 
     public function isStuck(?int $minutes = null): bool
@@ -99,7 +106,42 @@ class AiRun extends Model
 
         $minutes ??= (int) config('ai-tasks.dashboard.stuck_after_minutes', 15);
 
-        return ($this->started_at ?? $this->created_at)?->lt(now()->subMinutes($minutes)) ?? false;
+        $threshold = now()->subMinutes($minutes);
+
+        if (($availableAt = $this->request['available_at'] ?? null) && ! Carbon::parse($availableAt)->lt($threshold)) {
+            return false;
+        }
+
+        return ($this->started_at ?? $this->created_at)?->lt($threshold) ?? false;
+    }
+
+    /**
+     * Marks a new dispatch of this run: only the job carrying this id may execute it, so a job
+     * left in the queue from an earlier dispatch (a delayed one, or a payload that resurfaces
+     * after a retry) skips instead of running the task a second time.
+     */
+    public function newDispatch(?\DateTimeInterface $availableAt = null): string
+    {
+        $id = (string) Str::uuid();
+
+        $this->update(['request' => [
+            ...($this->request ?? []),
+            'dispatch_id' => $id,
+            'available_at' => $availableAt ? Carbon::instance($availableAt)->toDateTimeString() : null,
+        ]]);
+
+        return $id;
+    }
+
+    /** Whether a job dispatched with $dispatchId may still execute this run. */
+    public function acceptsDispatch(?string $dispatchId): bool
+    {
+        if (! in_array($this->status, ['queued', 'running'], true)) {
+            return false;
+        }
+
+        // null — a job queued before dispatch ids existed
+        return $dispatchId === null || ($this->request['dispatch_id'] ?? null) === $dispatchId;
     }
 
     /**

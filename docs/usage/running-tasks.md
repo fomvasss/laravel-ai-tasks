@@ -22,6 +22,25 @@ $response = AI::send(new SummarizeTask($article), drivers: ['anthropic', 'openai
 
 `send()` and `stream()` return an [`AiResponse`](../reference/payload-response.md#airesponse). `queue()` returns the run id; the result arrives later in `onCompleted()` or the `AiTaskCompleted` event — see [Queued tasks](queued-tasks.md).
 
+## What send() returns
+
+`send()` and `stream()` return what `postprocess()` produced:
+
+- `postprocess()` not overridden, or returns an `AiResponse` — that response, with `usage` (tokens, cost), `structured`, `toolCalls`, `finishReason`
+- `postprocess()` returns an array — a new `AiResponse` with `ok: true` and the array JSON-encoded in `content`; `usage`, `structured` and the rest are empty
+
+```php
+public function postprocess(AiResponse $resp): array
+{
+    return ['summary' => $resp->structured['summary'] ?? ''];
+}
+
+$response = AI::send(new SummarizeTask($article));
+$summary = json_decode($response->content, true)['summary'];
+```
+
+`onCompleted()` gets the array itself, so the array form is most convenient when the result is consumed there. Tokens and cost of the call are always in `ai_runs`.
+
 ## Quick prompts
 
 For a one-off call that doesn't warrant a dedicated task class, use `AI::prompt()`. It still goes through `send()` — routing, budget checks and `ai_runs` tracking apply as usual:

@@ -11,6 +11,34 @@ $runId = AI::queue(new SummarizeTask($article));
 
 Any task can be queued. Queue setup for workers — [Installation](../installation.md#queues-and-horizon).
 
+```mermaid
+flowchart TD
+    A["AI::queue()"] --> B["toPayload(), tools()<br/>ai_runs: queued"]
+    B --> C["ProcessAiPayload (worker)"]
+    C --> D{"shouldRun()"}
+    D -->|false| S[skipped]
+    D -->|true| E["provider call<br/>routing chain with fallback"]
+    E -->|every driver failed| R{"attempts left?"}
+    R -->|yes| C
+    R -->|no| X["dead → onFailed()"]
+    E -->|answered| P["PostprocessAiResult<br/>pipes, postprocess()"]
+    P --> Q{"isAcceptable()"}
+    Q -->|no, retries left| C
+    Q -->|yes, or retries exhausted| O["onCompleted() + AiTaskCompleted"]
+```
+
+## Where each step runs
+
+| Step | Runs | Uses |
+|---|---|---|
+| `toPayload()`, `tools()`, `schema()`, `toolChoice()` | in `AI::queue()`, in the calling process | the task as constructed by the caller |
+| provider call | worker, `ProcessAiPayload` | the payload serialized into the job |
+| `shouldRun()`, `postprocess()`, `isAcceptable()`, `onCompleted()`, `onFailed()` | worker | a task rebuilt from `serializeForQueue()` |
+
+So the prompt reflects the data at dispatch time, while the hooks see fresh data — a model restored by `SerializesModelsAi` is re-read from the database. Tools are serialized with the payload: anonymous tool classes can't be queued, see [Tools in queued tasks](tools.md#tools-in-queued-tasks).
+
+`postprocess()` on the worker gets the response restored from `ai_runs.response`: `content`, `structured`, `toolCalls`, `finishReason`, `pendingApprovals`. `usage` is empty there — tokens and cost are in the run (`$event->run` in `AiTaskCompleted`).
+
 ## Serializing the task
 
 The task is rebuilt on the worker from its constructor arguments: `serializeForQueue()` returns them as an array, `fromQueueArgs()` passes them back to the constructor via `new static(...$args)`.
@@ -74,6 +102,10 @@ AI::queue(new SummarizeTask($article), delay: now()->addHours(2)); // Carbon
 AI::queue(new SummarizeTask($article), delay: new \DateInterval('PT10M'));
 ```
 
+The run is created as `queued` right away, with the due time in `ai_runs.request.available_at`. It counts as [stuck](dashboard.md#stuck-runs) only once it is overdue by `dashboard.stuck_after_minutes`.
+
+Each dispatch gets an id (`request.dispatch_id`), and a job runs the task only if it carries the run's current id and the run is still `queued`/`running`. So when a run is retried from the dashboard or `ai:retry` while its earlier job still waits in the queue, or closed with **Dead**, that earlier job skips instead of running the task a second time.
+
 ## Job timeout
 
 Override `jobTimeout()` to control how long the queue job may run before the worker kills it:
@@ -134,9 +166,25 @@ public function idempotencyWindow(): ?string
 }
 ```
 
-## Driver fallback in the queue
+## Failures and job retries
 
-The job tries the whole [routing chain](routing.md): when a driver fails transiently, the next one is tried within the same attempt, and `ai_runs.driver` records the driver that answered. If every driver fails, the job retries the chain from the start according to the worker's `tries`/`backoff`. Between attempts the run stays `running` with the last error recorded; it becomes `dead` only when the queue gives up.
+The job tries the whole [routing chain](routing.md): when a driver fails transiently, the next one is tried within the same attempt, and `ai_runs.driver` records the driver that answered.
+
+If every driver fails, the job retries the chain from the start. The limits are set on the jobs themselves and take precedence over the worker's / Horizon supervisor's `tries`:
+
+| Job | `tries` | `backoff` |
+|---|---|---|
+| `ProcessAiPayload` | 3 | 10, 30, 120 seconds |
+| `PostprocessAiResult` | 3 | — |
+
+Between attempts the run stays `running` with the last error recorded; it becomes `dead` — firing `AiRunFailed` and `onFailed()` once — only when the queue gives up.
+
+A rejected request (4xx other than 408/429) skips the remaining fallback drivers, but the job itself is still retried like any other exception.
+
+Not retried at all — the run ends as `error` with `onFailed()` right away:
+
+- the driver returned a response with `ok: false`
+- the budget is exceeded
 
 ## Retrying an unacceptable result
 

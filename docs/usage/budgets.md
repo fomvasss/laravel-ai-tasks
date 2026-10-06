@@ -12,7 +12,21 @@ Every run belongs to a tenant (`ai_runs.tenant_id`). Budgets limit a tenant's mo
 
 A tenant without its own entry gets the `default` limit — each tenant separately, not a shared pool. Without a `default` entry such tenants are unlimited.
 
-Current spend vs limit — [`ai:budget`](../reference/commands.md#aibudget).
+Current spend vs limit — [`ai:budget`](../reference/commands.md#aibudget), or from code, e.g. to show the remaining budget in your UI:
+
+```php
+use Fomvasss\AiTasks\Support\Budget;
+
+$budget = app(Budget::class);
+
+$budget->getMonthlyLimit($tenantId);      // ?float, null = unlimited
+$budget->getMonthlySpent($tenantId);      // float, current month
+$budget->getMonthlyRemaining($tenantId);  // ?float, null = unlimited
+$budget->getSpentBetween($tenantId, $from, $to);
+$budget->ensureNotExceeded($tenantId, expectedCost: 0.5); // throws BudgetExceededException
+```
+
+The month is the calendar month in the app's timezone, by `ai_runs.created_at`.
 
 ## How the tenant is resolved
 

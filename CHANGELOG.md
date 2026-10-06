@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [3.31.2] — 2026-10-07
+
+### Fixed
+- A delayed run (`AI::queue(..., delay:)`) no longer counts as stuck before it is due — it was flagged after `stuck_after_minutes` from dispatch, offering Retry in the dashboard and `ai:retry --stuck`.
+- Retrying a run whose earlier job is still in the queue no longer executes the task twice: each dispatch now carries an id, and a job whose id is no longer the run's current one skips. A job for a run that is already finished or closed with **Dead** skips too, instead of calling the provider. Jobs queued before the upgrade run as before.
+
 ## [3.31.1] — 2026-10-07
 
 ### Fixed
