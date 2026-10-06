@@ -4,7 +4,7 @@ import { glob } from 'astro/loaders';
 import { docsSchema } from '@astrojs/starlight/schema';
 
 // The pages are plain Markdown readable on GitHub: no frontmatter, the title is the first `# ` heading.
-const markdown = glob({ pattern: ['*.md', 'usage/**/*.md', 'reference/**/*.md'], base: '.' });
+const markdown = glob({ pattern: ['*.md', 'usage/**/*.md', 'guides/**/*.md', 'reference/**/*.md'], base: '.' });
 
 export const collections = {
 	docs: defineCollection({

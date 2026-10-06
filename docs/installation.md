@@ -60,30 +60,53 @@ AI_QUEUE=ai
 AI_QUEUE_POST=ai-post
 ```
 
-Example Horizon config:
+A provider call takes far longer than an ordinary job, and that needs its own queue connection. Redis hands a reserved job out again once the connection's `retry_after` passes — 90 seconds on the default `redis` connection — while a worker may still be on it for up to 300. The result is the same task executed twice. Give the `ai` queue a connection whose `retry_after` is larger than the highest job timeout:
 
 ```php
-'supervisor-ai' => [
-    'connection' => 'redis',
-    'queue' => ['ai'],
-    'balance' => 'auto',
-    'minProcesses' => 2,
-    'maxProcesses' => 20,
-    'tries' => 3,
-    'timeout' => 300,
-],
-'supervisor-ai-post' => [
-    'connection' => 'redis',
-    'queue' => ['ai-post'],
-    'balance' => 'simple',
-    'minProcesses' => 1,
-    'maxProcesses' => 8,
-    'tries' => 3,
-    'timeout' => 60,
+// config/queue.php
+'redis-ai' => [
+    'driver' => 'redis',
+    'connection' => env('REDIS_QUEUE_CONNECTION', 'default'),
+    'queue' => env('REDIS_QUEUE', 'default'),
+    'retry_after' => 360, // > the highest jobTimeout() (300 by default)
+    'block_for' => null,
 ],
 ```
 
-The supervisor `timeout` must be at least as large as the highest [`jobTimeout()`](usage/queued-tasks.md#job-timeout) of your tasks. The package jobs set their own `tries` (3) and `backoff`, which take precedence over the supervisor's `tries`, see [Failures and job retries](usage/queued-tasks.md#failures-and-job-retries). Tasks can route themselves to other queues via `viaQueues()` — every queue name they return must be consumed by a supervisor.
+```php
+// config/horizon.php
+'supervisor-ai' => [
+    'connection' => 'redis-ai',
+    'queue' => ['ai'],
+    'balance' => 'auto',
+    'minProcesses' => 1,
+    'maxProcesses' => 6,
+    'tries' => 3,
+    'timeout' => 300,
+],
+```
+
+The jobs are still dispatched on the default connection: both connections use the same Redis database and the same queue key, and `retry_after` takes effect when the worker reserves the job. No task needs `onConnection()`.
+
+`ai-post` jobs are short (`postprocess()`, `onCompleted()`) and usually few, so they don't need their own supervisor — add the queue to an existing pool of short jobs on the regular `redis` connection:
+
+```php
+'supervisor-default' => [
+    'connection' => 'redis',
+    'queue' => ['default', 'ai-post'],
+    'timeout' => 60,
+    // ...
+],
+```
+
+Rules of thumb:
+
+- the supervisor `timeout` is at least as large as the highest [`jobTimeout()`](usage/queued-tasks.md#job-timeout) of your tasks, and the connection's `retry_after` is larger still
+- the package jobs set their own `tries` (3) and `backoff`, which take precedence over the supervisor's `tries`, see [Failures and job retries](usage/queued-tasks.md#failures-and-job-retries)
+- every queue a task returns from `viaQueues()` must be consumed by a supervisor
+- locally one `ai` process is enough; schedule `horizon:snapshot` so the Horizon metrics are filled
+
+More on running in production — [Production checklist](guides/production.md).
 
 ## Laravel Octane
 

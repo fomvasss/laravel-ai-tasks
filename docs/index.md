@@ -74,14 +74,22 @@ Usage
 15. [Async providers & webhooks](usage/webhooks.md)
 16. [Testing](usage/testing.md)
 
+Guides — experience from production integrations
+
+17. [Production checklist](guides/production.md)
+18. [Building a chat assistant](guides/chat-assistant.md)
+19. [Tools in practice](guides/tools-in-practice.md)
+20. [Provider quirks](guides/provider-quirks.md)
+21. [Testing in practice](guides/testing-in-practice.md)
+
 Reference
 
-17. [AI facade](reference/facade.md)
-18. [AiTask methods](reference/task.md)
-19. [AiPayload & AiResponse](reference/payload-response.md)
-20. [The ai_runs table](reference/ai-runs.md)
-21. [Events](reference/events.md)
-22. [Artisan commands](reference/commands.md)
-23. [Providers](reference/providers.md)
+22. [AI facade](reference/facade.md)
+23. [AiTask methods](reference/task.md)
+24. [AiPayload & AiResponse](reference/payload-response.md)
+25. [The ai_runs table](reference/ai-runs.md)
+26. [Events](reference/events.md)
+27. [Artisan commands](reference/commands.md)
+28. [Providers](reference/providers.md)
 
 [Upgrading](upgrading.md)

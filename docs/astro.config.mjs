@@ -60,6 +60,16 @@ export default defineConfig({
 						'reference/providers',
 					],
 				},
+				{
+					label: 'Guides',
+					items: [
+						'guides/production',
+						'guides/chat-assistant',
+						'guides/tools-in-practice',
+						'guides/provider-quirks',
+						'guides/testing-in-practice',
+					],
+				},
 				'upgrading',
 			],
 		}),
