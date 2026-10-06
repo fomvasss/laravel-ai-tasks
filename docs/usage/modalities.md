@@ -2,100 +2,104 @@
 
 Available modalities: `text` · `image` · `embed` · `audio` · `transcription`
 
----
+A task declares its modality in `modality()` and sets the same value in `AiPayload`. Everything else — routing, fallback, queues, budgets, `ai_runs` — works the same for every modality. Which providers support a modality is defined by `laravel/ai`.
 
-## Image Generation
+| Modality | Input | `AiResponse::$content` | Model option | Default model from config |
+|---|---|---|---|---|
+| `text` | `messages` | text | `model` | `model` |
+| `image` | first message — the prompt | base64 image | `model` | `image_model` |
+| `embed` | first message — the text | JSON array of floats | `embed_model` | `embed_model` |
+| `audio` | first message — the text to speak | base64 audio | `model` | `audio_model` |
+| `transcription` | `options['path']` or `options['storage']` | text | `model` | provider's default |
 
-Set `modality: 'image'` in the payload. Supported via OpenAI (`gpt-image-2`, `dall-e-3`) and Gemini.
+Binary results (image, audio) are base64 strings. Decode and store them in [`onCompleted()`](queued-tasks.md#the-oncompleted-hook), not in `postprocess()` — `postprocess()` runs on every attempt, including rejected ones.
+
+## Image generation
+
+Providers: OpenAI, Gemini, xAI, OpenRouter, Azure OpenAI, Bedrock.
 
 ```php
 class GenerateImageTask extends AiTask
 {
-    public function modality(): string { return 'image'; }
+    public function __construct(private readonly string $prompt) {}
+
+    public function modality(): string
+    {
+        return 'image';
+    }
 
     public function toPayload(): AiPayload
     {
         return new AiPayload(
             modality: 'image',
-            messages: [new UserMessage('A minimalist blue logo for a tech startup')],
+            messages: [new UserMessage($this->prompt)],
             options: [
-                'model'   => 'gpt-image-2',
-                'size'    => '1024x1024', // or '3:2' landscape / '2:3' portrait
-                'quality' => 'standard',
+                'size' => '1:1',      // '1:1' square, '3:2' landscape, '2:3' portrait
+                'quality' => 'high',  // 'low', 'medium', 'high'
                 'timeout' => 120,
             ],
         );
     }
 
-    public function postprocess(AiResponse $resp): array|AiResponse
+    public function onCompleted(AiResponse|array $result, bool $attemptsExhausted): void
     {
-        // $resp->content — base64 string (image/png)
-        if ($resp->ok) {
-            $path = storage_path('app/images/generated_' . time() . '.png');
-            file_put_contents($path, base64_decode($resp->content));
-        }
-        return $resp;
+        Storage::put('images/'.Str::uuid().'.png', base64_decode($result->content));
     }
 }
 
-$r = AI::send(new GenerateImageTask(), drivers: ['openai']);
-// $r->content — base64 PNG image
+$response = AI::send(new GenerateImageTask('A minimalist blue logo for a tech startup'), drivers: 'openai');
 ```
 
----
+The aspect ratio is mapped to the provider's own size (for OpenAI `1:1` → `1024x1024`, `3:2` → `1536x1024`, `2:3` → `1024x1536`); a provider-specific value such as `1024x1024` is passed through as is. Without `timeout` the provider's default applies.
 
 ## Embeddings
 
-Convert text to vector embeddings for semantic search, clustering, etc.
+Providers: OpenAI, Gemini, Mistral, Ollama, Cohere, Jina, VoyageAI, OpenRouter, Azure OpenAI, Bedrock, OpenAI-compatible.
 
 ```php
 class EmbedDocumentTask extends AiTask
 {
     public function __construct(private readonly string $text) {}
 
-    public function modality(): string { return 'embed'; }
+    public function modality(): string
+    {
+        return 'embed';
+    }
 
     public function toPayload(): AiPayload
     {
         return new AiPayload(
             modality: 'embed',
-            messages: [$this->text], // string, array, or UserMessage
+            messages: [$this->text], // string, UserMessage or ['content' => ...]
+            // options: ['embed_model' => 'text-embedding-3-large'],
         );
     }
 
-    public function postprocess(AiResponse $resp): array|AiResponse
+    public function postprocess(AiResponse $resp): array
     {
-        // $resp->content — JSON array of floats (embedding vector)
-        $vector = json_decode($resp->content, true);
-        return [
-            'ok'     => $resp->ok,
-            'dims'   => count($vector),
-            'vector' => $vector,
-            'tokens' => $resp->usage['tokens_in'] ?? null,
-        ];
+        return ['vector' => json_decode($resp->content, true)];
     }
 }
 
-$r = AI::send(new EmbedDocumentTask('Your text here'), drivers: ['openai']);
-// Returns: { "ok": true, "dims": 1536, "vector": [0.023, -0.012, ...] }
+$response = AI::send(new EmbedDocumentTask('Your text here'), drivers: 'openai');
+$vector = json_decode($response->content, true)['vector']; // see Running tasks → What send() returns
 ```
 
-Supported models:
-- OpenAI: `text-embedding-3-small`, `text-embedding-3-large`
-- Gemini: `gemini-embedding-001`
+One task embeds one text — only the first message is used. Without a message the response is `ok: false` with error `embed_input_missing`. Note the model option is `embed_model`, not `model`.
 
----
+## Text-to-speech
 
-## Audio & Text-to-Speech
-
-Generate speech from text via OpenAI or ElevenLabs.
+Providers: OpenAI, ElevenLabs, Gemini, Mistral, OpenRouter.
 
 ```php
 class GenerateSpeechTask extends AiTask
 {
     public function __construct(private readonly string $text) {}
 
-    public function modality(): string { return 'audio'; }
+    public function modality(): string
+    {
+        return 'audio';
+    }
 
     public function toPayload(): AiPayload
     {
@@ -103,72 +107,60 @@ class GenerateSpeechTask extends AiTask
             modality: 'audio',
             messages: [$this->text],
             options: [
-                'model'        => 'gpt-4o-mini-tts', // OpenAI's current default TTS model
-                'voice'        => 'alloy', // alloy, echo, fable, onyx, nova, shimmer
-                'female'       => false,   // or true for ElevenLabs
-                'instructions' => 'Speak clearly and slowly', // optional
+                'voice' => 'alloy',                           // provider's voice name
+                // 'female' => true,                          // or a default female voice, when no `voice`
+                'instructions' => 'Speak clearly and slowly', // optional, where supported
             ],
         );
     }
 
-    public function postprocess(AiResponse $resp): array|AiResponse
+    public function onCompleted(AiResponse|array $result, bool $attemptsExhausted): void
     {
-        // $resp->content — base64 audio (MP3 or WAV)
-        if ($resp->ok) {
-            $path = storage_path('app/audio/speech_' . time() . '.mp3');
-            file_put_contents($path, base64_decode($resp->content));
-        }
-        return ['ok' => $resp->ok, 'size' => strlen($resp->content)];
+        Storage::put('audio/'.Str::uuid().'.mp3', base64_decode($result->content));
     }
 }
 
-AI::send(new GenerateSpeechTask('Hello world'), drivers: ['openai']);
+AI::send(new GenerateSpeechTask('Hello world'), drivers: 'openai');
 ```
 
----
+TTS returns no token usage. Cost is estimated from the input length with `price.per_char` (per 1M characters) — see [Cost tracking](costs.md).
 
-## Transcription & Speech-to-Text
+## Transcription
 
-Convert audio files to text via OpenAI, ElevenLabs, Mistral, or Gemini.
+Providers: OpenAI, Groq, ElevenLabs, Mistral, Gemini, OpenRouter, OpenAI-compatible.
 
 ```php
 class TranscribeAudioTask extends AiTask
 {
     public function __construct(private readonly string $audioPath) {}
 
-    public function modality(): string { return 'transcription'; }
+    public function modality(): string
+    {
+        return 'transcription';
+    }
 
     public function toPayload(): AiPayload
     {
         return new AiPayload(
             modality: 'transcription',
             options: [
-                'path'    => $this->audioPath, // full file path
-                // or use storage disk:
-                // 'storage' => 'file_path',
-                // 'disk'    => 'local',
-                'diarize' => true, // speaker identification (OpenAI only)
+                'path' => $this->audioPath,   // absolute file path
+                // 'storage' => 'audio/a.mp3', // or a path on a filesystem disk
+                // 'disk' => 's3',
+                'diarize' => true,            // speaker separation, where the model supports it
             ],
         );
     }
-
-    public function postprocess(AiResponse $resp): array|AiResponse
-    {
-        return [
-            'ok'               => $resp->ok,
-            'text'             => $resp->content,
-            'duration_seconds' => $resp->usage['audio_seconds'] ?? null, // as reported by the provider
-        ];
-    }
 }
 
-$r = AI::send(new TranscribeAudioTask('/path/to/audio.mp3'), drivers: ['openai']);
-// Returns: { "ok": true, "text": "transcribed text...", "duration_seconds": 42 }
+$response = AI::send(new TranscribeAudioTask('/path/to/audio.mp3'), drivers: 'openai');
+$response->content;                 // transcribed text
+$response->usage['audio_seconds'];  // duration, when the provider reports it
 ```
 
-Supported formats: MP3, MP4, MPEG, MPGA, M4A, OGG, WAV, WEBM
+Without `path` or `storage` the call throws `InvalidArgumentException`. Without `options['model']` the provider's default transcription model is used (for OpenAI `gpt-4o-transcribe-diarize`); there is no config key for it.
 
-**Cost.** Duration-billed models (whisper-1, Groq/ElevenLabs/Mistral STT) are costed by `price.per_minute` when the provider reports the audio length; set it per model so it doesn't apply to the driver's text model:
+**Cost.** Duration-billed models (whisper-1, Groq, ElevenLabs, Mistral) are costed by `price.per_minute` when the provider reports the audio length. Set it per model so it doesn't apply to the driver's text model:
 
 ```php
 'openai' => [
@@ -179,4 +171,4 @@ Supported formats: MP3, MP4, MPEG, MPGA, M4A, OGG, WAV, WEBM
 ],
 ```
 
-Without `per_minute` (or without a reported duration) transcription is costed by tokens like any text request — which is how gpt-4o-transcribe and Gemini bill it.
+Without `per_minute` (or without a reported duration) transcription is costed by tokens like a text request — which is how gpt-4o-transcribe and Gemini bill it.

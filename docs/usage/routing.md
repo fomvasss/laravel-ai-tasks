@@ -33,7 +33,7 @@ The chain is tried in order by `send()`, `stream()` and `queue()` alike. The nex
 
 The next driver is **not** tried when the provider rejects the request itself — other 4xx: invalid schema, context too long. The next provider would get the same request. `send()`/`stream()` throw `Fomvasss\AiTasks\Exceptions\AiDriverException` right away, with the original exception as `getPrevious()`.
 
-When every driver fails, `send()`/`stream()` throw `AiDriverException` (`All providers failed: ...`). A queued run retries the chain from the start according to the worker's `tries`/`backoff`, see [Queued tasks](queued-tasks.md#driver-fallback-in-the-queue).
+When every driver fails, `send()`/`stream()` throw `AiDriverException` (`All providers failed: ...`). A queued run retries the chain from the start, up to 3 attempts, see [Queued tasks](queued-tasks.md#failures-and-job-retries).
 
 `send()` and `stream()` record every attempt as its own `ai_runs` row: a failed driver gets an `error` row (marked as superseded when a later driver answers, so it's never retried), a driver without a key a `skipped` one (`driver_not_configured`), and the driver that answered an `ok` row. A queued run is a single row; `ai_runs.driver` records the driver that answered. A failure of the first driver that the fallback covered is visible in the [driver state](dashboard.md#driver-state) on the dashboard.
 

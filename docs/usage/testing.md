@@ -27,7 +27,17 @@ $fake = AI::fake([
 | `stream()` | The same, and calls `$onChunk` once with the full response |
 | `queue()` | Only records the call and returns a fake run id; the task doesn't run |
 
-The response has `content` set to the fake text, zero tokens and cost, and `structured = null` — a task relying on `schema()` gets no structured data from the fake. Nothing is written to `ai_runs`.
+A task without its own entry gets `*`, and without `*` the text `fake ai response`.
+
+The response has `content` set to the fake text, zero tokens and cost, and `structured = null` — a task relying on `schema()` gets no structured data from the fake. No tools are invoked and nothing is written to `ai_runs`. `AI::models()` is not available on the fake.
+
+To test `postprocess()` with structured data, call it directly:
+
+```php
+$result = (new SummarizeTask($article))->postprocess(
+    new AiResponse(ok: true, structured: ['summary' => 'Short.']),
+);
+```
 
 `queue()` applies the same guard as the real dispatcher: a task with required constructor parameters and an empty `serializeForQueue()` throws `LogicException`.
 

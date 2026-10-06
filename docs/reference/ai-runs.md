@@ -35,9 +35,26 @@ A sync call with fallback leaves one row per tried driver; a queued run is one r
 | `running` | Provider call in progress; a queued run also stays here between retry attempts |
 | `waiting` | Parked until a provider webhook, see [Webhooks](../usage/webhooks.md) |
 | `ok` | Finished with a result |
-| `error` | The call failed and won't be retried: a sync attempt failed, the provider rejected the request, or the post-call budget check rejected it |
+| `error` | Failed and not retried by the queue: a sync attempt failed, the driver returned `ok: false`, or the post-call budget check rejected the response |
 | `dead` | Queued run failed after all retries, or closed by hand |
 | `skipped` | `shouldRun()` returned `false`, or a sync call skipped a driver without an API key |
+
+```mermaid
+stateDiagram-v2
+    [*] --> queued: queue
+    [*] --> running: send or stream
+    queued --> running: worker picked it up
+    queued --> skipped: shouldRun is false
+    running --> ok
+    running --> error: failed, not retried
+    running --> dead: queue gave up
+    running --> skipped: driver without API key
+    running --> waiting: markWaiting
+    waiting --> ok: webhook succeeded
+    waiting --> error: webhook failed
+    error --> queued: Retry
+    dead --> queued: Retry
+```
 
 `stuck` is not a status but a condition: `queued`/`running` without progress for longer than `dashboard.stuck_after_minutes`.
 
