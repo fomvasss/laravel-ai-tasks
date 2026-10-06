@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [3.31.1] — 2026-10-07
+
+### Fixed
+- `ai:retry` and the dashboard **Retry** no longer re-dispatch a failed attempt of a sync `send()`/`stream()` call whose fallback driver then answered — the task ran a second time although the call already had its result. Such rows keep status `error` and get `response.superseded_by` with the id of the row that answered.
+
 ## [3.31.0] — 2026-10-04
 
 ### Added

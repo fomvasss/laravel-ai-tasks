@@ -74,8 +74,7 @@ php artisan ai:retry --dry-run            # list only, change nothing
 
 Task constructor arguments are stored only with `AI_STORE_REQUEST=true` — runs recorded without them are listed as skipped. Tasks whose constructor has no required parameters can always be retried.
 
-> [!WARNING]
-> Every `error` row is picked up — including a failed attempt of a sync call whose fallback driver then answered. Check the list with `--dry-run` first.
+A failed attempt of a sync call whose fallback driver then answered is not retried — the call already has its result (`response.superseded_by` points to the row that answered).
 
 ## ai:budget
 

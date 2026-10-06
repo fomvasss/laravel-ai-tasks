@@ -86,6 +86,7 @@ class AI
         $list   = $this->resolveDrivers($task, $drivers);
         $errors = [];
         $run    = null;
+        $failed = [];
 
         foreach ($list as $driverName) {
             $run = AiRun::start($driverName, $payload, $ctx, $task);
@@ -109,6 +110,7 @@ class AI
                     $run->fail($resp->error ?? 'unknown_error');
                     event(new AiTaskFailed($task, $resp->error ?? 'unknown_error', $run));
                     $errors[] = "{$driverName}: {$resp->error}";
+                    $failed[] = $run;
                     continue;
                 }
 
@@ -130,10 +132,16 @@ class AI
                     throw self::failFinally($task, new AiDriverException('Provider rejected the request: ' . implode(' | ', $errors), 0, $e), $run);
                 }
 
+                $failed[] = $run;
+
                 continue;
             }
 
             $run->finish($resp);
+
+            foreach ($failed as $attempt) {
+                $attempt->supersede($run->id);
+            }
 
             $resp = $this->runPostprocess($resp);
             $result = $task->postprocess($resp);
@@ -210,6 +218,7 @@ class AI
         $list   = $this->resolveDrivers($task, $drivers);
         $errors = [];
         $run    = null;
+        $failed = [];
 
         foreach ($list as $driverName) {
             $run = AiRun::start($driverName, $payload, $ctx, $task);
@@ -253,10 +262,16 @@ class AI
                     throw self::failFinally($task, new AiDriverException('Stream failed after output started: ' . implode(' | ', $errors), 0, $e), $run);
                 }
 
+                $failed[] = $run;
+
                 continue;
             }
 
             $run->finish($resp);
+
+            foreach ($failed as $attempt) {
+                $attempt->supersede($run->id);
+            }
 
             $resp = $this->runPostprocess($resp);
             $result = $task->postprocess($resp);

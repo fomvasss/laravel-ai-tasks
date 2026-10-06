@@ -48,6 +48,7 @@ A sync call with fallback leaves one row per tried driver; a queued run is one r
 | `AiRun::stuck(?int $minutes = null)` | Scope: stuck runs |
 | `isStuck(?int $minutes = null): bool` | Whether the run is stuck |
 | `canRetry(): bool` | Whether the dashboard / `ai:retry` can re-dispatch it |
+| `isSuperseded(): bool` | A failed sync attempt whose fallback driver answered; `response.superseded_by` holds the id of that row |
 | `markWaiting(array $extra = [])` | Park the run until a webhook; `$extra` goes to `response`, e.g. `provider_run_id` |
 | `abandon(string $reason)` | Mark `dead` without firing `AiRunFailed` |
 

@@ -51,7 +51,7 @@ From code: `AiRun::stuck()` scope and `$run->isStuck()`.
 
 Available on each row and on the run page:
 
-- **Retry** — rebuilds the task from `ai_runs.request` and re-dispatches it, reusing the same row. Available for `error`/`dead` runs and for stuck `queued`/`running` ones; a `running` run that isn't stuck is left alone — a worker is still on it. Requires `store_request` to have been enabled when the run was recorded, otherwise there are no constructor arguments to revive.
+- **Retry** — rebuilds the task from `ai_runs.request` and re-dispatches it, reusing the same row. Available for `error`/`dead` runs (except a failed sync attempt that a fallback driver covered) and for stuck `queued`/`running` ones; a `running` run that isn't stuck is left alone — a worker is still on it. Requires `store_request` to have been enabled when the run was recorded, otherwise there are no constructor arguments to revive.
 - **Dead** — closes a run you've given up on: `status = dead`, with the reason in `error`. Fires no `AiRunFailed` event — the actual failure happened earlier and silently, and listeners shouldn't be notified about an admin's click.
 
 The same from the CLI, including stuck runs:
