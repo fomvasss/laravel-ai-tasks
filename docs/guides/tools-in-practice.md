@@ -112,7 +112,7 @@ Some providers reject `tool_choice: required` in reasoning mode with a 400 — c
 
 Built on `laravel/ai`'s `Approvable`, see [Tool approval](../usage/tool-approval.md). Lessons:
 
-- **Return the `Approvable` subclass yourself from `tools()`.** The check is `instanceof Approvable` on the object in the array; automatic wrapping of MCP server tools creates a plain wrapper.
+- **Gate MCP server tools on the wrapper, not on the tool.** An MCP server tool returned from `tools()` is wrapped in `McpServerTool` automatically, and only the wrapper is asked — `needsApproval()` declared on the MCP tool itself is ignored and it runs without pausing. Wrap it yourself: `(new McpServerTool($tool))->requireApproval('...')`, or a `McpServerTool` subclass overriding `needsApproval()` when the answer depends on the call — see [MCP server tools](../usage/tool-approval.md#mcp-server-tools).
 - **Validate before asking.** Make `needsApproval()` return `false` when the call is invalid anyway (missing item, wrong quantity) — the error goes back to the model at once. Otherwise the customer confirms, the tool fails, the model retries with a new call id, and the customer is asked to confirm the same thing again.
 - **Count consecutive failures** of a tool (in cache, per chat) and after a few tell the model to offer a human.
 - **Store the full pending call** from `AiResponse::$toolCalls` (not `$pendingApprovals`) in your own table, with a TTL.
