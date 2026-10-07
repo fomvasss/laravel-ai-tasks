@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Fomvasss\AiTasks\Traits;
 
+use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Support\Facades\Auth;
 
 /**
@@ -20,14 +21,23 @@ trait ActsAsDispatchingUser
 {
     public function executionContext(): array
     {
-        $guard = Auth::getDefaultDriver();
-        $id    = Auth::guard($guard)->id();
+        $id = $this->actingUser()?->getAuthIdentifier();
 
         return [
-            'guard' => $guard,
+            'guard' => Auth::getDefaultDriver(),
             'user_id' => $id === null ? null : (is_int($id) ? $id : (string) $id),
             'locale' => app()->getLocale(),
         ];
+    }
+
+    /**
+     * Whom the task acts as: the authenticated user by default. Override for a task that runs on
+     * someone's behalf with nobody logged in — dispatched from a job, a webhook, a listener —
+     * to return the user it holds; the user is then applied from the start, to tools() too.
+     */
+    protected function actingUser(): ?Authenticatable
+    {
+        return Auth::user();
     }
 
     public static function withExecutionContext(array $context, \Closure $call): mixed

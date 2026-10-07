@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [3.36.0] — 2026-10-07
+
+### Added
+- `ActsAsDispatchingUser::actingUser()` — whom the task acts as, the authenticated user by default. A task that runs on someone's behalf from a job or webhook returns the user it holds instead of calling `Auth::setUser()` (which, in a long-lived worker, leaks into the next job).
+
+### Changed
+- `send()`, `queue()` and `stream()` run under the execution context from the start: `tools()`, `toPayload()` and the tenant/user resolution see the acting user too, not only the provider call. For the default trait (the logged-in user) nothing changes.
+
 ## [3.35.0] — 2026-10-07
 
 ### Added

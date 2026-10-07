@@ -195,6 +195,39 @@ class ExecutionContextTest extends TestCase
         $this->assertNull(Auth::user());
     }
 
+    /**
+     * Таск від імені користувача з job'а, де ніхто не залогінений (crm2): tools(), провайдер і хуки
+     * бачать його з самого початку, а після виклику — знову нікого.
+     */
+    public function test_acting_user_applies_to_tools_and_the_call_without_anyone_logged_in(): void
+    {
+        Auth::forgetUser();
+
+        $response = AIFacade::send(new ContextTestOnBehalfTask(7), 'spy');
+
+        $this->assertSame(7, ContextTestProbe::$seen['tools']['user']);
+        $this->assertSame(7, ContextTestProbe::$seen['driver']['user']);
+        $this->assertSame('7', AiRun::find($response->runId)->user_id);
+        $this->assertNull(Auth::user());
+    }
+
+    /** Адмін ставить у чергу від імені користувача: tools() збирається для користувача, адмін лишається */
+    public function test_acting_user_on_queue_dispatched_by_someone_else(): void
+    {
+        Queue::fake();
+        Auth::setUser($admin = new GenericUser(['id' => 99]));
+
+        $runId = AIFacade::queue(new ContextTestOnBehalfTask(7), 'spy');
+
+        $this->assertSame(7, ContextTestProbe::$seen['tools']['user']);
+        $this->assertSame($admin, Auth::user());
+
+        $this->runQueuedJobAsWorker();
+
+        $this->assertSame(7, ContextTestProbe::$seen['driver']['user']);
+        $this->assertSame('7', AiRun::find($runId)->user_id);
+    }
+
     public function test_deleted_user_leaves_nobody_authenticated(): void
     {
         Queue::fake();
@@ -291,6 +324,18 @@ class ContextTestCountryTask extends AiTask
         } finally {
             request()->headers->set('X-Country', $previous);
         }
+    }
+}
+
+class ContextTestOnBehalfTask extends ContextTestTask
+{
+    public function __construct(private int $userId = 0) {}
+
+    public function serializeForQueue(): array { return [$this->userId]; }
+
+    protected function actingUser(): ?Authenticatable
+    {
+        return new GenericUser(['id' => $this->userId]);
     }
 }
 
