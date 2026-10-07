@@ -31,9 +31,9 @@ flowchart TD
 
 | Step | Runs | Uses |
 |---|---|---|
-| `toPayload()`, `tools()`, `schema()`, `toolChoice()` | in `AI::queue()`, in the calling process | the task as constructed by the caller |
+| `toPayload()`, `tools()`, `schema()`, `toolChoice()`, `maxSteps()` | in `AI::queue()`, in the calling process | the task as constructed by the caller |
 | provider call | worker, `ProcessAiPayload` | the payload serialized into the job |
-| `shouldRun()`, `postprocess()`, `isAcceptable()`, `onCompleted()`, `onFailed()` | worker | a task rebuilt from `serializeForQueue()` |
+| `shouldRun()`, `approvalTtlMinutes()`, `postprocess()`, `isAcceptable()`, `onCompleted()`, `onFailed()` | worker | a task rebuilt from `serializeForQueue()` |
 
 Nothing from the request reaches the worker on its own — no authenticated user, locale or headers. A task that needs them uses [`ActsAsDispatchingUser`](../guides/tools-in-practice.md#acting-as-a-user) or its own `executionContext()`: captured at dispatch, applied around every worker step above.
 

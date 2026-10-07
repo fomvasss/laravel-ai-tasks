@@ -25,6 +25,7 @@
 | `model` | all | Model instead of the driver's default |
 | `timeout` | text, image | HTTP timeout in seconds; text default `60` |
 | `temperature`, `max_tokens`, `top_p` | text | [Generation options](../usage/running-tasks.md#generation-options) |
+| `max_steps` | text with tools | Step budget of the tool loop; wins over `AiTask::maxSteps()`, see [Step budget](../guides/tools-in-practice.md#step-budget) |
 | `attachments` | text | Files for vision |
 | `path`, `storage`, `disk`, `diarize` | transcription | Audio source and speaker separation |
 | `provider_options` | text with `schema()` | Raw provider fields keyed by driver, see [Provider-specific options](../usage/structured-output.md#provider-specific-options) |

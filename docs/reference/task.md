@@ -12,6 +12,8 @@
 | `setName(string $name): static` | — | Sets the name on an instance |
 | `tools(): array` | `[]` | `Laravel\Ai\Contracts\Tool[]`, see [Tools & MCP](../usage/tools.md) |
 | `toolChoice(): ToolChoice\|string\|array\|null` | `null` | Force a tool call, see [Tool choice](../usage/tool-approval.md) |
+| `maxSteps(): ?int` | `null` | Step budget of the tool loop; `null` — 1.5× the number of tools, at most 25. See [Step budget](../guides/tools-in-practice.md#step-budget) |
+| `approvalTtlMinutes(): ?int` | `approvals.ttl_minutes` | How long a pause for tool approval stays resumable; `null` — no limit. See [Resuming](../usage/tool-approval.md#resuming) |
 | `schema(): ?Closure` | `null` | JSON Schema for structured output, see [Structured output](../usage/structured-output.md) |
 | `viaDrivers(array\|string $drivers): static` | — | Driver chain for this instance, see [Routing](../usage/routing.md) |
 

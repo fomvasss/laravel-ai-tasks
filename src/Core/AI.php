@@ -152,7 +152,7 @@ class AI
                 continue;
             }
 
-            $run->finish($resp);
+            $run->finish($resp, $task);
             $resp = $resp->withRunId($run->id);
 
             foreach ($failed as $attempt) {
@@ -323,7 +323,7 @@ class AI
                 continue;
             }
 
-            $run->finish($resp);
+            $run->finish($resp, $task);
             $resp = $resp->withRunId($run->id);
 
             foreach ($failed as $attempt) {
@@ -451,6 +451,7 @@ class AI
         $schema     = $task->schema();
         $toolChoice = $task->toolChoice();
         $paused     = $task->resumingRun();
+        $maxSteps   = $task->maxSteps();
 
         if (empty($tools) && $schema === null && $toolChoice === null && $paused === null) {
             return $payload;
@@ -463,7 +464,7 @@ class AI
                 ? [...$payload->messages, ...PausedTurn::restore($paused->response['resume']['messages'] ?? [])]
                 : $payload->messages,
             systemPrompt: $payload->systemPrompt,
-            options: $payload->options,
+            options: $maxSteps !== null ? ['max_steps' => $maxSteps, ...$payload->options] : $payload->options,
             meta: $paused ? [...$payload->meta, 'resumed_from' => $paused->id] : $payload->meta,
             tools: $tools,
             jsonMode: $payload->jsonMode,

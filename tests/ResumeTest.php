@@ -101,11 +101,11 @@ class ResumeTest extends TestCase
         }
     }
 
-    private function pause(?array $step = null): AiRun
+    private function pause(?array $step = null, ?AiTask $task = null): AiRun
     {
         $this->provider($step ?? self::toolCalls(['call_order', 'place_order', ['qty' => 2]]));
 
-        $response = AI::send(new ResumeTestTask('buy two'), 'openai');
+        $response = AI::send($task ?? new ResumeTestTask('buy two'), 'openai');
 
         $this->assertTrue($response->paused());
 
@@ -179,6 +179,43 @@ class ResumeTest extends TestCase
         $this->assertNotNull($paused->fresh()->response['resume']['expired_at']);
         $this->expectExceptionMessage('expired');
         AI::resume(new ResumeTestTask('buy two'), $paused->id, ['fc_call_order' => true], 'openai');
+    }
+
+    /** Рутина за розкладом пропонує дію вранці, відповідь приходить в обід — TTL задачі, а не конфігу */
+    public function test_a_task_ttl_overrides_the_config(): void
+    {
+        $paused = $this->pause(task: new ResumeTestLongPauseTask('buy two'));
+        $this->provider(self::text('Order placed.'));
+        $this->travel(3)->hours();
+
+        $response = AI::resume(new ResumeTestLongPauseTask('buy two'), $paused->id, ['fc_call_order' => true], 'openai');
+
+        $this->assertSame('Order placed.', $response->content);
+        $this->assertSame([['qty' => 2]], ResumeTestOrderTool::$placed);
+    }
+
+    public function test_a_task_ttl_of_null_means_no_limit(): void
+    {
+        $paused = $this->pause(task: new ResumeTestEndlessPauseTask('buy two'));
+        $this->assertNull($paused->response['resume']['expires_at']);
+        $this->provider(self::text('Order placed.'));
+        $this->travel(30)->days();
+
+        AI::resume(new ResumeTestEndlessPauseTask('buy two'), $paused->id, ['fc_call_order' => true], 'openai');
+
+        $this->assertSame([['qty' => 2]], ResumeTestOrderTool::$placed);
+    }
+
+    public function test_a_queued_pause_takes_the_task_ttl(): void
+    {
+        Queue::fake();
+        $this->provider(self::toolCalls(['call_order', 'place_order', ['qty' => 2]]));
+
+        $runId = AI::queue(new ResumeTestLongPauseTask('buy two'), 'openai');
+        $this->work(ProcessAiPayload::class, 0);
+
+        $expiresAt = \Illuminate\Support\Carbon::parse(AiRun::find($runId)->response['resume']['expires_at']);
+        $this->assertTrue($expiresAt->gt(now()->addHours(23)));
     }
 
     /** Tool прибрали з tools() за час паузи — пауза лишається, щоб застосунок вирішив, що далі */
@@ -432,6 +469,16 @@ class ResumeTestPickyTask extends ResumeTestTask
 {
     public function isAcceptable(AiResponse|array $result): bool { return filled($result->content); }
     public function maxRetries(): int { return 2; }
+}
+
+class ResumeTestLongPauseTask extends ResumeTestTask
+{
+    public function approvalTtlMinutes(): ?int { return 1440; }
+}
+
+class ResumeTestEndlessPauseTask extends ResumeTestTask
+{
+    public function approvalTtlMinutes(): ?int { return null; }
 }
 
 class ResumeTestUserTask extends ResumeTestTask

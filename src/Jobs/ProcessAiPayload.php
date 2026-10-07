@@ -121,7 +121,7 @@ class ProcessAiPayload implements ShouldQueue
 
             app(Budget::class)->ensureNotExceeded($this->context->tenantId, (float) ($resp->usage['cost'] ?? 0.0));
 
-            $run->finish($resp);
+            $run->finish($resp, $task);
 
             $post = new PostprocessAiResult($run->id, $this->taskClass, $this->taskCtorArgs, $this->attempt);
 

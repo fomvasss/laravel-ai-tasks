@@ -154,6 +154,7 @@ final class LaravelAiDriver implements AiDriver
                 $temperature,
                 isset($p->options['max_tokens']) ? (int) $p->options['max_tokens'] : null,
                 $topP,
+                isset($p->options['max_steps']) ? (int) $p->options['max_steps'] : null,
             );
     }
 

@@ -5,10 +5,15 @@ declare(strict_types=1);
 namespace Fomvasss\AiTasks\Tests;
 
 use Fomvasss\AiTasks\AiServiceProvider;
+use Fomvasss\AiTasks\Core\AI;
 use Fomvasss\AiTasks\DTO\AiPayload;
 use Fomvasss\AiTasks\Drivers\LaravelAiDriver;
+use Fomvasss\AiTasks\Tasks\AiTask;
+use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Ai\AnonymousAgent;
+use Laravel\Ai\Contracts\Tool;
 use Laravel\Ai\Gateway\TextGenerationOptions;
+use Laravel\Ai\Tools\Request;
 use Orchestra\Testbench\TestCase;
 
 class GenerationOptionsTest extends TestCase
@@ -57,6 +62,61 @@ class GenerationOptionsTest extends TestCase
         $options = TextGenerationOptions::forAgent($agent);
 
         $this->assertSame(0.7, $options->temperature);
+    }
+
+    // ── Step budget of the tool loop ─────────────────────────────────────────
+
+    public function test_max_steps_from_options_reaches_laravel_ai(): void
+    {
+        $agent = $this->callMakeAgent(new AiPayload('text', options: ['max_steps' => 12]));
+
+        $this->assertSame(12, TextGenerationOptions::forAgent($agent)->maxSteps);
+    }
+
+    public function test_max_steps_is_unset_by_default(): void
+    {
+        $agent = $this->callMakeAgent(new AiPayload('text'));
+
+        $this->assertNull(TextGenerationOptions::forAgent($agent)->maxSteps);
+    }
+
+    public function test_task_max_steps_goes_into_the_payload(): void
+    {
+        $payload = AI::payloadWithTools($this->makeStepsTask(12));
+
+        $this->assertSame(12, $payload->options['max_steps']);
+    }
+
+    public function test_payload_max_steps_wins_over_the_task(): void
+    {
+        $payload = AI::payloadWithTools($this->makeStepsTask(12, ['max_steps' => 4]));
+
+        $this->assertSame(4, $payload->options['max_steps']);
+    }
+
+    public function test_task_without_max_steps_leaves_options_alone(): void
+    {
+        $payload = AI::payloadWithTools($this->makeStepsTask(null, ['temperature' => 0.3]));
+
+        $this->assertSame(['temperature' => 0.3], $payload->options);
+    }
+
+    private function makeStepsTask(?int $maxSteps, array $options = []): AiTask
+    {
+        return new class($maxSteps, $options) extends AiTask {
+            public function __construct(private ?int $steps, private array $payloadOptions) {}
+            public function modality(): string { return 'text'; }
+            public function toPayload(): AiPayload { return new AiPayload('text', options: $this->payloadOptions); }
+            public function maxSteps(): ?int { return $this->steps; }
+            public function tools(): array
+            {
+                return [new class implements Tool {
+                    public function description(): string { return 'A test tool'; }
+                    public function handle(Request $request): string { return 'result'; }
+                    public function schema(JsonSchema $schema): array { return []; }
+                }];
+            }
+        };
     }
 
     public function test_json_mode_agent_also_carries_generation_options(): void

@@ -171,7 +171,7 @@ See [Budgets & tenants](usage/budgets.md).
 ],
 ```
 
-`ttl_minutes` — a paused run older than this can't be resumed (`null` = no limit). `reject_reason` — text sent with a rejection that has none, so the model answers instead of ending with an empty reply. See [Resuming](usage/tool-approval.md#resuming).
+`ttl_minutes` — a paused run older than this can't be resumed (`null` = no limit); a task overrides it with `approvalTtlMinutes()`. `reject_reason` — text sent with a rejection that has none, so the model answers instead of ending with an empty reply. See [Resuming](usage/tool-approval.md#resuming).
 
 ## Webhook middleware
 
