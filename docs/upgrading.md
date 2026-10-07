@@ -10,6 +10,13 @@ php artisan migrate
 php artisan about   # AI Tasks section
 ```
 
+## 3.35
+
+- A run that stops before a tool needing approval gets status `paused` instead of `ok`. Queries and reports filtering `status = 'ok'` miss these runs; `postprocess()`/`onCompleted()` still run for them.
+- A paused run is no longer retried when `isAcceptable()` rejects it.
+- `AiResponse` has new trailing constructor arguments `resumeMessages` and `runId`.
+- New config section `approvals` (`php artisan about` lists it as missing in a published config).
+
 ## 3.34
 
 - Tasks can carry request state into the worker: `ActsAsDispatchingUser`, or `executionContext()` / `withExecutionContext()`. Nothing changes for tasks that don't use them.

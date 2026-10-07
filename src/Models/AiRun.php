@@ -194,6 +194,36 @@ class AiRun extends Model
         return $this->request['execution_context'] ?? [];
     }
 
+    public function isPaused(): bool
+    {
+        return $this->status === 'paused';
+    }
+
+    public function pauseExpired(): bool
+    {
+        $expiresAt = $this->response['resume']['expires_at'] ?? null;
+
+        return $expiresAt !== null && now()->greaterThan($expiresAt);
+    }
+
+    /**
+     * Takes the pause for one resume: false when another resume already did. Atomic, so two
+     * concurrent answers to the same approval can't both execute the tool.
+     */
+    public function claimPause(): bool
+    {
+        if (static::query()->whereKey($this->getKey())->where('status', 'paused')->update(['status' => 'ok']) !== 1) {
+            return false;
+        }
+
+        $response = $this->response ?? [];
+        $response['resume']['resumed_at'] = now()->toIso8601String();
+
+        $this->forceFill(['status' => 'ok', 'response' => $response])->save();
+
+        return true;
+    }
+
     public function markRunning(): void
     {
         $this->update([
@@ -216,8 +246,11 @@ class AiRun extends Model
             ? (int) now()->diffInMilliseconds($this->started_at, true)
             : null;
 
+        $ttl = config('ai-tasks.approvals.ttl_minutes');
+
         $this->update($this->withoutMissingColumns([
-            'status'            => 'ok',
+            // 'paused' — the call itself finished fine, the run waits for a tool decision
+            'status'            => $resp->paused() ? 'paused' : 'ok',
             'model'             => $resp->usage['model'] ?? null,
             'response'          => array_filter([
                 'content' => $resp->content,
@@ -225,6 +258,10 @@ class AiRun extends Model
                 'tool_calls' => $resp->toolCalls ?: null,
                 'finish_reason' => $resp->finishReason,
                 'pending_approvals' => $resp->pendingApprovals ?: null,
+                'resume' => $resp->paused() ? [
+                    'messages' => $resp->resumeMessages,
+                    'expires_at' => $ttl ? now()->addMinutes((int) $ttl)->toIso8601String() : null,
+                ] : null,
             ], fn (mixed $v): bool => $v !== null),
             'tokens_in'         => $resp->usage['tokens_in']          ?? null,
             'tokens_out'        => $resp->usage['tokens_out']         ?? null,

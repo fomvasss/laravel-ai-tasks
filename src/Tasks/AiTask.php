@@ -7,9 +7,11 @@ namespace Fomvasss\AiTasks\Tasks;
 use Fomvasss\AiTasks\DTO\AiContext;
 use Fomvasss\AiTasks\DTO\AiPayload;
 use Fomvasss\AiTasks\DTO\AiResponse;
+use Fomvasss\AiTasks\Models\AiRun;
 use Fomvasss\AiTasks\Support\TenantResolver;
 use Fomvasss\AiTasks\Traits\QueueableAi;
 use Fomvasss\AiTasks\Traits\RoutesDrivers;
+use Laravel\Ai\Approvals\Decisions;
 
 abstract class AiTask
 {
@@ -18,6 +20,10 @@ abstract class AiTask
     protected ?string $customName = null;
 
     private ?AiContext $cachedContext = null;
+
+    private ?AiRun $resumingRun = null;
+
+    private ?Decisions $resumeDecisions = null;
 
     abstract public function modality(): string;
 
@@ -221,6 +227,34 @@ abstract class AiTask
     public function idempotencyWindow(): ?string
     {
         return null;
+    }
+
+    /**
+     * The run this task is resuming (AI::resume()), or null on an ordinary run. toPayload()
+     * must then return the history as it was when that run started — the conversation up to and
+     * including the prompt that led to the pause, without what came after (the confirmation
+     * text shown to the user, their "yes"): the package appends the paused turn and the
+     * decisions to it.
+     */
+    public function resumingRun(): ?AiRun
+    {
+        return $this->resumingRun;
+    }
+
+    /** @internal set by AI::resume() */
+    public function beginResume(AiRun $run, Decisions $decisions): static
+    {
+        $this->resumingRun     = $run;
+        $this->resumeDecisions = $decisions;
+        $this->cachedContext   = null;
+
+        return $this;
+    }
+
+    /** @internal */
+    public function resumeDecisions(): ?Decisions
+    {
+        return $this->resumeDecisions;
     }
 
     public function serializeForQueue(): array

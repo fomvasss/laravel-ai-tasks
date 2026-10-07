@@ -23,6 +23,25 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Tool approval
+    |--------------------------------------------------------------------------
+    |
+    | A run that stops before a tool needing approval is stored as 'paused' and
+    | continued with AI::resume() / AI::queueResume().
+    |
+    | ttl_minutes   — a pause older than this can no longer be resumed: an "ok" given
+    |                 hours later must not place yesterday's order. null = no limit.
+    | reject_reason — text a rejection without its own reason is sent with, so the
+    |                 model answers the user instead of ending with an empty reply.
+    |                 null = laravel/ai default (empty reply).
+    */
+    'approvals' => [
+        'ttl_minutes'   => env('AI_APPROVAL_TTL', 60),
+        'reject_reason' => env('AI_APPROVAL_REJECT_REASON'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Dashboard
     |--------------------------------------------------------------------------
     |

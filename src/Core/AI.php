@@ -14,19 +14,25 @@ use Fomvasss\AiTasks\Events\AiTaskFailedFinally;
 use Fomvasss\AiTasks\Events\AiTaskQueued;
 use Fomvasss\AiTasks\Events\AiTaskStarted;
 use Fomvasss\AiTasks\Exceptions\AiDriverException;
+use Fomvasss\AiTasks\Exceptions\ApprovalResumeException;
 use Fomvasss\AiTasks\Exceptions\BudgetExceededException;
 use Fomvasss\AiTasks\Jobs\ProcessAiPayload;
 use Fomvasss\AiTasks\Models\AiRun;
+use Fomvasss\AiTasks\Support\ApprovalDecisions;
 use Fomvasss\AiTasks\Support\Budget;
 use Fomvasss\AiTasks\Support\DriverHealth;
+use Fomvasss\AiTasks\Support\ExecutionContext;
 use Fomvasss\AiTasks\Support\Failover;
 use Fomvasss\AiTasks\Support\ModelLister;
+use Fomvasss\AiTasks\Support\PausedTurn;
 use Fomvasss\AiTasks\Support\QueueDispatch;
 use Fomvasss\AiTasks\Tasks\AiTask;
 use Fomvasss\AiTasks\Tasks\PromptTask;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Pipeline\Pipeline;
 use Illuminate\Support\Facades\Log;
+use Laravel\Ai\Approvals\Decision;
+use Laravel\Ai\Approvals\Decisions;
 
 class AI
 {
@@ -139,6 +145,7 @@ class AI
             }
 
             $run->finish($resp);
+            $resp = $resp->withRunId($run->id);
 
             foreach ($failed as $attempt) {
                 $attempt->supersede($run->id);
@@ -177,7 +184,12 @@ class AI
         $driverName = $chain[0];
 
         try {
-            $run = AiRun::startAsQueue($driverName, $payload, $ctx, $task, executionContext: $execution);
+            $run = AiRun::startAsQueue(
+                $driverName, $payload, $ctx, $task,
+                // the resumed run shares the task's args, and so its idempotency key, with the paused one
+                idempotencyKey: $task->resumingRun() ? 'resume:' . $task->resumingRun()->id : null,
+                executionContext: $execution,
+            );
         } catch (UniqueConstraintViolationException) {
             return AiRun::where('idempotency_key', $task->idempotencyKey())->value('id');
         }
@@ -283,6 +295,7 @@ class AI
             }
 
             $run->finish($resp);
+            $resp = $resp->withRunId($run->id);
 
             foreach ($failed as $attempt) {
                 $attempt->supersede($run->id);
@@ -405,24 +418,93 @@ class AI
         $tools      = $task->tools();
         $schema     = $task->schema();
         $toolChoice = $task->toolChoice();
+        $paused     = $task->resumingRun();
 
-        if (empty($tools) && $schema === null && $toolChoice === null) {
+        if (empty($tools) && $schema === null && $toolChoice === null && $paused === null) {
             return $payload;
         }
 
         return new AiPayload(
             modality: $payload->modality,
-            messages: $payload->messages,
+            // a resume replays the paused turn after the history toPayload() rebuilt as of the pause
+            messages: $paused
+                ? [...$payload->messages, ...PausedTurn::restore($paused->response['resume']['messages'] ?? [])]
+                : $payload->messages,
             systemPrompt: $payload->systemPrompt,
             options: $payload->options,
-            meta: $payload->meta,
+            meta: $paused ? [...$payload->meta, 'resumed_from' => $paused->id] : $payload->meta,
             tools: $tools,
             jsonMode: $payload->jsonMode,
             providerOverride: $payload->providerOverride,
             schema: $schema,
-            toolChoice: $toolChoice,
-            decisions: $payload->decisions,
+            // a forced tool choice applied again on the continuation would force another tool call
+            toolChoice: $paused ? null : $toolChoice,
+            decisions: $paused ? $task->resumeDecisions() : $payload->decisions,
         );
+    }
+
+    /**
+     * Continues a run paused for tool approval (AiResponse::paused()) with the user's decisions,
+     * synchronously — a new run, linked by request.meta.resumed_from. $task is a fresh instance
+     * of the task that paused; its toPayload() sees resumingRun() and returns the history as of
+     * the pause. The pause is claimed atomically: a second resume of the same run throws.
+     *
+     * @param Decisions|array<string, Decision|bool> $decisions ['tool_call_id' => true|false|Decision]
+     */
+    public function resume(AiTask $task, string $runId, Decisions|array $decisions, array|string $drivers = []): AiResponse
+    {
+        return $this->resuming($task, $runId, $decisions, fn (): AiResponse => $this->send($task, $drivers));
+    }
+
+    /** resume() through the queue; returns the new run id. */
+    public function queueResume(AiTask $task, string $runId, Decisions|array $decisions, array|string $drivers = []): string
+    {
+        return $this->resuming($task, $runId, $decisions, fn (): string => $this->queue($task, $drivers));
+    }
+
+    /**
+     * @template T
+     * @param \Closure(): T $dispatch
+     * @return T
+     */
+    private function resuming(AiTask $task, string $runId, Decisions|array $decisions, \Closure $dispatch): mixed
+    {
+        $paused = AiRun::findOrFail($runId);
+
+        if (! $paused->isPaused()) {
+            throw ApprovalResumeException::notPaused($runId, $paused->status);
+        }
+
+        if (($paused->request['task_class'] ?? null) !== $task::class) {
+            throw ApprovalResumeException::otherTask($runId, (string) ($paused->request['task_class'] ?? ''), $task::class);
+        }
+
+        if ($paused->pauseExpired()) {
+            throw ApprovalResumeException::expired($runId);
+        }
+
+        $decisions = $decisions instanceof Decisions ? $decisions : Decisions::from($decisions);
+
+        // Under the paused run's context: tools() and the provider call act as the user who
+        // started it — not whoever answers (a webhook, a manager on their behalf)
+        return ExecutionContext::run($task::class, $paused->executionContext(), function () use ($task, $paused, $decisions, $dispatch): mixed {
+            $task->beginResume($paused, $decisions);
+
+            $missing = array_values(array_diff(
+                array_column($paused->response['pending_approvals'] ?? [], 'tool'),
+                ApprovalDecisions::toolNames($task->tools()),
+            ));
+
+            if ($missing !== []) {
+                throw ApprovalResumeException::toolsMissing($paused->id, $missing);
+            }
+
+            if (! $paused->claimPause()) {
+                throw ApprovalResumeException::alreadyResolved($paused->id);
+            }
+
+            return $dispatch();
+        });
     }
 
     private function runPostprocess(AiResponse $resp): AiResponse

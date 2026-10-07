@@ -99,7 +99,8 @@ class DashboardController extends Controller
             'today_total' => AiRun::where('started_at', '>=', $today)->count(),
             'today_ok' => AiRun::where('started_at', '>=', $today)->where('status', 'ok')->count(),
             'today_error' => AiRun::where('started_at', '>=', $today)->whereIn('status', ['error', 'dead'])->count(),
-            'month_cost' => round((float) AiRun::where('status', 'ok')
+            // a paused run's call was made and billed too
+            'month_cost' => round((float) AiRun::whereIn('status', ['ok', 'paused'])
                 ->whereBetween('started_at', [now()->startOfMonth(), now()->endOfMonth()])
                 ->sum('cost'), 6),
             // Not scoped to today: a stuck run is stuck until someone deals with it

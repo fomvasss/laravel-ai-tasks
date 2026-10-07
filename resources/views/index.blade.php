@@ -82,7 +82,7 @@
         <label class="{{ $labelClass }}">Status</label>
         <select name="status" class="{{ $selectClass }}">
             <option value="">All</option>
-            @foreach(['ok','error','dead','running','queued','waiting','skipped'] as $s)
+            @foreach(['ok','paused','error','dead','running','queued','waiting','skipped'] as $s)
                 <option value="{{ $s }}" @selected(request('status') === $s)>{{ $s }}</option>
             @endforeach
             {{-- derived from time, not a value in the status column --}}
@@ -179,6 +179,7 @@
                     'running' => 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400',
                     'queued'  => 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-400',
                     'waiting' => 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-400',
+                    'paused'  => 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-400',
                     default   => 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
                 };
                 $dur = $run->duration_ms;
@@ -260,6 +261,7 @@
         running: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400',
         queued:  'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-400',
         waiting: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-400',
+        paused:  'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-400',
     };
     const modalityClass = {
         image:         'bg-pink-100 text-pink-700 dark:bg-pink-900/40 dark:text-pink-400',

@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [3.35.0] — 2026-10-07
+
+### Added
+- `AI::resume($task, $runId, $decisions)` and `AI::queueResume()` continue a run paused for tool approval. The package stores the whole paused turn with the run — tool calls with result ids and reasoning replay blocks, and the results of tools that ran in the same step — and replays it after the history the task's `toPayload()` returns (with `resumingRun()` set). The pause is claimed atomically (a second resume throws `ApprovalResumeException`), expires after `approvals.ttl_minutes`, and is refused while a tool it waits for is missing from `tools()`. The continuation runs under the paused run's execution context and is linked by `request.meta.resumed_from`.
+- Status `paused` for such runs, with a dashboard filter and badge; the monthly cost includes them.
+- `AiResponse::$runId`, `paused()` and `pendingToolCalls()` (the waiting calls in full form).
+- `approvals.reject_reason`: a rejection without a reason carries this text, so the model answers instead of ending with an empty reply.
+- `AI::fake()` records `resume()`/`queueResume()`; `assertResumed()`.
+
+### Changed
+- A paused run is not retried by `isAcceptable()`.
+- Replay blocks of a paused turn are marked with their provider, so a resume on another provider drops them instead of sending them verbatim.
+
 ## [3.34.0] — 2026-10-07
 
 ### Added

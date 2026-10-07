@@ -10,6 +10,7 @@ use Fomvasss\AiTasks\Models\AiRun;
 use Fomvasss\AiTasks\Tasks\AiTask;
 use Fomvasss\AiTasks\Tasks\PromptTask;
 use Illuminate\Support\Str;
+use Laravel\Ai\Approvals\Decisions;
 use PHPUnit\Framework\Assert as PHPUnit;
 
 final class FakeAI
@@ -69,6 +70,42 @@ final class FakeAI
         $this->record('queue', $task, $drivers);
 
         return (string) Str::uuid();
+    }
+
+    /**
+     * Records the resume with its run id and decisions — assertResumed() checks them; nothing is
+     * claimed or validated against a stored run.
+     */
+    public function resume(AiTask $task, string $runId, Decisions|array $decisions, array|string $drivers = []): AiResponse
+    {
+        $this->record('resume', $task, $drivers, ['run_id' => $runId, 'decisions' => $decisions instanceof Decisions ? $decisions : Decisions::from($decisions)]);
+
+        return $this->completeLikeReal($task, $this->resolve($task));
+    }
+
+    public function queueResume(AiTask $task, string $runId, Decisions|array $decisions, array|string $drivers = []): string
+    {
+        $this->record('queueResume', $task, $drivers, ['run_id' => $runId, 'decisions' => $decisions instanceof Decisions ? $decisions : Decisions::from($decisions)]);
+
+        return (string) Str::uuid();
+    }
+
+    /**
+     * @param callable(AiTask, string $runId, Decisions): bool|null $callback
+     */
+    public function assertResumed(string $taskClass, ?callable $callback = null): void
+    {
+        $resumed = collect($this->recorded)
+            ->filter(fn ($r) => in_array($r['method'], ['resume', 'queueResume'], true) && $r['task'] instanceof $taskClass);
+
+        PHPUnit::assertTrue($resumed->isNotEmpty(), "Expected [{$taskClass}] to be resumed but it was not.");
+
+        if ($callback !== null) {
+            PHPUnit::assertTrue(
+                $resumed->filter(fn ($r) => $callback($r['task'], $r['run_id'], $r['decisions']))->isNotEmpty(),
+                "No [{$taskClass}] was resumed that satisfies the given callback.",
+            );
+        }
     }
 
     /**
@@ -152,7 +189,7 @@ final class FakeAI
         PHPUnit::assertEmpty($this->recorded, 'Expected no AI calls but ' . count($this->recorded) . ' were made.');
     }
 
-    /** @return array<int, array{method: string, task: AiTask, drivers: array}> */
+    /** @return array<int, array{method: string, task: AiTask, drivers: array, run_id?: string, decisions?: Decisions}> */
     public function recorded(): array
     {
         return $this->recorded;
@@ -175,12 +212,13 @@ final class FakeAI
             : new AiResponse(true, $answer, $usage);
     }
 
-    private function record(string $method, AiTask $task, array|string $drivers): void
+    private function record(string $method, AiTask $task, array|string $drivers, array $extra = []): void
     {
         $this->recorded[] = [
             'method'  => $method,
             'task'    => $task,
             'drivers' => (array) $drivers,
+            ...$extra,
         ];
     }
 }

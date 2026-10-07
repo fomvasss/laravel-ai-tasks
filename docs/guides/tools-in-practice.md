@@ -118,10 +118,9 @@ Built on `laravel/ai`'s `Approvable`, see [Tool approval](../usage/tool-approval
 - **Gate MCP server tools on the wrapper, not on the tool.** An MCP server tool returned from `tools()` is wrapped in `McpServerTool` automatically, and only the wrapper is asked — `needsApproval()` declared on the MCP tool itself is ignored and it runs without pausing. Wrap it yourself: `(new McpServerTool($tool))->requireApproval('...')`, or a `McpServerTool` subclass overriding `needsApproval()` when the answer depends on the call — see [MCP server tools](../usage/tool-approval.md#mcp-server-tools).
 - **Validate before asking.** Make `needsApproval()` return `false` when the call is invalid anyway (missing item, wrong quantity) — the error goes back to the model at once. Otherwise the customer confirms, the tool fails, the model retries with a new call id, and the customer is asked to confirm the same thing again.
 - **Count consecutive failures** of a tool (in cache, per chat) and after a few tell the model to offer a human.
-- **Store the full pending call** from `AiResponse::$toolCalls` (not `$pendingApprovals`) in your own table, with a TTL.
-- **Before resuming, check the tool still exists** in the current `tools()` — it may have been switched off meanwhile; resuming with a missing tool throws.
+- **Resume with `AI::resume()` / `AI::queueResume()`**, keeping only `$response->runId` with your chat — the package stores the paused turn and refuses a second, expired or tool-less resume. See [Resuming](../usage/tool-approval.md#resuming).
 - **Render the confirmation text yourself** from the pending call's arguments rather than trusting the model's wording.
-- **Treat "paused for approval" as a successful turn** in `isAcceptable()`, or the pause is retried and escalated.
+- **Build the resumed history as of the pause** in `toPayload()` when `resumingRun()` is set — cut your chat at the message that led to the pause.
 - **Classify the customer's answer cheaply first** — exact "yes"/"no" matches in the supported languages — and call an AI classifier only for the rest.
 
 ## Validate ids the model returns

@@ -44,8 +44,12 @@
 | `toolCalls` | `array` | Tools the model invoked, `ToolCall::toArray()` per entry |
 | `finishReason` | `?string` | `stop`, `length`, `tool_calls`, `content_filter`, `error`, `unknown` |
 | `pendingApprovals` | `array` | Tool calls waiting for approval: `id`, `tool`, `arguments`, `reason` |
+| `runId` | `?string` | The `ai_runs` row of this call (since 3.35); `null` when `postprocess()` returned an array |
+| `resumeMessages` | `array` | The paused turn as stored for `AI::resume()`; internal |
 | `error` | `?string` | Error message |
 | `raw` | `array` | Reserved; currently always empty |
+
+Methods: `paused(): bool` — the run waits for a tool decision; `pendingToolCalls(): array` — the waiting calls in full `ToolCall::toArray()` form.
 
 ## AiContext
 

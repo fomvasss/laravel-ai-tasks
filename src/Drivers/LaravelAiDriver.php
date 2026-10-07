@@ -8,7 +8,9 @@ use Fomvasss\AiTasks\Contracts\AiDriver;
 use Fomvasss\AiTasks\DTO\AiContext;
 use Fomvasss\AiTasks\DTO\AiPayload;
 use Fomvasss\AiTasks\DTO\AiResponse;
+use Fomvasss\AiTasks\Support\ApprovalDecisions;
 use Fomvasss\AiTasks\Support\Cost;
+use Fomvasss\AiTasks\Support\PausedTurn;
 use Laravel\Ai\AnonymousAgent;
 use Laravel\Ai\Audio;
 use Laravel\Ai\Embeddings;
@@ -75,7 +77,7 @@ final class LaravelAiDriver implements AiDriver
             $agent = $this->makeAgent($p, $this->toLabMessages($p->messages), $displayProvider, $model);
 
             $response = $agent->prompt(
-                prompt: $p->decisions,
+                prompt: ApprovalDecisions::normalize($p->decisions),
                 provider: $provider,
                 model: $model,
                 timeout: $p->options['timeout'] ?? 60,
@@ -119,6 +121,7 @@ final class LaravelAiDriver implements AiDriver
             structured: $structured,
             finishReason: $finishReason,
             pendingApprovals: $response->pendingApprovals->map(fn ($approval) => $approval->toArray())->all(),
+            resumeMessages: $response->pendingApprovals->isNotEmpty() ? PausedTurn::serialize($response->messages, $response->meta->provider) : [],
         );
     }
 
