@@ -102,6 +102,20 @@ class RunUserIdTest extends TestCase
         AiRun::forgetSchemaCache();
     }
 
+    /** runId є й тоді, коли postprocess() повернув масив */
+    public function test_response_carries_the_run_id_even_for_an_array_result(): void
+    {
+        $task = new class extends AiTask {
+            public function modality(): string { return 'text'; }
+            public function toPayload(): AiPayload { return new AiPayload('text', ['hi']); }
+            public function postprocess(\Fomvasss\AiTasks\DTO\AiResponse $response): array { return ['ok' => true]; }
+        };
+
+        $response = AI::send($task, 'null');
+
+        $this->assertSame(AiRun::sole()->id, $response->runId);
+    }
+
     public function test_dashboard_filters_by_user(): void
     {
         Auth::setUser(new GenericUser(['id' => 42]));

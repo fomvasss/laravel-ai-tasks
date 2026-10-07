@@ -14,6 +14,7 @@ php artisan about   # AI Tasks section
 
 - A run that stops before a tool needing approval gets status `paused` instead of `ok`. Queries and reports filtering `status = 'ok'` miss these runs; `postprocess()`/`onCompleted()` still run for them.
 - A paused run is no longer retried when `isAcceptable()` rejects it.
+- A pause continued by hand (`AiPayload::$decisions`) is invisible to the package and stays `paused`; continue with `AI::resume()` to have it closed, claimed once and expired.
 - `AiResponse` has new trailing constructor arguments `resumeMessages` and `runId`.
 - New config section `approvals` (`php artisan about` lists it as missing in a published config).
 

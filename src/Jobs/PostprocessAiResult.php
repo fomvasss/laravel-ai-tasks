@@ -90,6 +90,9 @@ class PostprocessAiResult implements ShouldQueue
             ? $result
             : new AiResponse(true, json_encode($result));
 
+        // a postprocess() returning an array or a fresh AiResponse still gets the run id
+        $finalResponse = $finalResponse->runId !== null ? $finalResponse : $finalResponse->withRunId($run->id);
+
         AI::complete($task, $result, $finalResponse, $run, attemptsExhausted: ! $accepted);
     }
 

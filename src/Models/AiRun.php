@@ -152,6 +152,12 @@ class AiRun extends Model
      */
     public function canRetry(): bool
     {
+        // A failed continuation of a pause: its approved tool may already have run, and a retry
+        // would start the conversation over and pause again where the app no longer looks
+        if ($this->isResume()) {
+            return false;
+        }
+
         return match ($this->status) {
             'error' => ! $this->isSuperseded(),
             'dead' => true,
@@ -194,6 +200,12 @@ class AiRun extends Model
         return $this->request['execution_context'] ?? [];
     }
 
+    /** A continuation started by AI::resume() — request.meta.resumed_from holds the paused run. */
+    public function isResume(): bool
+    {
+        return isset($this->request['meta']['resumed_from']);
+    }
+
     public function isPaused(): bool
     {
         return $this->status === 'paused';
@@ -222,6 +234,22 @@ class AiRun extends Model
         $this->forceFill(['status' => 'ok', 'response' => $response])->save();
 
         return true;
+    }
+
+    /**
+     * Closes a pause that ran out of time, so it no longer shows as open: status 'ok' (the call
+     * itself finished), response.resume.expired_at. Atomic for the same reason as claimPause().
+     */
+    public function expirePause(): void
+    {
+        if (static::query()->whereKey($this->getKey())->where('status', 'paused')->update(['status' => 'ok']) !== 1) {
+            return;
+        }
+
+        $response = $this->response ?? [];
+        $response['resume']['expired_at'] = now()->toIso8601String();
+
+        $this->forceFill(['status' => 'ok', 'response' => $response])->save();
     }
 
     public function markRunning(): void

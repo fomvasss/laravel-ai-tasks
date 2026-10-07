@@ -134,11 +134,13 @@ class ResumeTest extends TestCase
     {
         $paused = $this->pause();
         $this->provider(self::text('Order placed.'));
+        ResumeTestTask::$toolsCalls = 0;
 
         $response = AI::resume(new ResumeTestTask('buy two'), $paused->id, ['fc_call_order' => true], 'openai');
 
         $this->assertSame('Order placed.', $response->content);
         $this->assertSame([['qty' => 2]], ResumeTestOrderTool::$placed);
+        $this->assertSame(1, ResumeTestTask::$toolsCalls, 'tools() may have side effects — built once per resume');
         // історія — рівно та, що й до паузи: один prompt користувача, без дублів
         $userTexts = array_map(fn ($i) => $i['content'][0]['text'], array_values(array_filter($this->lastInput(), fn ($i) => ($i['role'] ?? null) === 'user')));
         $this->assertSame(['buy two'], $userTexts);
@@ -153,11 +155,12 @@ class ResumeTest extends TestCase
         AI::resume(new ResumeTestTask('buy two'), $paused->id, ['fc_call_order' => true], 'openai');
 
         $this->expectException(ApprovalResumeException::class);
+        $this->expectExceptionMessage('already resumed');
 
         AI::resume(new ResumeTestTask('buy two'), $paused->id, ['fc_call_order' => true], 'openai');
     }
 
-    public function test_an_expired_pause_is_refused_and_nothing_runs(): void
+    public function test_an_expired_pause_is_refused_closed_and_nothing_runs(): void
     {
         $paused = $this->pause();
         $this->travel(61)->minutes();
@@ -170,7 +173,12 @@ class ResumeTest extends TestCase
         }
 
         $this->assertSame([], ResumeTestOrderTool::$placed);
-        $this->assertSame('paused', $paused->fresh()->status);
+
+        // закрита, щоб не висіти відкритою в дашборді; повторна спроба — та сама причина
+        $this->assertSame('ok', $paused->fresh()->status);
+        $this->assertNotNull($paused->fresh()->response['resume']['expired_at']);
+        $this->expectExceptionMessage('expired');
+        AI::resume(new ResumeTestTask('buy two'), $paused->id, ['fc_call_order' => true], 'openai');
     }
 
     /** Tool прибрали з tools() за час паузи — пауза лишається, щоб застосунок вирішив, що далі */
@@ -298,6 +306,49 @@ class ResumeTest extends TestCase
         $this->assertTrue(ResumeTestTask::$completed->paused());
     }
 
+    /** Без явних драйверів — той, де була пауза; інший провайдер може не прийняти чужий хід */
+    public function test_resume_continues_on_the_paused_runs_driver(): void
+    {
+        $paused = $this->pause();
+        $this->provider(self::text('Order placed.'));
+        config(['ai-tasks.default' => 'gemini']);
+
+        $response = AI::resume(new ResumeTestTask('buy two'), $paused->id, ['fc_call_order' => true]);
+
+        $this->assertSame('openai', AiRun::findOrFail($response->runId)->driver);
+    }
+
+    /** Схвалений tool виконується до запиту до моделі — повтор job'а чи запасний драйвер виконали б його вдруге */
+    public function test_queued_resume_is_not_retried_and_has_no_fallback(): void
+    {
+        Queue::fake();
+        $paused = $this->pause();
+
+        AI::queueResume(new ResumeTestTask('buy two'), $paused->id, ['fc_call_order' => true], ['openai', 'gemini']);
+
+        $job = Queue::pushedJobs()[ProcessAiPayload::class][0]['job'];
+        $this->assertSame(1, $job->tries);
+        $this->assertSame([], $job->fallbackDrivers);
+        $this->assertSame('openai', $job->driverName);
+    }
+
+    public function test_failed_continuation_cannot_be_retried(): void
+    {
+        $paused = $this->pause();
+        $this->provider(['error' => ['message' => 'boom']]);
+
+        try {
+            AI::resume(new ResumeTestTask('buy two'), $paused->id, ['fc_call_order' => true], 'openai');
+        } catch (\Throwable) {
+        }
+
+        $failed = AiRun::where('id', '!=', $paused->id)->sole();
+
+        $this->assertSame([['qty' => 2]], ResumeTestOrderTool::$placed, 'the approved tool ran before the provider failed');
+        $this->assertSame('error', $failed->status);
+        $this->assertFalse($failed->canRetry());
+    }
+
     private function work(string $jobClass, int $index): void
     {
         Queue::pushedJobs()[$jobClass][$index]['job']->handle(app(AiManager::class));
@@ -324,8 +375,12 @@ class ResumeTestTask extends AiTask
         return new AiPayload('text', [new UserMessage($this->prompt)]);
     }
 
+    public static int $toolsCalls = 0;
+
     public function tools(): array
     {
+        self::$toolsCalls++;
+
         return array_filter([new ResumeTestLookupTool, $this->withOrderTool ? new ResumeTestOrderTool : null]);
     }
 

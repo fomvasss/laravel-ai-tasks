@@ -9,9 +9,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Added
 - `AI::resume($task, $runId, $decisions)` and `AI::queueResume()` continue a run paused for tool approval. The package stores the whole paused turn with the run — tool calls with result ids and reasoning replay blocks, and the results of tools that ran in the same step — and replays it after the history the task's `toPayload()` returns (with `resumingRun()` set). The pause is claimed atomically (a second resume throws `ApprovalResumeException`), expires after `approvals.ttl_minutes`, and is refused while a tool it waits for is missing from `tools()`. The continuation runs under the paused run's execution context and is linked by `request.meta.resumed_from`.
 - Status `paused` for such runs, with a dashboard filter and badge; the monthly cost includes them.
-- `AiResponse::$runId`, `paused()` and `pendingToolCalls()` (the waiting calls in full form).
+- `AiResponse::$runId` — on every response of `send()`/`stream()` and in the queued `postprocess()`/`onCompleted()`, also when `postprocess()` returned an array; `paused()` and `pendingToolCalls()` (the waiting calls in full form).
 - `approvals.reject_reason`: a rejection without a reason carries this text, so the model answers instead of ending with an empty reply.
 - `AI::fake()` records `resume()`/`queueResume()`; `assertResumed()`.
+- A continuation runs on one driver without fallback — the paused run's unless given — and a queued one is not retried by the queue: the approved tool runs before the provider call, so either would run it twice. A failed continuation is excluded from Retry and `ai:retry`.
+- An expired pause is closed on the resume attempt (`ok`, `response.resume.expired_at`), so it doesn't stay open.
 
 ### Changed
 - A paused run is not retried by `isAcceptable()`.
