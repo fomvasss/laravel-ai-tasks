@@ -45,6 +45,18 @@ class PostprocessAiResult implements ShouldQueue
             structured: $run->response['structured'] ?? null,
             finishReason: $run->response['finish_reason'] ?? null,
             pendingApprovals: $run->response['pending_approvals'] ?? [],
+            // the provider's usage isn't kept as is — rebuilt from the run's columns, the same
+            // keys AI::send() returns (modality-specific extras like audio_seconds are not stored)
+            usage: array_filter([
+                'driver' => $run->driver,
+                'model' => $run->model,
+                'tokens_in' => $run->tokens_in,
+                'tokens_out' => $run->tokens_out,
+                'cache_read_tokens' => $run->cache_read_tokens,
+                'cache_write_tokens' => $run->cache_write_tokens,
+                'cost' => $run->cost,
+                'cost_rates' => $run->cost_rates,
+            ], fn (mixed $v): bool => $v !== null),
         );
 
         /** @var class-string<AiTask> $cls */

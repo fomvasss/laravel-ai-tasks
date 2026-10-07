@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [3.32.1] — 2026-10-07
+
+### Fixed
+- `postprocess()` of a queued task received an empty `$response->usage`, although `AI::send()` fills it and the run stores tokens and cost. It is now rebuilt from the run: `driver`, `model`, `tokens_in`, `tokens_out`, cache tokens, `cost`, `cost_rates`
+
 ## [3.32.0] — 2026-10-07
 
 ### Added
