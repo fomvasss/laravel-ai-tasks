@@ -43,6 +43,24 @@ class CreateOrderTool implements Tool, Approvable
 
 When the model calls such a tool, the run pauses instead of executing it: `AiResponse::$pendingApprovals` is populated (`id`/`tool`/`arguments`/`reason` per call) and the tool is **not** run.
 
+### MCP server tools
+
+A `Laravel\Mcp\Server\Tool` returned from `tools()` is wrapped in `Laravel\Ai\Tools\McpServerTool`, and the approval check runs on that wrapper. The wrapper never requires approval on its own and does not ask the wrapped tool, so `Approvable`/`needsApproval()` on the MCP tool class is ignored and the tool runs without pausing. Wrap the tool yourself instead:
+
+```php
+use Laravel\Ai\Tools\McpServerTool;
+
+public function tools(): array
+{
+    return [
+        new SearchOrdersTool,                                                              // runs freely
+        (new McpServerTool(new CreateOrderTool))->requireApproval('Places a real order.'), // pauses
+    ];
+}
+```
+
+When the decision depends on the call (for example, skip approval for a call that would fail validation anyway), extend `McpServerTool` and override `needsApproval(Request $request): Approval|bool`; `$this->tool` is the wrapped MCP tool. `McpServerTool` is `Approvable` since `laravel/ai` 1.1.
+
 ### Resuming
 
 Dispatch the same task again with `AiPayload::$decisions` instead of a new text prompt:

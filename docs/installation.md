@@ -4,7 +4,7 @@
 
 - PHP ^8.3
 - Laravel ^12 | ^13
-- [laravel/ai](https://laravel.com/docs/ai-sdk) ^1.0
+- [laravel/ai](https://laravel.com/docs/ai-sdk) ^1.2
 
 ## Install
 

@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [3.32.2] — 2026-10-07
+
+### Changed
+- Requires `laravel/ai` `^1.2`. Nothing in the package depends on the new version; the floor moves so the documented way to gate MCP server tools works: since 1.1 `McpServerTool` is `Approvable`, so `(new McpServerTool($tool))->requireApproval()` pauses the call. An MCP tool's own `needsApproval()` is still ignored by the automatic wrapper — see [Tool approval](docs/usage/tool-approval.md#mcp-server-tools).
+
 ## [3.32.1] — 2026-10-07
 
 ### Fixed

@@ -24,7 +24,7 @@
 
 - PHP ^8.3
 - Laravel ^12 | ^13
-- laravel/ai ^1.0
+- laravel/ai ^1.2
 
 ## Встановлення
 
