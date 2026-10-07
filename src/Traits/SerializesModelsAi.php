@@ -62,10 +62,14 @@ trait SerializesModelsAi
             return [];
         }
 
-        return array_map(function (\ReflectionParameter $param): mixed {
+        // Promoted properties belong to the class that declares the constructor — for a subclass
+        // that is the parent, whose private properties reflection on $this doesn't see
+        $declaringClass = $constructor->getDeclaringClass()->getName();
+
+        return array_map(function (\ReflectionParameter $param) use ($declaringClass): mixed {
             $name = $param->getName();
 
-            if (! property_exists($this, $name)) {
+            if (! property_exists($declaringClass, $name)) {
                 throw new \LogicException(
                     static::class . '::__construct() has a non-promoted parameter $' . $name . ' — ' .
                     'SerializesModelsAi requires every constructor parameter to be a promoted ' .
@@ -73,7 +77,7 @@ trait SerializesModelsAi
                 );
             }
 
-            $property = new \ReflectionProperty($this, $name);
+            $property = new \ReflectionProperty($declaringClass, $name);
             $property->setAccessible(true);
 
             return $property->getValue($this);

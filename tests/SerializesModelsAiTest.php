@@ -67,6 +67,23 @@ class SerializesModelsAiTest extends TestCase
         $this->assertSame(5, $args[1]);
     }
 
+    /** Варіант задачі як підклас — батьківські private-властивості reflection підкласу не бачить */
+    public function test_a_subclass_serializes_and_restores_the_parents_private_properties(): void
+    {
+        $article = $this->makeArticle();
+        $task    = new MixedArgSubTask($article, limit: 5);
+
+        $args = $task->serializeForQueue();
+
+        $this->assertInstanceOf(ModelIdentifier::class, $args[0]);
+        $this->assertSame(5, $args[1]);
+
+        $restored = MixedArgSubTask::fromQueueArgs($args);
+
+        $this->assertInstanceOf(MixedArgSubTask::class, $restored);
+        $this->assertEquals($args, $restored->serializeForQueue());
+    }
+
     public function test_no_arg_constructor_serializes_to_empty_array(): void
     {
         $task = new NoArgTask();
@@ -169,6 +186,11 @@ class MixedArgTask extends AiTask
 
     public function modality(): string { return 'text'; }
     public function toPayload(): AiPayload { return new AiPayload('text'); }
+}
+
+class MixedArgSubTask extends MixedArgTask
+{
+    public function maxSteps(): ?int { return 8; }
 }
 
 class NoArgTask extends AiTask

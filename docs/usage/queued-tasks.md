@@ -63,7 +63,7 @@ class SummarizeTask extends AiTask
 
 Limits of the trait:
 
-- every constructor parameter must be a promoted property (`private readonly Foo $foo`)
+- every constructor parameter must be a promoted property (`private readonly Foo $foo`). A subclass that only overrides methods (`maxSteps()`, `tools()`) inherits the parent's constructor and works, private properties included; a subclass with its own constructor must promote its parameters too
 - a plain PHP array of models is not swapped — use an Eloquent collection
 - everything except models must be JSON-safe: scalars and arrays of scalars
 
