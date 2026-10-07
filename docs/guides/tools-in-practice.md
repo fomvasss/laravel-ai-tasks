@@ -83,7 +83,15 @@ public static function withExecutionContext(array $context, \Closure $call): mix
 
 with the trait imported as `use ActsAsDispatchingUser { executionContext as traitExecutionContext; withExecutionContext as traitWithExecutionContext; }`. The context is stored as JSON: scalars and arrays only. Values that belong to one tool (a chat id the tool reports to) can still go into the tool's constructor — they're serialized with the job.
 
-**Running `AI::send()` inside your own queued job** after `Auth::setUser($user)` also works — the whole tool loop then runs in that job. Reset the user when the job ends: `Queue::before(fn () => Auth::forgetUser())` in a service provider covers every job, including one that threw; a `finally` in the job alone doesn't cover a job killed by a timeout.
+**Running `AI::send()` inside your own queued job** after `Auth::setUser($user)` also works — the whole tool loop then runs in that job — but prefer `actingUser()` above: it removes the user when the call ends. Reset the user when the job ends: a `Queue::before()` listener in a service provider covers every job, including one that threw (a `finally` in the job alone doesn't cover a job killed by a timeout) — but skip the `sync` connection: such a job runs inside the current request, and forgetting the user would log the request's own user out mid-request (`dispatchSync`, the sync queue in tests):
+
+```php
+Queue::before(function (JobProcessing $event): void {
+    if ($event->connectionName !== 'sync') {
+        Auth::forgetUser();
+    }
+});
+```
 
 When tools act as a user, **every tool must check access to every id it receives** — a tool that checks only "may create tasks" but not "may access this project" becomes a hole the model will eventually walk through.
 
