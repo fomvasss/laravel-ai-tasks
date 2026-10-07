@@ -527,6 +527,17 @@ class AI
 
         // Under the paused run's context: tools() and the provider call act as the user who
         // started it — not whoever answers (a webhook, a manager on their behalf)
+        // The resume state lives on the task instance only for this call — a refused resume
+        // leaves the instance an ordinary task, so the app can send()/queue() it as a normal turn
+        try {
+            return $this->resumeUnderContext($task, $paused, $decisions, $dispatch, $drivers);
+        } finally {
+            $task->endResume();
+        }
+    }
+
+    private function resumeUnderContext(AiTask $task, AiRun $paused, Decisions $decisions, \Closure $dispatch, array|string $drivers): mixed
+    {
         return ExecutionContext::run($task::class, $paused->executionContext(), function () use ($task, $paused, $decisions, $dispatch, $drivers): mixed {
             $task->beginResume($paused, $decisions);
 
