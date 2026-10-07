@@ -40,7 +40,25 @@ class AssistantReplyTask extends AiTask
 }
 ```
 
-It captures the guard, the user id and the app locale at dispatch, stores them with the run and applies them wherever the package runs the task's code: the provider call with its tool loop and approval checks, `shouldRun()`, `postprocess()`, `onCompleted()`, `onFailed()`, a retry after `isAcceptable()`, and a **Retry** from the dashboard or `ai:retry` — which then acts as the original user, not as whoever clicked. The user is re-read by id on that guard (made the default guard for the call), and everything is restored afterwards, also when the call throws, so the next job of the worker never inherits the user.
+It captures the guard, the user id and the app locale at dispatch, stores them with the run and applies them wherever the package runs the task's code: `tools()`/`toPayload()` and the tenant/user resolution of `send()`, `queue()` and `stream()` (since 3.36), the provider call with its tool loop and approval checks, `shouldRun()`, `postprocess()`, `onCompleted()`, `onFailed()`, a retry after `isAcceptable()`, and a **Retry** from the dashboard or `ai:retry` — which then acts as the original user, not as whoever clicked. The user is re-read by id on that guard (made the default guard for the call), and everything is restored afterwards, also when the call throws, so the next job of the worker never inherits the user.
+
+A task that runs **on someone's behalf with nobody logged in** — dispatched from a job, a webhook, a listener — names that user instead of calling `Auth::setUser()` (since 3.36):
+
+```php
+class AutoReplyTask extends AiTask
+{
+    use ActsAsDispatchingUser;
+
+    public function __construct(private User $onBehalfOf, private Comment $comment) {}
+
+    protected function actingUser(): ?Authenticatable
+    {
+        return $this->onBehalfOf;
+    }
+}
+```
+
+The user is then applied for the whole call — `tools()` included — and removed afterwards; `ai_runs.user_id` records them too.
 
 Tools needing more than the user — a header, a cart, a country — extend the context:
 

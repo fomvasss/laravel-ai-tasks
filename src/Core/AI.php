@@ -80,13 +80,17 @@ class AI
 
     public function send(AiTask $task, array|string $drivers = []): AiResponse
     {
-        return $this->sendPayload($task, self::payloadWithTools($task), $drivers);
+        // the whole call under the task's context — tools(), toPayload() and the tenant/user of
+        // a task that runs on someone's behalf from a job with nobody logged in included
+        $execution = $task->executionContext();
+
+        return $task::withExecutionContext($execution, fn (): AiResponse => $this->sendPayload($task, self::payloadWithTools($task), $drivers, $execution));
     }
 
-    private function sendPayload(AiTask $task, AiPayload $payload, array|string $drivers): AiResponse
+    private function sendPayload(AiTask $task, AiPayload $payload, array|string $drivers, ?array $execution = null): AiResponse
     {
         $ctx       = $task->context();
-        $execution = $task->executionContext();
+        $execution ??= $task->executionContext();
 
         try {
             app(Budget::class)->ensureNotExceeded($ctx->tenantId);
@@ -111,7 +115,7 @@ class AI
             event(new AiTaskStarted($task, $ctx, $run));
 
             try {
-                $resp = $task::withExecutionContext($execution, fn (): AiResponse => $this->manager->driver($driverName)->send($payload, $ctx));
+                $resp = $this->manager->driver($driverName)->send($payload, $ctx);
 
                 if ($resp->ok) {
                     DriverHealth::recordSuccess($driverName, $payload);
@@ -177,7 +181,9 @@ class AI
     {
         self::ensureQueueable($task);
 
-        return $this->queuePayload($task, self::payloadWithTools($task), $drivers, $delay);
+        $execution = $task->executionContext();
+
+        return $task::withExecutionContext($execution, fn (): string => $this->queuePayload($task, self::payloadWithTools($task), $drivers, $delay, $execution));
     }
 
     private static function ensureQueueable(AiTask $task): void
@@ -191,10 +197,10 @@ class AI
         }
     }
 
-    private function queuePayload(AiTask $task, AiPayload $payload, array|string $drivers, \DateTimeInterface|\DateInterval|int|null $delay = null): string
+    private function queuePayload(AiTask $task, AiPayload $payload, array|string $drivers, \DateTimeInterface|\DateInterval|int|null $delay = null, ?array $execution = null): string
     {
         $ctx       = $task->context();
-        $execution = $task->executionContext();
+        $execution ??= $task->executionContext();
 
         $chain      = $this->resolveConfiguredChain($task, $drivers, $payload);
         $driverName = $chain[0];
@@ -249,9 +255,15 @@ class AI
 
     public function stream(AiTask $task, callable $onChunk, array|string $drivers = []): AiResponse
     {
-        $payload   = self::payloadWithTools($task);
-        $ctx       = $task->context();
         $execution = $task->executionContext();
+
+        return $task::withExecutionContext($execution, fn (): AiResponse => $this->streamUnderContext($task, $onChunk, $drivers, $execution));
+    }
+
+    private function streamUnderContext(AiTask $task, callable $onChunk, array|string $drivers, array $execution): AiResponse
+    {
+        $payload = self::payloadWithTools($task);
+        $ctx     = $task->context();
 
         try {
             app(Budget::class)->ensureNotExceeded($ctx->tenantId);
@@ -278,13 +290,9 @@ class AI
             $streamed = false;
 
             try {
-                // a full closure, not fn(): an arrow function would capture $streamed by value,
-                // and the failover check below would never see output had started
-                $resp = $task::withExecutionContext($execution, function () use ($driverName, $payload, $ctx, $onChunk, &$streamed): AiResponse {
-                    return $this->manager->driver($driverName)->stream($payload, $ctx, function (string $delta) use ($onChunk, &$streamed): void {
-                        $streamed = true;
-                        $onChunk($delta);
-                    });
+                $resp = $this->manager->driver($driverName)->stream($payload, $ctx, function (string $delta) use ($onChunk, &$streamed): void {
+                    $streamed = true;
+                    $onChunk($delta);
                 });
 
                 DriverHealth::recordSuccess($driverName, $payload);
