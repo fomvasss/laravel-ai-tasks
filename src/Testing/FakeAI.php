@@ -90,6 +90,11 @@ final class FakeAI
         return (string) Str::uuid();
     }
 
+    public function dismissPause(string $runId): bool
+    {
+        return true;
+    }
+
     /**
      * @param callable(AiTask, string $runId, Decisions): bool|null $callback
      */

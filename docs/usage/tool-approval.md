@@ -92,6 +92,8 @@ $newRunId = AI::queueResume(new AssistantReplyTask($chat), $runId, ['fc_abc123' 
 - `toolChoice()` is not applied to the continuation — a forced choice would force another tool call.
 - Not available for `stream()`.
 
+When you won't continue a pause — the user declined and you answer with a normal turn, or wrote about something else — close it with `AI::dismissPause($runId)` (since 3.37): the run becomes `ok` with `response.resume.dismissed_at` instead of staying open, and can no longer be resumed.
+
 A rejection without a reason ends the turn with an empty answer. Set `approvals.reject_reason` (`AI_APPROVAL_REJECT_REASON`) and such a rejection carries that text, so the model answers the user itself.
 
 ### Resuming by hand
