@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [3.33.0] — 2026-10-07
+
+### Added
+- `ai_runs.user_id` — who started the run. Defaults to `auth()->id()` at dispatch (in the request, before a queued job loses the authenticated user); `null` when nobody is logged in. Override `AiTask::userId()` for a task that runs on someone's behalf. Shown in the dashboard next to the tenant, with a **User** filter, and in `AiContext::$userId`.
+- New migration `add_user_id_to_ai_runs_table` — publish it (`vendor:publish --tag=ai-migrations`) and migrate. Until then runs are stored without the column, as with `cost_rates`; `php artisan about` lists it as missing.
+
 ## [3.32.2] — 2026-10-07
 
 ### Changed

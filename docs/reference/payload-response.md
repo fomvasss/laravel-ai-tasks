@@ -49,4 +49,4 @@
 
 ## AiContext
 
-`Fomvasss\AiTasks\DTO\AiContext` — returned by `AiTask::context()`: `tenantId`, `taskName`, `subjectType`, `subjectId`, `meta`.
+`Fomvasss\AiTasks\DTO\AiContext` — returned by `AiTask::context()`: `tenantId`, `taskName`, `subjectType`, `subjectId`, `meta`, `userId`.

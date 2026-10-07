@@ -117,6 +117,11 @@
         </select>
     </div>
     <div>
+        <label class="{{ $labelClass }}">User</label>
+        <input type="text" name="user" value="{{ request('user') }}" placeholder="id"
+               class="{{ $inputClass }} w-20">
+    </div>
+    <div>
         <label class="{{ $labelClass }}">Task</label>
         <input type="text" name="task" value="{{ request('task') }}" placeholder="search..."
                class="{{ $inputClass }} w-32">
@@ -134,7 +139,7 @@
 </form>
 
 {{-- Filtered stats --}}
-@php $hasFilter = request()->hasAny(['status','driver','tenant','dispatch','task','from','to']); @endphp
+@php $hasFilter = request()->hasAny(['status','driver','tenant','user','dispatch','task','from','to']); @endphp
 <div class="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 px-4 py-3 mb-4">
     <div class="text-xs text-gray-400 dark:text-gray-500 mb-2 uppercase tracking-wider">{{ $hasFilter ? 'Filtered' : 'All time' }}</div>
     <div class="grid grid-cols-3 md:grid-cols-6 gap-4">
@@ -203,7 +208,12 @@
                 </td>
                 <td class="px-3 py-2 text-gray-600 dark:text-gray-300">{{ $run->driver }}</td>
                 <td class="px-3 py-2 text-gray-500 dark:text-gray-400 text-xs">{{ $run->model ?? '—' }}</td>
-                <td class="px-3 py-2 text-gray-500 dark:text-gray-400 text-xs">{{ $run->tenant_id }}</td>
+                <td class="px-3 py-2 text-gray-500 dark:text-gray-400 text-xs">
+                    {{ $run->tenant_id }}
+                    @if($run->user_id)
+                        <div class="text-gray-400 dark:text-gray-500">user {{ $run->user_id }}</div>
+                    @endif
+                </td>
                 <td class="px-3 py-2">
                     @php $dispatchBadge = $run->dispatch === 'queue'
                         ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-400'
@@ -303,7 +313,7 @@
             </td>
             <td class="px-3 py-2 text-gray-600 dark:text-gray-300">${r.driver ?? '—'}</td>
             <td class="px-3 py-2 text-gray-500 dark:text-gray-400 text-xs">${r.model ?? '—'}</td>
-            <td class="px-3 py-2 text-gray-500 dark:text-gray-400 text-xs">${r.tenant_id ?? ''}</td>
+            <td class="px-3 py-2 text-gray-500 dark:text-gray-400 text-xs">${r.tenant_id ?? ''}${r.user_id ? `<div class="text-gray-400 dark:text-gray-500">user ${r.user_id}</div>` : ''}</td>
             <td class="px-3 py-2"><span class="inline-flex px-2 py-0.5 rounded text-xs font-medium ${dc}">${r.dispatch}</span></td>
             <td class="px-3 py-2 whitespace-nowrap"><span class="inline-flex px-2 py-0.5 rounded text-xs font-medium ${badge}">${r.status}</span>${stuck}</td>
             <td class="px-3 py-2 text-gray-600 dark:text-gray-300">${r.tokens_in ?? '—'}</td>

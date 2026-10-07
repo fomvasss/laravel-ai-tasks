@@ -45,8 +45,9 @@ class AiRun extends Model
 
     public static function start(string $driver, AiPayload $p, AiContext $ctx, AiTask $task): self
     {
-        return static::create([
+        return static::create((new static)->withoutMissingColumns([
             'tenant_id'       => $ctx->tenantId,
+            'user_id'         => $ctx->userId,
             'task'            => $ctx->taskName,
             'driver'          => $driver,
             'modality'        => $p->modality,
@@ -57,13 +58,14 @@ class AiRun extends Model
             'idempotency_key' => null,
             'request'         => static::minifyRequest($p, $task),
             'started_at'      => now(),
-        ]);
+        ]));
     }
 
     public static function startAsQueue(string $driver, AiPayload $p, AiContext $ctx, AiTask $task, ?string $idempotencyKey = null): self
     {
-        return static::create([
+        return static::create((new static)->withoutMissingColumns([
             'tenant_id'       => $ctx->tenantId,
+            'user_id'         => $ctx->userId,
             'task'            => $ctx->taskName,
             'driver'          => $driver,
             'modality'        => $p->modality,
@@ -73,7 +75,7 @@ class AiRun extends Model
             'status'          => 'queued',
             'idempotency_key' => $idempotencyKey ?? $task->idempotencyKey(),
             'request'         => static::minifyRequest($p, $task),
-        ]);
+        ]));
     }
 
     /**
@@ -240,7 +242,7 @@ class AiRun extends Model
      * попереджає. Писати в неіснуючу колонку означало б валити КОЖЕН прогін SQL-помилкою через
      * необов'язкове поле, тому воно просто випадає із запису.
      */
-    private const OPTIONAL_COLUMNS = ['cost_rates'];
+    private const OPTIONAL_COLUMNS = ['cost_rates', 'user_id'];
 
     /** @var array<string, true> кеш на процес: hasColumn() — це запит до схеми */
     private static array $columnExists = [];
@@ -261,23 +263,11 @@ class AiRun extends Model
     private function withoutMissingColumns(array $attributes): array
     {
         foreach (self::OPTIONAL_COLUMNS as $column) {
-            if (! array_key_exists($column, $attributes)) {
+            if (! array_key_exists($column, $attributes) || $this->hasOptionalColumn($column)) {
                 continue;
             }
 
             $key = $this->getConnectionName() . '|' . $this->getTable() . '|' . $column;
-
-            // Кешується лише ПОЗИТИВНА відповідь: інакше процес, який стартував до `migrate`,
-            // до самого перезапуску писав би прогони без колонки, вже маючи її в схемі.
-            if (isset(self::$columnExists[$key])) {
-                continue;
-            }
-
-            if ($this->getConnection()->getSchemaBuilder()->hasColumn($this->getTable(), $column)) {
-                self::$columnExists[$key] = true;
-
-                continue;
-            }
 
             if (! isset(self::$columnWarned[$key])) {
                 self::$columnWarned[$key] = true;
@@ -288,6 +278,27 @@ class AiRun extends Model
         }
 
         return $attributes;
+    }
+
+    /**
+     * Whether a column added after the table itself (OPTIONAL_COLUMNS) exists yet — the dashboard
+     * selects and filters by them only then.
+     */
+    public function hasOptionalColumn(string $column): bool
+    {
+        $key = $this->getConnectionName() . '|' . $this->getTable() . '|' . $column;
+
+        // Кешується лише ПОЗИТИВНА відповідь: інакше процес, який стартував до `migrate`,
+        // до самого перезапуску писав би прогони без колонки, вже маючи її в схемі.
+        if (isset(self::$columnExists[$key])) {
+            return true;
+        }
+
+        if ($this->getConnection()->getSchemaBuilder()->hasColumn($this->getTable(), $column)) {
+            return self::$columnExists[$key] = true;
+        }
+
+        return false;
     }
 
     public function skip(string $reason): void

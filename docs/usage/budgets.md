@@ -76,6 +76,19 @@ protected function subjectId(): ?string
 }
 ```
 
+## User
+
+`ai_runs.user_id` records who started the run — for audit, spend per user and the dashboard's **User** filter. By default it is `auth()->id()` at dispatch (in the request, before the job is queued), so a run started with nobody logged in — a scheduled job, a webhook, a system task — records `null`. Override `userId()` when the task runs on someone's behalf without them being logged in:
+
+```php
+protected function userId(): ?string
+{
+    return (string) $this->comment->author_id;
+}
+```
+
+It is unrelated to `tenantId()`: the tenant pays, the user started the run. Publish and run the migration (`vendor:publish --tag=ai-migrations`, `migrate`); until then runs are stored without the column.
+
 ## When the budget is exceeded
 
 `Fomvasss\AiTasks\Exceptions\BudgetExceededException` is thrown on `send()`, `stream()` and in the queued job. The check runs twice:

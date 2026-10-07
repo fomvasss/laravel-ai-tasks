@@ -50,7 +50,26 @@ abstract class AiTask
             subjectType: $this->subjectType(),
             subjectId: $this->subjectId(),
             meta: $this->defaultMeta(),
+            userId: $this->userId() ?? self::authenticatedUserId(),
         );
+    }
+
+    /**
+     * Override to record who started this run (ai_runs.user_id) when it is not the authenticated
+     * user — e.g. a task dispatched from a job on someone's behalf. Return null (default) to fall
+     * back to auth()->id() at dispatch; a run started with nobody logged in records null.
+     * Purely for audit and filtering — unrelated to tenantId() (who's billed).
+     */
+    protected function userId(): ?string
+    {
+        return null;
+    }
+
+    private static function authenticatedUserId(): ?string
+    {
+        $id = auth()->id();
+
+        return $id === null ? null : (string) $id;
     }
 
     /**

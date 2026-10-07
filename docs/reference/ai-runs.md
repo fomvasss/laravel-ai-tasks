@@ -12,6 +12,7 @@ A sync call with fallback leaves one row per tried driver; a queued run is one r
 | `tenant_id` | Tenant the run is billed to |
 | `task` | [Task name](../usage/tasks.md#task-name) |
 | `driver` | Driver that answered |
+| `user_id` | Who started the run, see [User](../usage/budgets.md#user) |
 | `model` | Model used |
 | `modality` | `text`, `image`, `embed`, `audio`, `transcription` |
 | `subject_type`, `subject_id` | Record the run concerns, see [Subject](../usage/budgets.md#subject) |
