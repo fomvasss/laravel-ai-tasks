@@ -10,6 +10,12 @@ php artisan migrate
 php artisan about   # AI Tasks section
 ```
 
+## 3.34
+
+- Tasks can carry request state into the worker: `ActsAsDispatchingUser`, or `executionContext()` / `withExecutionContext()`. Nothing changes for tasks that don't use them.
+- `AiRun::start()` / `startAsQueue()` take a new trailing `$executionContext` argument; direct callers are unaffected.
+- Dashboard **Retry** and `ai:retry` rebuild the task under the run's stored context. Runs dispatched before 3.34 have none and are retried as before.
+
 ## 3.33
 
 - New `ai_runs.user_id` column — publish and run the migration. Until then runs are stored without it and the dashboard's User filter has no effect.

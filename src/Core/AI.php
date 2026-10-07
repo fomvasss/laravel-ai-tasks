@@ -74,8 +74,9 @@ class AI
 
     public function send(AiTask $task, array|string $drivers = []): AiResponse
     {
-        $payload = self::payloadWithTools($task);
-        $ctx     = $task->context();
+        $payload   = self::payloadWithTools($task);
+        $ctx       = $task->context();
+        $execution = $task->executionContext();
 
         try {
             app(Budget::class)->ensureNotExceeded($ctx->tenantId);
@@ -89,7 +90,7 @@ class AI
         $failed = [];
 
         foreach ($list as $driverName) {
-            $run = AiRun::start($driverName, $payload, $ctx, $task);
+            $run = AiRun::start($driverName, $payload, $ctx, $task, $execution);
 
             if (! $this->isConfigured($driverName) && ! ($payload->providerOverride['key'] ?? null)) {
                 $run->skip("driver_not_configured: {$driverName}");
@@ -100,7 +101,7 @@ class AI
             event(new AiTaskStarted($task, $ctx, $run));
 
             try {
-                $resp = $this->manager->driver($driverName)->send($payload, $ctx);
+                $resp = $task::withExecutionContext($execution, fn (): AiResponse => $this->manager->driver($driverName)->send($payload, $ctx));
 
                 if ($resp->ok) {
                     DriverHealth::recordSuccess($driverName, $payload);
@@ -168,14 +169,15 @@ class AI
             );
         }
 
-        $payload = self::payloadWithTools($task);
-        $ctx     = $task->context();
+        $payload   = self::payloadWithTools($task);
+        $ctx       = $task->context();
+        $execution = $task->executionContext();
 
         $chain      = $this->resolveConfiguredChain($task, $drivers, $payload);
         $driverName = $chain[0];
 
         try {
-            $run = AiRun::startAsQueue($driverName, $payload, $ctx, $task);
+            $run = AiRun::startAsQueue($driverName, $payload, $ctx, $task, executionContext: $execution);
         } catch (UniqueConstraintViolationException) {
             return AiRun::where('idempotency_key', $task->idempotencyKey())->value('id');
         }
@@ -214,8 +216,9 @@ class AI
 
     public function stream(AiTask $task, callable $onChunk, array|string $drivers = []): AiResponse
     {
-        $payload = self::payloadWithTools($task);
-        $ctx     = $task->context();
+        $payload   = self::payloadWithTools($task);
+        $ctx       = $task->context();
+        $execution = $task->executionContext();
 
         try {
             app(Budget::class)->ensureNotExceeded($ctx->tenantId);
@@ -229,7 +232,7 @@ class AI
         $failed = [];
 
         foreach ($list as $driverName) {
-            $run = AiRun::start($driverName, $payload, $ctx, $task);
+            $run = AiRun::start($driverName, $payload, $ctx, $task, $execution);
 
             if (! $this->isConfigured($driverName) && ! ($payload->providerOverride['key'] ?? null)) {
                 $run->skip("driver_not_configured: {$driverName}");
@@ -242,9 +245,13 @@ class AI
             $streamed = false;
 
             try {
-                $resp = $this->manager->driver($driverName)->stream($payload, $ctx, function (string $delta) use ($onChunk, &$streamed): void {
-                    $streamed = true;
-                    $onChunk($delta);
+                // a full closure, not fn(): an arrow function would capture $streamed by value,
+                // and the failover check below would never see output had started
+                $resp = $task::withExecutionContext($execution, function () use ($driverName, $payload, $ctx, $onChunk, &$streamed): AiResponse {
+                    return $this->manager->driver($driverName)->stream($payload, $ctx, function (string $delta) use ($onChunk, &$streamed): void {
+                        $streamed = true;
+                        $onChunk($delta);
+                    });
                 });
 
                 DriverHealth::recordSuccess($driverName, $payload);

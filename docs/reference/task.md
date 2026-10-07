@@ -41,6 +41,11 @@ See [Queued tasks](../usage/queued-tasks.md#retrying-an-unacceptable-result).
 | `onQueue(?string $queue): static` | — | Queue for both stages, requires `ShouldQueueAi` |
 | `onConnection(?string $connection): static` | — | Queue connection, requires `ShouldQueueAi` |
 
+| `executionContext(): array` | `[]` | Request-only state captured at dispatch and stored with the run (`request.execution_context`) |
+| `static withExecutionContext(array $context, Closure $call): mixed` | runs `$call` | Applies the context around the provider call, the worker hooks and a retry; restores in `finally` |
+
+`use ActsAsDispatchingUser;` implements both for the user and the locale, see [Acting as a user](../guides/tools-in-practice.md#acting-as-a-user).
+
 `use SerializesModelsAi;` implements `serializeForQueue()`/`fromQueueArgs()` for promoted constructor properties, including Eloquent models. See [Queued tasks](../usage/queued-tasks.md#serializing-the-task).
 
 ## Tenant and subject (protected)

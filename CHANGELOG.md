@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [3.34.0] — 2026-10-07
+
+### Added
+- Execution context: `AiTask::executionContext()` captures request-only state at dispatch (stored with the run as `request.execution_context`, regardless of `store_request`), and the static `withExecutionContext()` applies it around everything the package runs for the task — the provider call with its tool loop and approval checks, `shouldRun()`, `postprocess()`, `onCompleted()`, `onFailed()`, a retry after `isAcceptable()`. Default: nothing is carried.
+- `ActsAsDispatchingUser` trait: carries the guard, the user id and the app locale. In the worker the user is re-read on that guard, made the default guard for the call, and everything is restored in `finally` — the next job of the worker never inherits the user. A sync `send()` keeps the request's own user instance. Tools in `AI::queue()` thus act as the user who dispatched them instead of nobody.
+
+### Fixed
+- Dashboard **Retry** and `ai:retry` rebuilt the task — `tools()`, the tenant — in the process of whoever clicked, so tools that read the user at dispatch acted as the admin. They now rebuild it under the run's stored context.
+- `PostprocessAiResult` built the payload of a retry after `isAcceptable()` with no user or locale; it now runs under the run's context.
+
 ## [3.33.0] — 2026-10-07
 
 ### Added

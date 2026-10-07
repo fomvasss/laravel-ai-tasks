@@ -35,6 +35,8 @@ flowchart TD
 | provider call | worker, `ProcessAiPayload` | the payload serialized into the job |
 | `shouldRun()`, `postprocess()`, `isAcceptable()`, `onCompleted()`, `onFailed()` | worker | a task rebuilt from `serializeForQueue()` |
 
+Nothing from the request reaches the worker on its own — no authenticated user, locale or headers. A task that needs them uses [`ActsAsDispatchingUser`](../guides/tools-in-practice.md#acting-as-a-user) or its own `executionContext()`: captured at dispatch, applied around every worker step above.
+
 So the prompt reflects the data at dispatch time, while the hooks see fresh data — a model restored by `SerializesModelsAi` is re-read from the database. Tools are serialized with the payload: anonymous tool classes can't be queued, see [Tools in queued tasks](tools.md#tools-in-queued-tasks).
 
 `postprocess()` on the worker gets the response restored from `ai_runs.response`: `content`, `structured`, `toolCalls`, `finishReason`, `pendingApprovals`. `usage` is rebuilt from the run's columns (since 3.32.1): `driver`, `model`, `tokens_in`, `tokens_out`, cache tokens, `cost`, `cost_rates`. Modality-specific extras the run doesn't store (`audio_seconds`, image counts) are absent; before 3.32.1 `usage` was empty there.

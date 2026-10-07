@@ -43,7 +43,7 @@ class AiRun extends Model
         $this->table = config('ai-tasks.table', 'ai_runs');
     }
 
-    public static function start(string $driver, AiPayload $p, AiContext $ctx, AiTask $task): self
+    public static function start(string $driver, AiPayload $p, AiContext $ctx, AiTask $task, array $executionContext = []): self
     {
         return static::create((new static)->withoutMissingColumns([
             'tenant_id'       => $ctx->tenantId,
@@ -56,12 +56,12 @@ class AiRun extends Model
             'dispatch'        => 'sync',
             'status'          => 'running',
             'idempotency_key' => null,
-            'request'         => static::minifyRequest($p, $task),
+            'request'         => static::minifyRequest($p, $task, $executionContext),
             'started_at'      => now(),
         ]));
     }
 
-    public static function startAsQueue(string $driver, AiPayload $p, AiContext $ctx, AiTask $task, ?string $idempotencyKey = null): self
+    public static function startAsQueue(string $driver, AiPayload $p, AiContext $ctx, AiTask $task, ?string $idempotencyKey = null, array $executionContext = []): self
     {
         return static::create((new static)->withoutMissingColumns([
             'tenant_id'       => $ctx->tenantId,
@@ -74,7 +74,7 @@ class AiRun extends Model
             'dispatch'        => 'queue',
             'status'          => 'queued',
             'idempotency_key' => $idempotencyKey ?? $task->idempotencyKey(),
-            'request'         => static::minifyRequest($p, $task),
+            'request'         => static::minifyRequest($p, $task, $executionContext),
         ]));
     }
 
@@ -186,6 +186,12 @@ class AiRun extends Model
             'error'       => $reason,
             'finished_at' => now(),
         ]);
+    }
+
+    /** What AiTask::executionContext() returned when the run was dispatched; [] for none. */
+    public function executionContext(): array
+    {
+        return $this->request['execution_context'] ?? [];
     }
 
     public function markRunning(): void
@@ -352,7 +358,7 @@ class AiRun extends Model
         }
     }
 
-    private static function minifyRequest(AiPayload $p, AiTask $task): array
+    private static function minifyRequest(AiPayload $p, AiTask $task, array $executionContext): array
     {
         $options = $p->options;
 
@@ -368,6 +374,12 @@ class AiRun extends Model
             'meta'       => $p->meta,
             'task_class' => $task::class,
         ];
+
+        // Not gated by store_request: a queued job, a retry and a resume rebuild the task's
+        // context from here — without it they would run as nobody, or as whoever clicked Retry
+        if ($executionContext !== []) {
+            $data['execution_context'] = $executionContext;
+        }
 
         if (config('ai-tasks.store_request')) {
             // needed to reconstruct the task for ai:retry and webhook completion;

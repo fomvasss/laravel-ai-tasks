@@ -228,6 +228,38 @@ abstract class AiTask
         return [];
     }
 
+    /**
+     * Request-only state the task's code needs wherever it runs — the acting user, the locale,
+     * a header value. Captured when the task is dispatched (send()/queue(), in the caller's
+     * process), stored with the run (ai_runs.request.execution_context) and handed to
+     * withExecutionContext() wherever the package runs this task's code: the provider call with
+     * its tool loop, postprocess()/onCompleted()/onFailed() on the worker, a dashboard Retry.
+     * Scalars and arrays only — it is stored as JSON. Default [] — nothing is carried.
+     * ActsAsDispatchingUser implements both methods for the user and the locale.
+     *
+     * @return array<string, mixed>
+     */
+    public function executionContext(): array
+    {
+        return [];
+    }
+
+    /**
+     * Runs $call with the captured context applied and must restore everything it changed,
+     * in `finally` — a queue worker runs many jobs in one process. Static because a queued task
+     * is rebuilt from fromQueueArgs() inside the context: re-querying its models may already
+     * depend on the user (global scopes).
+     *
+     * @template T
+     * @param array<string, mixed> $context
+     * @param \Closure(): T $call
+     * @return T
+     */
+    public static function withExecutionContext(array $context, \Closure $call): mixed
+    {
+        return $call();
+    }
+
     public static function fromQueueArgs(array $args): static
     {
         return new static(...$args);

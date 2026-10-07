@@ -7,6 +7,7 @@ namespace Fomvasss\AiTasks\Jobs;
 use Fomvasss\AiTasks\Core\AI;
 use Fomvasss\AiTasks\DTO\AiResponse;
 use Fomvasss\AiTasks\Models\AiRun;
+use Fomvasss\AiTasks\Support\ExecutionContext;
 use Fomvasss\AiTasks\Support\QueueDispatch;
 use Fomvasss\AiTasks\Tasks\AiTask;
 use Illuminate\Bus\Queueable;
@@ -37,6 +38,13 @@ class PostprocessAiResult implements ShouldQueue
         if ($run->status !== 'ok') {
             return;
         }
+
+        // postprocess()/onCompleted(), and a retry's tools(), see the user and locale of the dispatch
+        ExecutionContext::run($this->taskClass, $run->executionContext(), fn () => $this->process($run));
+    }
+
+    private function process(AiRun $run): void
+    {
 
         $resp = new AiResponse(
             ok: true,
@@ -102,6 +110,7 @@ class PostprocessAiResult implements ShouldQueue
                 // fall back to the original run id so tasks without an idempotency key
                 // don't all collide on the same '-retryN' value
                 idempotencyKey: ($task->idempotencyKey() ?? $run->id) . '-retry' . $nextAttempt,
+                executionContext: $run->executionContext(),
             );
         } catch (UniqueConstraintViolationException) {
             // this retry generation was already dispatched (e.g. re-processed job) — nothing to do
