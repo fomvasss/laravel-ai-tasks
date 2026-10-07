@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [3.38.1] — 2026-10-08
+
+### Fixed
+- `SerializesModelsAi` failed on a subclass of a task whose constructor properties are `private` (`ReflectionException: Property ...::$foo does not exist`), already on `AI::send()`, since the idempotency key is built from `serializeForQueue()`. A variant made by subclassing — another `maxSteps()`, `tools()` or TTL — therefore couldn't be run at all. The properties are now read on the class that declares the constructor.
+
 ## [3.38.0] — 2026-10-08
 
 ### Added
