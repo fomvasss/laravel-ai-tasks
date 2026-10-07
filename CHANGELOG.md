@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [3.36.1] — 2026-10-08
+
+### Fixed
+- A refused `AI::resume()`/`queueResume()` (expired pause, missing tool, another task class) left the task instance in resume mode: sending or queuing the same instance afterwards as a normal turn silently built a resume payload again. The resume state is now cleared when the call ends, refused or not.
+
 ## [3.36.0] — 2026-10-07
 
 ### Added

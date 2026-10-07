@@ -196,6 +196,26 @@ class ResumeTest extends TestCase
         $this->assertSame('paused', $paused->fresh()->status);
     }
 
+    /** Відмовлений resume лишає екземпляр звичайним таском — застосунок ставить його звичайним ходом */
+    public function test_a_refused_resume_leaves_an_ordinary_task(): void
+    {
+        $paused = $this->pause();
+        $task = new ResumeTestTask('buy two', withOrderTool: false);
+
+        try {
+            AI::resume($task, $paused->id, ['fc_call_order' => true], 'openai');
+        } catch (ApprovalResumeException) {
+        }
+
+        $this->assertNull($task->resumingRun());
+
+        $this->provider(self::text('Hello again.'));
+        $response = AI::send($task, 'openai');
+
+        $this->assertArrayNotHasKey('resumed_from', AiRun::findOrFail($response->runId)->request['meta'] ?? []);
+        $this->assertSame('Hello again.', $response->content);
+    }
+
     public function test_resume_with_another_task_class_is_refused(): void
     {
         $paused = $this->pause();

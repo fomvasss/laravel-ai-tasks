@@ -251,6 +251,14 @@ abstract class AiTask
         return $this;
     }
 
+    /** @internal set by AI::resume() when it is done or refused */
+    public function endResume(): void
+    {
+        $this->resumingRun     = null;
+        $this->resumeDecisions = null;
+        $this->cachedContext   = null;
+    }
+
     /** @internal */
     public function resumeDecisions(): ?Decisions
     {
