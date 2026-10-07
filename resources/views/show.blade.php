@@ -41,6 +41,7 @@ $durStr = $dur === null ? '—' : ($dur < 1000 ? "{$dur}ms" : number_format($dur
             'Modality'     => $run->modality,
             'Dispatch'     => $run->dispatch ?? '—',
             'Tenant'       => $run->tenant_id,
+            'User'         => $run->user_id ?? '—',
             'Subject'      => $run->subject_type ? class_basename($run->subject_type) . '#' . $run->subject_id : '—',
             'Started'      => $run->started_at?->format('Y-m-d H:i:s') ?? '—',
             'Finished'     => $run->finished_at?->format('Y-m-d H:i:s') ?? '—',

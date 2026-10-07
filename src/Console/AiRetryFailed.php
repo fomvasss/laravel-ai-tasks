@@ -48,6 +48,11 @@ class AiRetryFailed extends Command
         $rows = [];
 
         foreach ($runs as $run) {
+            if ($run->isResume()) {
+                $rows[] = [$run->id, $run->task, $run->driver, 'skipped: continuation of a paused run — its approved tool may have run'];
+                continue;
+            }
+
             if (RunRetrier::reconstruct($run) === null) {
                 $rows[] = [$run->id, $run->task, $run->driver, 'skipped: task not reconstructable (no task_args stored — enable AI_STORE_REQUEST)'];
                 continue;

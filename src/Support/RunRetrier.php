@@ -39,6 +39,13 @@ final class RunRetrier
     /** False when the run is not reconstructable; the row is left untouched in that case. */
     public static function retry(AiRun $run): bool
     {
+        // Rebuilt under the run's own context — otherwise tools() and the tenant would be
+        // resolved for whoever clicked Retry, and the run would act as them
+        return ExecutionContext::run($run->request['task_class'] ?? '', $run->executionContext(), fn (): bool => self::dispatch($run));
+    }
+
+    private static function dispatch(AiRun $run): bool
+    {
         $task = self::reconstruct($run);
 
         if ($task === null) {

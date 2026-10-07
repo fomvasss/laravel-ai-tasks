@@ -7,6 +7,7 @@ namespace Fomvasss\AiTasks\Jobs;
 use Fomvasss\AiTasks\Core\AI;
 use Fomvasss\AiTasks\DTO\AiResponse;
 use Fomvasss\AiTasks\Models\AiRun;
+use Fomvasss\AiTasks\Support\ExecutionContext;
 use Fomvasss\AiTasks\Support\QueueDispatch;
 use Fomvasss\AiTasks\Tasks\AiTask;
 use Illuminate\Bus\Queueable;
@@ -34,9 +35,18 @@ class PostprocessAiResult implements ShouldQueue
     {
         $run = AiRun::findOrFail($this->aiRunId);
 
-        if ($run->status !== 'ok') {
+        // 'paused' — the call stopped before a tool that needs approval: postprocess() and
+        // onCompleted() still run, it's the moment the app asks the user
+        if (! in_array($run->status, ['ok', 'paused'], true)) {
             return;
         }
+
+        // postprocess()/onCompleted(), and a retry's tools(), see the user and locale of the dispatch
+        ExecutionContext::run($this->taskClass, $run->executionContext(), fn () => $this->process($run));
+    }
+
+    private function process(AiRun $run): void
+    {
 
         $resp = new AiResponse(
             ok: true,
@@ -45,6 +55,7 @@ class PostprocessAiResult implements ShouldQueue
             structured: $run->response['structured'] ?? null,
             finishReason: $run->response['finish_reason'] ?? null,
             pendingApprovals: $run->response['pending_approvals'] ?? [],
+            runId: $run->id,
             // the provider's usage isn't kept as is — rebuilt from the run's columns, the same
             // keys AI::send() returns (modality-specific extras like audio_seconds are not stored)
             usage: array_filter([
@@ -67,7 +78,8 @@ class PostprocessAiResult implements ShouldQueue
 
         $result = $task->postprocess($resp);
 
-        $accepted = $task->isAcceptable($result);
+        // A pause is a complete answer for now — re-running it would only ask the user again
+        $accepted = $resp->paused() || $task->isAcceptable($result);
 
         if (! $accepted && $this->attempt < $task->maxRetries()) {
             $this->retry($task, $run);
@@ -77,6 +89,9 @@ class PostprocessAiResult implements ShouldQueue
         $finalResponse = $result instanceof AiResponse
             ? $result
             : new AiResponse(true, json_encode($result));
+
+        // a postprocess() returning an array or a fresh AiResponse still gets the run id
+        $finalResponse = $finalResponse->runId !== null ? $finalResponse : $finalResponse->withRunId($run->id);
 
         AI::complete($task, $result, $finalResponse, $run, attemptsExhausted: ! $accepted);
     }
@@ -102,6 +117,7 @@ class PostprocessAiResult implements ShouldQueue
                 // fall back to the original run id so tasks without an idempotency key
                 // don't all collide on the same '-retryN' value
                 idempotencyKey: ($task->idempotencyKey() ?? $run->id) . '-retry' . $nextAttempt,
+                executionContext: $run->executionContext(),
             );
         } catch (UniqueConstraintViolationException) {
             // this retry generation was already dispatched (e.g. re-processed job) — nothing to do

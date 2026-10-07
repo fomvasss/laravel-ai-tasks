@@ -162,6 +162,17 @@ Monthly spend limit per tenant in USD:
 
 See [Budgets & tenants](usage/budgets.md).
 
+## Tool approval
+
+```php
+'approvals' => [
+    'ttl_minutes' => env('AI_APPROVAL_TTL', 60),
+    'reject_reason' => env('AI_APPROVAL_REJECT_REASON'),
+],
+```
+
+`ttl_minutes` — a paused run older than this can't be resumed (`null` = no limit). `reject_reason` — text sent with a rejection that has none, so the model answers instead of ending with an empty reply. See [Resuming](usage/tool-approval.md#resuming).
+
 ## Webhook middleware
 
 ```php

@@ -63,34 +63,47 @@ When the decision depends on the call (for example, skip approval for a call tha
 
 ### Resuming
 
-Dispatch the same task again with `AiPayload::$decisions` instead of a new text prompt:
+A paused run is stored with status `paused`, together with everything the continuation needs: the whole paused turn (the model's tool calls with their result ids and reasoning replay blocks, and the results of tools in the same step that needed no approval — those already ran), the pending calls and an expiry. The response says so:
 
 ```php
-public function toPayload(): AiPayload
-{
-    return new AiPayload(
-        modality: 'text',
-        messages: $this->history(), // must include the paused assistant turn with its tool call
-        decisions: $this->decisions, // e.g. ['call_abc123' => true]; null on the first, proposing call
-    );
+$response = AI::send(new AssistantReplyTask($chat));
+
+if ($response->paused()) {
+    // show $response->pendingApprovals to the user; keep $response->runId
 }
 ```
 
-`decisions` accepts a `Laravel\Ai\Approvals\Decisions` instance or a map `['tool_call_id' => true|false|Decision::approve()|Decision::reject('reason')]`. Works with `send()` and `queue()`, not with `stream()`.
+On the queued path `postprocess()`/`onCompleted()` get the same response (`paused()`, `runId`); a pause is never retried by `isAcceptable()`.
 
-### Rebuilding the paused turn
+Continue with the user's decisions (since 3.35):
 
-The package is deliberately not built on `laravel/ai`'s `RemembersConversations`/`ConversationStore`: your own domain data (chat, message log) is the source of truth for history, and `AiPayload::$messages` is always built from it. So the resume is on you — the history must contain the paused assistant turn as a real message with its tool call attached, not just the text the user saw.
+```php
+$response = AI::resume(new AssistantReplyTask($chat), $runId, ['fc_abc123' => true]);
+$newRunId = AI::queueResume(new AssistantReplyTask($chat), $runId, ['fc_abc123' => true]);
+```
 
-Rebuild it from `AiResponse::$toolCalls`, **not** `$pendingApprovals`. `$pendingApprovals` is a reduced view for display. `$toolCalls` carries the full shape a replay needs — `result_id` and, for reasoning models (OpenAI Responses API), `reasoning_id`/`reasoning_summary`/`reasoning_encrypted_content`. A replay missing `result_id` is rejected (`400: input[N].call_id: expected a string, but got null`):
+- Decisions are keyed by `pendingApprovals[].id` (for OpenAI the `fc_...` item id, not `call_id`): `true`/`false`, `Decision::approve()`, `Decision::reject('reason')`, `Decision::edit([...])`, or a `Decisions` instance; `'*'` covers the rest.
+- `$task` is a fresh instance of the task that paused. Its `toPayload()` is called with `resumingRun()` set and must return the history **as of the pause** — up to and including the prompt that led to it, without what came after (the confirmation text you showed, the user's "yes"). The package appends the stored turn and the decisions. A task whose payload comes from its constructor arguments needs nothing extra.
+- The pause is claimed atomically: a second resume of the same run throws `ApprovalResumeException`, so two answers can't run the tool twice. It is also refused when the run isn't paused or belongs to another task class, and — leaving the run paused — when the task no longer provides a tool the pause waits for. A pause older than `approvals.ttl_minutes` (default 60) is refused and closed (`ok`, `response.resume.expired_at`).
+- It runs on **one driver, without fallback**: the paused run's driver unless you pass one (only the first of a list is used). The approved tool runs at the start of the continuation, before the provider call, so trying another driver after a failure would run it again; for the same reason a queued continuation is not retried by the queue (`tries = 1`). Another provider may also reject the replayed turn — Gemini rejects an OpenAI one with a 400.
+- If the provider call fails after the tool ran, `resume()` throws (a queued continuation ends `dead`) and the run can't be retried from the dashboard or `ai:retry` — tell the user what was done from the tool's own records.
+- The continuation runs under the paused run's [execution context](../guides/tools-in-practice.md#acting-as-a-user): tools act as the user who started the run, whoever answers.
+- A new run is created; its `request.meta.resumed_from` is the paused run's id, and the paused run becomes `ok` with `response.resume.resumed_at`.
+- `toolChoice()` is not applied to the continuation — a forced choice would force another tool call.
+- Not available for `stream()`.
+
+A rejection without a reason ends the turn with an empty answer. Set `approvals.reject_reason` (`AI_APPROVAL_REJECT_REASON`) and such a rejection carries that text, so the model answers the user itself.
+
+### Resuming by hand
+
+Before 3.35 the continuation was built by the application, and `AiPayload::$decisions` still works that way: the history must contain the paused assistant turn as a real message with its tool call, rebuilt from `AiResponse::pendingToolCalls()` (the full form — `$pendingApprovals` lacks `result_id` and the reasoning fields, and a replay without `result_id` is rejected with `400: input[N].call_id: expected a string`). It replays only the calls waiting for approval: results of tools that ran in the same step are lost. Prefer `AI::resume()`.
 
 ```php
 use Illuminate\Support\Collection;
 use Laravel\Ai\Messages\AssistantMessage;
 use Laravel\Ai\Responses\Data\ToolCall;
 
-// $pendingToolCall = the matching entry from the proposing call's AiResponse::$toolCalls
-$messages[] = new AssistantMessage('', new Collection([
-    ToolCall::fromArray($pendingToolCall),
-]));
+$messages[] = new AssistantMessage('', new Collection(array_map(ToolCall::fromArray(...), $response->pendingToolCalls())));
+
+return new AiPayload('text', $messages, decisions: ['fc_abc123' => true]);
 ```

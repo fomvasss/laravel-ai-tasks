@@ -43,6 +43,7 @@ class DashboardController extends Controller
                 'driver' => $r->driver,
                 'model' => $r->model,
                 'tenant_id' => $r->tenant_id,
+                'user_id' => $r->user_id,
                 'dispatch' => $r->dispatch,
                 'status' => $r->status,
                 'modality' => $r->modality,
@@ -64,10 +65,13 @@ class DashboardController extends Controller
     {
         // COALESCE, not latest('started_at'): a queued run has no started_at, and DESC puts NULLs
         // first on Postgres but last on MySQL — the same data would order differently per driver.
+        $hasUserId = (new AiRun)->hasOptionalColumn('user_id');
+
         $query = AiRun::query()->orderByRaw('COALESCE(started_at, created_at) DESC')->select([
             'id', 'tenant_id', 'task', 'driver', 'model', 'modality', 'dispatch', 'status',
             'subject_type', 'subject_id', 'tokens_in', 'tokens_out', 'cost',
             'started_at', 'finished_at', 'duration_ms', 'created_at',
+            ...($hasUserId ? ['user_id'] : []),
         ]);
 
         // 'stuck' is a pseudo-status: a state derived from time, not a value in the column
@@ -78,6 +82,7 @@ class DashboardController extends Controller
         }
         if ($v = $request->input('driver')) { $query->where('driver', $v); }
         if ($v = $request->input('tenant')) { $query->where('tenant_id', $v); }
+        if ($hasUserId && ($v = $request->input('user'))) { $query->where('user_id', $v); }
         if ($v = $request->input('dispatch')) { $query->where('dispatch', $v); }
         if ($v = $request->input('task')) { $query->where('task', 'like', "%{$v}%"); }
         if ($v = $request->input('from')) { $query->where('started_at', '>=', $v); }
@@ -94,7 +99,8 @@ class DashboardController extends Controller
             'today_total' => AiRun::where('started_at', '>=', $today)->count(),
             'today_ok' => AiRun::where('started_at', '>=', $today)->where('status', 'ok')->count(),
             'today_error' => AiRun::where('started_at', '>=', $today)->whereIn('status', ['error', 'dead'])->count(),
-            'month_cost' => round((float) AiRun::where('status', 'ok')
+            // a paused run's call was made and billed too
+            'month_cost' => round((float) AiRun::whereIn('status', ['ok', 'paused'])
                 ->whereBetween('started_at', [now()->startOfMonth(), now()->endOfMonth()])
                 ->sum('cost'), 6),
             // Not scoped to today: a stuck run is stuck until someone deals with it

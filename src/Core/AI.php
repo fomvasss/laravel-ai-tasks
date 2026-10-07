@@ -14,19 +14,25 @@ use Fomvasss\AiTasks\Events\AiTaskFailedFinally;
 use Fomvasss\AiTasks\Events\AiTaskQueued;
 use Fomvasss\AiTasks\Events\AiTaskStarted;
 use Fomvasss\AiTasks\Exceptions\AiDriverException;
+use Fomvasss\AiTasks\Exceptions\ApprovalResumeException;
 use Fomvasss\AiTasks\Exceptions\BudgetExceededException;
 use Fomvasss\AiTasks\Jobs\ProcessAiPayload;
 use Fomvasss\AiTasks\Models\AiRun;
+use Fomvasss\AiTasks\Support\ApprovalDecisions;
 use Fomvasss\AiTasks\Support\Budget;
 use Fomvasss\AiTasks\Support\DriverHealth;
+use Fomvasss\AiTasks\Support\ExecutionContext;
 use Fomvasss\AiTasks\Support\Failover;
 use Fomvasss\AiTasks\Support\ModelLister;
+use Fomvasss\AiTasks\Support\PausedTurn;
 use Fomvasss\AiTasks\Support\QueueDispatch;
 use Fomvasss\AiTasks\Tasks\AiTask;
 use Fomvasss\AiTasks\Tasks\PromptTask;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Pipeline\Pipeline;
 use Illuminate\Support\Facades\Log;
+use Laravel\Ai\Approvals\Decision;
+use Laravel\Ai\Approvals\Decisions;
 
 class AI
 {
@@ -74,8 +80,13 @@ class AI
 
     public function send(AiTask $task, array|string $drivers = []): AiResponse
     {
-        $payload = self::payloadWithTools($task);
-        $ctx     = $task->context();
+        return $this->sendPayload($task, self::payloadWithTools($task), $drivers);
+    }
+
+    private function sendPayload(AiTask $task, AiPayload $payload, array|string $drivers): AiResponse
+    {
+        $ctx       = $task->context();
+        $execution = $task->executionContext();
 
         try {
             app(Budget::class)->ensureNotExceeded($ctx->tenantId);
@@ -89,7 +100,7 @@ class AI
         $failed = [];
 
         foreach ($list as $driverName) {
-            $run = AiRun::start($driverName, $payload, $ctx, $task);
+            $run = AiRun::start($driverName, $payload, $ctx, $task, $execution);
 
             if (! $this->isConfigured($driverName) && ! ($payload->providerOverride['key'] ?? null)) {
                 $run->skip("driver_not_configured: {$driverName}");
@@ -100,7 +111,7 @@ class AI
             event(new AiTaskStarted($task, $ctx, $run));
 
             try {
-                $resp = $this->manager->driver($driverName)->send($payload, $ctx);
+                $resp = $task::withExecutionContext($execution, fn (): AiResponse => $this->manager->driver($driverName)->send($payload, $ctx));
 
                 if ($resp->ok) {
                     DriverHealth::recordSuccess($driverName, $payload);
@@ -138,6 +149,7 @@ class AI
             }
 
             $run->finish($resp);
+            $resp = $resp->withRunId($run->id);
 
             foreach ($failed as $attempt) {
                 $attempt->supersede($run->id);
@@ -150,6 +162,9 @@ class AI
                 ? $result
                 : new AiResponse(true, json_encode($result));
 
+            // a postprocess() returning an array or a fresh AiResponse still gets the run id
+            $finalResponse = $finalResponse->runId !== null ? $finalResponse : $finalResponse->withRunId($run->id);
+
             self::complete($task, $result, $finalResponse, $run);
 
             return $finalResponse;
@@ -160,6 +175,13 @@ class AI
 
     public function queue(AiTask $task, array|string $drivers = [], \DateTimeInterface|\DateInterval|int|null $delay = null): string
     {
+        self::ensureQueueable($task);
+
+        return $this->queuePayload($task, self::payloadWithTools($task), $drivers, $delay);
+    }
+
+    private static function ensureQueueable(AiTask $task): void
+    {
         $ctor = (new \ReflectionClass($task))->getConstructor();
         if ($ctor && $ctor->getNumberOfRequiredParameters() > 0 && empty($task->serializeForQueue())) {
             throw new \LogicException(
@@ -167,15 +189,23 @@ class AI
                 'Implement serializeForQueue() to enable queue reconstruction and idempotency.'
             );
         }
+    }
 
-        $payload = self::payloadWithTools($task);
-        $ctx     = $task->context();
+    private function queuePayload(AiTask $task, AiPayload $payload, array|string $drivers, \DateTimeInterface|\DateInterval|int|null $delay = null): string
+    {
+        $ctx       = $task->context();
+        $execution = $task->executionContext();
 
         $chain      = $this->resolveConfiguredChain($task, $drivers, $payload);
         $driverName = $chain[0];
 
         try {
-            $run = AiRun::startAsQueue($driverName, $payload, $ctx, $task);
+            $run = AiRun::startAsQueue(
+                $driverName, $payload, $ctx, $task,
+                // the resumed run shares the task's args, and so its idempotency key, with the paused one
+                idempotencyKey: $task->resumingRun() ? 'resume:' . $task->resumingRun()->id : null,
+                executionContext: $execution,
+            );
         } catch (UniqueConstraintViolationException) {
             return AiRun::where('idempotency_key', $task->idempotencyKey())->value('id');
         }
@@ -201,6 +231,11 @@ class AI
 
         QueueDispatch::configure($job, $task, 'request', config('ai-tasks.queues.default'));
 
+        // A resume runs the approved tool before the provider call — a retried job would run it again
+        if ($task->resumingRun() !== null) {
+            $job->tries = 1;
+        }
+
         $pending = dispatch($job);
 
         if ($delay !== null) {
@@ -214,8 +249,9 @@ class AI
 
     public function stream(AiTask $task, callable $onChunk, array|string $drivers = []): AiResponse
     {
-        $payload = self::payloadWithTools($task);
-        $ctx     = $task->context();
+        $payload   = self::payloadWithTools($task);
+        $ctx       = $task->context();
+        $execution = $task->executionContext();
 
         try {
             app(Budget::class)->ensureNotExceeded($ctx->tenantId);
@@ -229,7 +265,7 @@ class AI
         $failed = [];
 
         foreach ($list as $driverName) {
-            $run = AiRun::start($driverName, $payload, $ctx, $task);
+            $run = AiRun::start($driverName, $payload, $ctx, $task, $execution);
 
             if (! $this->isConfigured($driverName) && ! ($payload->providerOverride['key'] ?? null)) {
                 $run->skip("driver_not_configured: {$driverName}");
@@ -242,9 +278,13 @@ class AI
             $streamed = false;
 
             try {
-                $resp = $this->manager->driver($driverName)->stream($payload, $ctx, function (string $delta) use ($onChunk, &$streamed): void {
-                    $streamed = true;
-                    $onChunk($delta);
+                // a full closure, not fn(): an arrow function would capture $streamed by value,
+                // and the failover check below would never see output had started
+                $resp = $task::withExecutionContext($execution, function () use ($driverName, $payload, $ctx, $onChunk, &$streamed): AiResponse {
+                    return $this->manager->driver($driverName)->stream($payload, $ctx, function (string $delta) use ($onChunk, &$streamed): void {
+                        $streamed = true;
+                        $onChunk($delta);
+                    });
                 });
 
                 DriverHealth::recordSuccess($driverName, $payload);
@@ -276,6 +316,7 @@ class AI
             }
 
             $run->finish($resp);
+            $resp = $resp->withRunId($run->id);
 
             foreach ($failed as $attempt) {
                 $attempt->supersede($run->id);
@@ -286,6 +327,9 @@ class AI
             $finalResponse = $result instanceof AiResponse
                 ? $result
                 : new AiResponse(true, json_encode($result));
+
+            // a postprocess() returning an array or a fresh AiResponse still gets the run id
+            $finalResponse = $finalResponse->runId !== null ? $finalResponse : $finalResponse->withRunId($run->id);
 
             self::complete($task, $result, $finalResponse, $run);
 
@@ -398,24 +442,107 @@ class AI
         $tools      = $task->tools();
         $schema     = $task->schema();
         $toolChoice = $task->toolChoice();
+        $paused     = $task->resumingRun();
 
-        if (empty($tools) && $schema === null && $toolChoice === null) {
+        if (empty($tools) && $schema === null && $toolChoice === null && $paused === null) {
             return $payload;
         }
 
         return new AiPayload(
             modality: $payload->modality,
-            messages: $payload->messages,
+            // a resume replays the paused turn after the history toPayload() rebuilt as of the pause
+            messages: $paused
+                ? [...$payload->messages, ...PausedTurn::restore($paused->response['resume']['messages'] ?? [])]
+                : $payload->messages,
             systemPrompt: $payload->systemPrompt,
             options: $payload->options,
-            meta: $payload->meta,
+            meta: $paused ? [...$payload->meta, 'resumed_from' => $paused->id] : $payload->meta,
             tools: $tools,
             jsonMode: $payload->jsonMode,
             providerOverride: $payload->providerOverride,
             schema: $schema,
-            toolChoice: $toolChoice,
-            decisions: $payload->decisions,
+            // a forced tool choice applied again on the continuation would force another tool call
+            toolChoice: $paused ? null : $toolChoice,
+            decisions: $paused ? $task->resumeDecisions() : $payload->decisions,
         );
+    }
+
+    /**
+     * Continues a run paused for tool approval (AiResponse::paused()) with the user's decisions,
+     * synchronously — a new run, linked by request.meta.resumed_from. $task is a fresh instance
+     * of the task that paused; its toPayload() sees resumingRun() and returns the history as of
+     * the pause. The pause is claimed atomically: a second resume of the same run throws.
+     *
+     * @param Decisions|array<string, Decision|bool> $decisions ['tool_call_id' => true|false|Decision]
+     */
+    public function resume(AiTask $task, string $runId, Decisions|array $decisions, array|string $drivers = []): AiResponse
+    {
+        return $this->resuming($task, $runId, $decisions, fn (AiPayload $payload, string $driver): AiResponse => $this->sendPayload($task, $payload, $driver), $drivers);
+    }
+
+    /** resume() through the queue; returns the new run id. */
+    public function queueResume(AiTask $task, string $runId, Decisions|array $decisions, array|string $drivers = []): string
+    {
+        self::ensureQueueable($task);
+
+        return $this->resuming($task, $runId, $decisions, fn (AiPayload $payload, string $driver): string => $this->queuePayload($task, $payload, $driver), $drivers);
+    }
+
+    /**
+     * @template T
+     * @param \Closure(AiPayload, string $driver): T $dispatch
+     * @return T
+     */
+    private function resuming(AiTask $task, string $runId, Decisions|array $decisions, \Closure $dispatch, array|string $drivers): mixed
+    {
+        $paused = AiRun::findOrFail($runId);
+
+        if (! $paused->isPaused()) {
+            throw match (true) {
+                isset($paused->response['resume']['resumed_at']) => ApprovalResumeException::alreadyResolved($runId),
+                isset($paused->response['resume']['expired_at']) => ApprovalResumeException::expired($runId),
+                default => ApprovalResumeException::notPaused($runId, $paused->status),
+            };
+        }
+
+        if (($paused->request['task_class'] ?? null) !== $task::class) {
+            throw ApprovalResumeException::otherTask($runId, (string) ($paused->request['task_class'] ?? ''), $task::class);
+        }
+
+        if ($paused->pauseExpired()) {
+            $paused->expirePause();
+
+            throw ApprovalResumeException::expired($runId);
+        }
+
+        $decisions = $decisions instanceof Decisions ? $decisions : Decisions::from($decisions);
+
+        // Under the paused run's context: tools() and the provider call act as the user who
+        // started it — not whoever answers (a webhook, a manager on their behalf)
+        return ExecutionContext::run($task::class, $paused->executionContext(), function () use ($task, $paused, $decisions, $dispatch, $drivers): mixed {
+            $task->beginResume($paused, $decisions);
+
+            // built once: tools() may have side effects, and the check needs the same tools the call gets
+            $payload = self::payloadWithTools($task);
+
+            $missing = array_values(array_diff(
+                array_column($paused->response['pending_approvals'] ?? [], 'tool'),
+                ApprovalDecisions::toolNames($payload->tools),
+            ));
+
+            if ($missing !== []) {
+                throw ApprovalResumeException::toolsMissing($paused->id, $missing);
+            }
+
+            if (! $paused->claimPause()) {
+                throw ApprovalResumeException::alreadyResolved($paused->id);
+            }
+
+            // One driver, no fallback: the approved tool runs at the start of the continuation, so
+            // a second driver after a failure would run it again. The paused run's driver by default —
+            // another provider may reject the replayed turn (Gemini does OpenAI's).
+            return $dispatch($payload, ((array) $drivers)[0] ?? $paused->driver);
+        });
     }
 
     private function runPostprocess(AiResponse $resp): AiResponse

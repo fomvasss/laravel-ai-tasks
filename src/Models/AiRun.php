@@ -43,10 +43,11 @@ class AiRun extends Model
         $this->table = config('ai-tasks.table', 'ai_runs');
     }
 
-    public static function start(string $driver, AiPayload $p, AiContext $ctx, AiTask $task): self
+    public static function start(string $driver, AiPayload $p, AiContext $ctx, AiTask $task, array $executionContext = []): self
     {
-        return static::create([
+        return static::create((new static)->withoutMissingColumns([
             'tenant_id'       => $ctx->tenantId,
+            'user_id'         => $ctx->userId,
             'task'            => $ctx->taskName,
             'driver'          => $driver,
             'modality'        => $p->modality,
@@ -55,15 +56,16 @@ class AiRun extends Model
             'dispatch'        => 'sync',
             'status'          => 'running',
             'idempotency_key' => null,
-            'request'         => static::minifyRequest($p, $task),
+            'request'         => static::minifyRequest($p, $task, $executionContext),
             'started_at'      => now(),
-        ]);
+        ]));
     }
 
-    public static function startAsQueue(string $driver, AiPayload $p, AiContext $ctx, AiTask $task, ?string $idempotencyKey = null): self
+    public static function startAsQueue(string $driver, AiPayload $p, AiContext $ctx, AiTask $task, ?string $idempotencyKey = null, array $executionContext = []): self
     {
-        return static::create([
+        return static::create((new static)->withoutMissingColumns([
             'tenant_id'       => $ctx->tenantId,
+            'user_id'         => $ctx->userId,
             'task'            => $ctx->taskName,
             'driver'          => $driver,
             'modality'        => $p->modality,
@@ -72,8 +74,8 @@ class AiRun extends Model
             'dispatch'        => 'queue',
             'status'          => 'queued',
             'idempotency_key' => $idempotencyKey ?? $task->idempotencyKey(),
-            'request'         => static::minifyRequest($p, $task),
-        ]);
+            'request'         => static::minifyRequest($p, $task, $executionContext),
+        ]));
     }
 
     /**
@@ -150,6 +152,12 @@ class AiRun extends Model
      */
     public function canRetry(): bool
     {
+        // A failed continuation of a pause: its approved tool may already have run, and a retry
+        // would start the conversation over and pause again where the app no longer looks
+        if ($this->isResume()) {
+            return false;
+        }
+
         return match ($this->status) {
             'error' => ! $this->isSuperseded(),
             'dead' => true,
@@ -186,6 +194,64 @@ class AiRun extends Model
         ]);
     }
 
+    /** What AiTask::executionContext() returned when the run was dispatched; [] for none. */
+    public function executionContext(): array
+    {
+        return $this->request['execution_context'] ?? [];
+    }
+
+    /** A continuation started by AI::resume() — request.meta.resumed_from holds the paused run. */
+    public function isResume(): bool
+    {
+        return isset($this->request['meta']['resumed_from']);
+    }
+
+    public function isPaused(): bool
+    {
+        return $this->status === 'paused';
+    }
+
+    public function pauseExpired(): bool
+    {
+        $expiresAt = $this->response['resume']['expires_at'] ?? null;
+
+        return $expiresAt !== null && now()->greaterThan($expiresAt);
+    }
+
+    /**
+     * Takes the pause for one resume: false when another resume already did. Atomic, so two
+     * concurrent answers to the same approval can't both execute the tool.
+     */
+    public function claimPause(): bool
+    {
+        if (static::query()->whereKey($this->getKey())->where('status', 'paused')->update(['status' => 'ok']) !== 1) {
+            return false;
+        }
+
+        $response = $this->response ?? [];
+        $response['resume']['resumed_at'] = now()->toIso8601String();
+
+        $this->forceFill(['status' => 'ok', 'response' => $response])->save();
+
+        return true;
+    }
+
+    /**
+     * Closes a pause that ran out of time, so it no longer shows as open: status 'ok' (the call
+     * itself finished), response.resume.expired_at. Atomic for the same reason as claimPause().
+     */
+    public function expirePause(): void
+    {
+        if (static::query()->whereKey($this->getKey())->where('status', 'paused')->update(['status' => 'ok']) !== 1) {
+            return;
+        }
+
+        $response = $this->response ?? [];
+        $response['resume']['expired_at'] = now()->toIso8601String();
+
+        $this->forceFill(['status' => 'ok', 'response' => $response])->save();
+    }
+
     public function markRunning(): void
     {
         $this->update([
@@ -208,8 +274,11 @@ class AiRun extends Model
             ? (int) now()->diffInMilliseconds($this->started_at, true)
             : null;
 
+        $ttl = config('ai-tasks.approvals.ttl_minutes');
+
         $this->update($this->withoutMissingColumns([
-            'status'            => 'ok',
+            // 'paused' — the call itself finished fine, the run waits for a tool decision
+            'status'            => $resp->paused() ? 'paused' : 'ok',
             'model'             => $resp->usage['model'] ?? null,
             'response'          => array_filter([
                 'content' => $resp->content,
@@ -217,6 +286,10 @@ class AiRun extends Model
                 'tool_calls' => $resp->toolCalls ?: null,
                 'finish_reason' => $resp->finishReason,
                 'pending_approvals' => $resp->pendingApprovals ?: null,
+                'resume' => $resp->paused() ? [
+                    'messages' => $resp->resumeMessages,
+                    'expires_at' => $ttl ? now()->addMinutes((int) $ttl)->toIso8601String() : null,
+                ] : null,
             ], fn (mixed $v): bool => $v !== null),
             'tokens_in'         => $resp->usage['tokens_in']          ?? null,
             'tokens_out'        => $resp->usage['tokens_out']         ?? null,
@@ -240,7 +313,7 @@ class AiRun extends Model
      * попереджає. Писати в неіснуючу колонку означало б валити КОЖЕН прогін SQL-помилкою через
      * необов'язкове поле, тому воно просто випадає із запису.
      */
-    private const OPTIONAL_COLUMNS = ['cost_rates'];
+    private const OPTIONAL_COLUMNS = ['cost_rates', 'user_id'];
 
     /** @var array<string, true> кеш на процес: hasColumn() — це запит до схеми */
     private static array $columnExists = [];
@@ -261,23 +334,11 @@ class AiRun extends Model
     private function withoutMissingColumns(array $attributes): array
     {
         foreach (self::OPTIONAL_COLUMNS as $column) {
-            if (! array_key_exists($column, $attributes)) {
+            if (! array_key_exists($column, $attributes) || $this->hasOptionalColumn($column)) {
                 continue;
             }
 
             $key = $this->getConnectionName() . '|' . $this->getTable() . '|' . $column;
-
-            // Кешується лише ПОЗИТИВНА відповідь: інакше процес, який стартував до `migrate`,
-            // до самого перезапуску писав би прогони без колонки, вже маючи її в схемі.
-            if (isset(self::$columnExists[$key])) {
-                continue;
-            }
-
-            if ($this->getConnection()->getSchemaBuilder()->hasColumn($this->getTable(), $column)) {
-                self::$columnExists[$key] = true;
-
-                continue;
-            }
 
             if (! isset(self::$columnWarned[$key])) {
                 self::$columnWarned[$key] = true;
@@ -288,6 +349,27 @@ class AiRun extends Model
         }
 
         return $attributes;
+    }
+
+    /**
+     * Whether a column added after the table itself (OPTIONAL_COLUMNS) exists yet — the dashboard
+     * selects and filters by them only then.
+     */
+    public function hasOptionalColumn(string $column): bool
+    {
+        $key = $this->getConnectionName() . '|' . $this->getTable() . '|' . $column;
+
+        // Кешується лише ПОЗИТИВНА відповідь: інакше процес, який стартував до `migrate`,
+        // до самого перезапуску писав би прогони без колонки, вже маючи її в схемі.
+        if (isset(self::$columnExists[$key])) {
+            return true;
+        }
+
+        if ($this->getConnection()->getSchemaBuilder()->hasColumn($this->getTable(), $column)) {
+            return self::$columnExists[$key] = true;
+        }
+
+        return false;
     }
 
     public function skip(string $reason): void
@@ -341,7 +423,7 @@ class AiRun extends Model
         }
     }
 
-    private static function minifyRequest(AiPayload $p, AiTask $task): array
+    private static function minifyRequest(AiPayload $p, AiTask $task, array $executionContext): array
     {
         $options = $p->options;
 
@@ -357,6 +439,12 @@ class AiRun extends Model
             'meta'       => $p->meta,
             'task_class' => $task::class,
         ];
+
+        // Not gated by store_request: a queued job, a retry and a resume rebuild the task's
+        // context from here — without it they would run as nobody, or as whoever clicked Retry
+        if ($executionContext !== []) {
+            $data['execution_context'] = $executionContext;
+        }
 
         if (config('ai-tasks.store_request')) {
             // needed to reconstruct the task for ai:retry and webhook completion;

@@ -4,6 +4,37 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [3.35.0] — 2026-10-07
+
+### Added
+- `AI::resume($task, $runId, $decisions)` and `AI::queueResume()` continue a run paused for tool approval. The package stores the whole paused turn with the run — tool calls with result ids and reasoning replay blocks, and the results of tools that ran in the same step — and replays it after the history the task's `toPayload()` returns (with `resumingRun()` set). The pause is claimed atomically (a second resume throws `ApprovalResumeException`), expires after `approvals.ttl_minutes`, and is refused while a tool it waits for is missing from `tools()`. The continuation runs under the paused run's execution context and is linked by `request.meta.resumed_from`.
+- Status `paused` for such runs, with a dashboard filter and badge; the monthly cost includes them.
+- `AiResponse::$runId` — on every response of `send()`/`stream()` and in the queued `postprocess()`/`onCompleted()`, also when `postprocess()` returned an array; `paused()` and `pendingToolCalls()` (the waiting calls in full form).
+- `approvals.reject_reason`: a rejection without a reason carries this text, so the model answers instead of ending with an empty reply.
+- `AI::fake()` records `resume()`/`queueResume()`; `assertResumed()`.
+- A continuation runs on one driver without fallback — the paused run's unless given — and a queued one is not retried by the queue: the approved tool runs before the provider call, so either would run it twice. A failed continuation is excluded from Retry and `ai:retry`.
+- An expired pause is closed on the resume attempt (`ok`, `response.resume.expired_at`), so it doesn't stay open.
+
+### Changed
+- A paused run is not retried by `isAcceptable()`.
+- Replay blocks of a paused turn are marked with their provider, so a resume on another provider drops them instead of sending them verbatim.
+
+## [3.34.0] — 2026-10-07
+
+### Added
+- Execution context: `AiTask::executionContext()` captures request-only state at dispatch (stored with the run as `request.execution_context`, regardless of `store_request`), and the static `withExecutionContext()` applies it around everything the package runs for the task — the provider call with its tool loop and approval checks, `shouldRun()`, `postprocess()`, `onCompleted()`, `onFailed()`, a retry after `isAcceptable()`. Default: nothing is carried.
+- `ActsAsDispatchingUser` trait: carries the guard, the user id and the app locale. In the worker the user is re-read on that guard, made the default guard for the call, and everything is restored in `finally` — the next job of the worker never inherits the user. A sync `send()` keeps the request's own user instance. Tools in `AI::queue()` thus act as the user who dispatched them instead of nobody.
+
+### Fixed
+- Dashboard **Retry** and `ai:retry` rebuilt the task — `tools()`, the tenant — in the process of whoever clicked, so tools that read the user at dispatch acted as the admin. They now rebuild it under the run's stored context.
+- `PostprocessAiResult` built the payload of a retry after `isAcceptable()` with no user or locale; it now runs under the run's context.
+
+## [3.33.0] — 2026-10-07
+
+### Added
+- `ai_runs.user_id` — who started the run. Defaults to `auth()->id()` at dispatch (in the request, before a queued job loses the authenticated user); `null` when nobody is logged in. Override `AiTask::userId()` for a task that runs on someone's behalf. Shown in the dashboard next to the tenant, with a **User** filter, and in `AiContext::$userId`.
+- New migration `add_user_id_to_ai_runs_table` — publish it (`vendor:publish --tag=ai-migrations`) and migrate. Until then runs are stored without the column, as with `cost_rates`; `php artisan about` lists it as missing.
+
 ## [3.32.2] — 2026-10-07
 
 ### Changed

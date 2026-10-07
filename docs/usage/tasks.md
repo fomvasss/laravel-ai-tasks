@@ -140,4 +140,4 @@ Attachments are not stored in `ai_runs.request` — they are replaced with an `[
 
 ## Tenant and subject
 
-Override `tenantId()` to bill the run to a specific tenant, and `subjectType()`/`subjectId()` to tag it with the record it concerns — see [Budgets & tenants](budgets.md).
+Override `tenantId()` to bill the run to a specific tenant, `userId()` to record who started it, and `subjectType()`/`subjectId()` to tag it with the record it concerns — see [Budgets & tenants](budgets.md).

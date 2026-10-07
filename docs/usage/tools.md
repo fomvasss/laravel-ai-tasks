@@ -91,6 +91,8 @@ public function tools(): array
 
 Keep tool properties serializable too — no closures or open connections. MCP tools from `laravel/mcp` serialize fine.
 
+The worker has no authenticated user: a tool calling `auth()->user()` gets `null` unless the task uses `ActsAsDispatchingUser` — see [Acting as a user](../guides/tools-in-practice.md#acting-as-a-user).
+
 ---
 
 ## Native MCP via laravel/mcp (recommended)

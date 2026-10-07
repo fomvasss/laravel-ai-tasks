@@ -23,46 +23,49 @@ MCP **resources** don't reach the model this way — `AiPayload` carries only to
 
 Tools usually call `auth()->user()`, policies and scopes. Where they run decides who that is:
 
-| Call | Where the tool loop runs | `auth()` |
-|---|---|---|
-| `AI::send()` in a web request | the request | the logged-in user |
-| `AI::send()` in your own queued job / listener | that job | whatever the job sets |
-| `AI::queue()` | the package worker (`ProcessAiPayload`) | nobody |
+| Call | Where the tool loop runs | `auth()` without the trait | with `ActsAsDispatchingUser` |
+|---|---|---|---|
+| `AI::send()` in a web request | the request | the logged-in user | the same user, the same instance |
+| `AI::send()` in your own queued job / listener | that job | whatever the job sets | whatever the job set at dispatch |
+| `AI::queue()` | the package worker (`ProcessAiPayload`) | nobody | the user who dispatched it |
 
-With `AI::queue()` the tools are built in the web request but executed later by a worker, where there's no authenticated user, request headers, cookies or app locale. Two working approaches:
-
-**Capture the context at dispatch, apply it at execution.** Read request-only values in `tools()` (it runs at dispatch) and pass them into the tool's constructor — they're serialized with the job. Apply them in `handle()` and restore afterwards, because a worker process runs many jobs:
+Add the trait to a task whose tools or hooks act as the user (since 3.34):
 
 ```php
-class AsUserTool implements Tool
+use Fomvasss\AiTasks\Traits\ActsAsDispatchingUser;
+
+class AssistantReplyTask extends AiTask
 {
-    public function __construct(
-        private readonly Tool $tool,
-        private readonly ?int $userId,
-        private readonly string $locale,
-    ) {}
-
-    public function handle(Request $request): Stringable|string
-    {
-        $previousUser = Auth::user();
-        $previousLocale = app()->getLocale();
-
-        try {
-            $this->userId ? Auth::onceUsingId($this->userId) : Auth::forgetUser();
-            app()->setLocale($this->locale);
-
-            return $this->tool->handle($request);
-        } finally {
-            $previousUser ? Auth::setUser($previousUser) : Auth::forgetUser();
-            app()->setLocale($previousLocale);
-        }
-    }
-
-    // name(), description(), schema() delegate to $this->tool
+    use ActsAsDispatchingUser;
 }
 ```
 
-**Or run `AI::send()` inside your own queued job** after `Auth::setUser($user)` — the whole tool loop then runs in that job. Reset the user when the job ends (`Auth::forgetUser()` in `finally`), otherwise the next job in the same worker inherits it.
+It captures the guard, the user id and the app locale at dispatch, stores them with the run and applies them wherever the package runs the task's code: the provider call with its tool loop and approval checks, `shouldRun()`, `postprocess()`, `onCompleted()`, `onFailed()`, a retry after `isAcceptable()`, and a **Retry** from the dashboard or `ai:retry` — which then acts as the original user, not as whoever clicked. The user is re-read by id on that guard (made the default guard for the call), and everything is restored afterwards, also when the call throws, so the next job of the worker never inherits the user.
+
+Tools needing more than the user — a header, a cart, a country — extend the context:
+
+```php
+public function executionContext(): array
+{
+    return [...$this->traitExecutionContext(), 'country' => request()->header('X-Country')];
+}
+
+public static function withExecutionContext(array $context, \Closure $call): mixed
+{
+    $previous = request()->headers->get('X-Country');
+    request()->headers->set('X-Country', $context['country'] ?? null);
+
+    try {
+        return static::traitWithExecutionContext($context, $call);
+    } finally {
+        request()->headers->set('X-Country', $previous);
+    }
+}
+```
+
+with the trait imported as `use ActsAsDispatchingUser { executionContext as traitExecutionContext; withExecutionContext as traitWithExecutionContext; }`. The context is stored as JSON: scalars and arrays only. Values that belong to one tool (a chat id the tool reports to) can still go into the tool's constructor — they're serialized with the job.
+
+**Running `AI::send()` inside your own queued job** after `Auth::setUser($user)` also works — the whole tool loop then runs in that job. Reset the user when the job ends: `Queue::before(fn () => Auth::forgetUser())` in a service provider covers every job, including one that threw; a `finally` in the job alone doesn't cover a job killed by a timeout.
 
 When tools act as a user, **every tool must check access to every id it receives** — a tool that checks only "may create tasks" but not "may access this project" becomes a hole the model will eventually walk through.
 
@@ -115,10 +118,9 @@ Built on `laravel/ai`'s `Approvable`, see [Tool approval](../usage/tool-approval
 - **Gate MCP server tools on the wrapper, not on the tool.** An MCP server tool returned from `tools()` is wrapped in `McpServerTool` automatically, and only the wrapper is asked — `needsApproval()` declared on the MCP tool itself is ignored and it runs without pausing. Wrap it yourself: `(new McpServerTool($tool))->requireApproval('...')`, or a `McpServerTool` subclass overriding `needsApproval()` when the answer depends on the call — see [MCP server tools](../usage/tool-approval.md#mcp-server-tools).
 - **Validate before asking.** Make `needsApproval()` return `false` when the call is invalid anyway (missing item, wrong quantity) — the error goes back to the model at once. Otherwise the customer confirms, the tool fails, the model retries with a new call id, and the customer is asked to confirm the same thing again.
 - **Count consecutive failures** of a tool (in cache, per chat) and after a few tell the model to offer a human.
-- **Store the full pending call** from `AiResponse::$toolCalls` (not `$pendingApprovals`) in your own table, with a TTL.
-- **Before resuming, check the tool still exists** in the current `tools()` — it may have been switched off meanwhile; resuming with a missing tool throws.
+- **Resume with `AI::resume()` / `AI::queueResume()`**, keeping only `$response->runId` with your chat — the package stores the paused turn and refuses a second, expired or tool-less resume. See [Resuming](../usage/tool-approval.md#resuming).
 - **Render the confirmation text yourself** from the pending call's arguments rather than trusting the model's wording.
-- **Treat "paused for approval" as a successful turn** in `isAcceptable()`, or the pause is retried and escalated.
+- **Build the resumed history as of the pause** in `toPayload()` when `resumingRun()` is set — cut your chat at the message that led to the pause.
 - **Classify the customer's answer cheaply first** — exact "yes"/"no" matches in the supported languages — and call an AI classifier only for the rest.
 
 ## Validate ids the model returns

@@ -7,9 +7,11 @@ namespace Fomvasss\AiTasks\Tasks;
 use Fomvasss\AiTasks\DTO\AiContext;
 use Fomvasss\AiTasks\DTO\AiPayload;
 use Fomvasss\AiTasks\DTO\AiResponse;
+use Fomvasss\AiTasks\Models\AiRun;
 use Fomvasss\AiTasks\Support\TenantResolver;
 use Fomvasss\AiTasks\Traits\QueueableAi;
 use Fomvasss\AiTasks\Traits\RoutesDrivers;
+use Laravel\Ai\Approvals\Decisions;
 
 abstract class AiTask
 {
@@ -18,6 +20,10 @@ abstract class AiTask
     protected ?string $customName = null;
 
     private ?AiContext $cachedContext = null;
+
+    private ?AiRun $resumingRun = null;
+
+    private ?Decisions $resumeDecisions = null;
 
     abstract public function modality(): string;
 
@@ -50,7 +56,26 @@ abstract class AiTask
             subjectType: $this->subjectType(),
             subjectId: $this->subjectId(),
             meta: $this->defaultMeta(),
+            userId: $this->userId() ?? self::authenticatedUserId(),
         );
+    }
+
+    /**
+     * Override to record who started this run (ai_runs.user_id) when it is not the authenticated
+     * user — e.g. a task dispatched from a job on someone's behalf. Return null (default) to fall
+     * back to auth()->id() at dispatch; a run started with nobody logged in records null.
+     * Purely for audit and filtering — unrelated to tenantId() (who's billed).
+     */
+    protected function userId(): ?string
+    {
+        return null;
+    }
+
+    private static function authenticatedUserId(): ?string
+    {
+        $id = auth()->id();
+
+        return $id === null ? null : (string) $id;
     }
 
     /**
@@ -204,9 +229,69 @@ abstract class AiTask
         return null;
     }
 
+    /**
+     * The run this task is resuming (AI::resume()), or null on an ordinary run. toPayload()
+     * must then return the history as it was when that run started — the conversation up to and
+     * including the prompt that led to the pause, without what came after (the confirmation
+     * text shown to the user, their "yes"): the package appends the paused turn and the
+     * decisions to it.
+     */
+    public function resumingRun(): ?AiRun
+    {
+        return $this->resumingRun;
+    }
+
+    /** @internal set by AI::resume() */
+    public function beginResume(AiRun $run, Decisions $decisions): static
+    {
+        $this->resumingRun     = $run;
+        $this->resumeDecisions = $decisions;
+        $this->cachedContext   = null;
+
+        return $this;
+    }
+
+    /** @internal */
+    public function resumeDecisions(): ?Decisions
+    {
+        return $this->resumeDecisions;
+    }
+
     public function serializeForQueue(): array
     {
         return [];
+    }
+
+    /**
+     * Request-only state the task's code needs wherever it runs — the acting user, the locale,
+     * a header value. Captured when the task is dispatched (send()/queue(), in the caller's
+     * process), stored with the run (ai_runs.request.execution_context) and handed to
+     * withExecutionContext() wherever the package runs this task's code: the provider call with
+     * its tool loop, postprocess()/onCompleted()/onFailed() on the worker, a dashboard Retry.
+     * Scalars and arrays only — it is stored as JSON. Default [] — nothing is carried.
+     * ActsAsDispatchingUser implements both methods for the user and the locale.
+     *
+     * @return array<string, mixed>
+     */
+    public function executionContext(): array
+    {
+        return [];
+    }
+
+    /**
+     * Runs $call with the captured context applied and must restore everything it changed,
+     * in `finally` — a queue worker runs many jobs in one process. Static because a queued task
+     * is rebuilt from fromQueueArgs() inside the context: re-querying its models may already
+     * depend on the user (global scopes).
+     *
+     * @template T
+     * @param array<string, mixed> $context
+     * @param \Closure(): T $call
+     * @return T
+     */
+    public static function withExecutionContext(array $context, \Closure $call): mixed
+    {
+        return $call();
     }
 
     public static function fromQueueArgs(array $args): static

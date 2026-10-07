@@ -41,6 +41,11 @@ See [Queued tasks](../usage/queued-tasks.md#retrying-an-unacceptable-result).
 | `onQueue(?string $queue): static` | — | Queue for both stages, requires `ShouldQueueAi` |
 | `onConnection(?string $connection): static` | — | Queue connection, requires `ShouldQueueAi` |
 
+| `executionContext(): array` | `[]` | Request-only state captured at dispatch and stored with the run (`request.execution_context`) |
+| `static withExecutionContext(array $context, Closure $call): mixed` | runs `$call` | Applies the context around the provider call, the worker hooks and a retry; restores in `finally` |
+
+`use ActsAsDispatchingUser;` implements both for the user and the locale, see [Acting as a user](../guides/tools-in-practice.md#acting-as-a-user).
+
 `use SerializesModelsAi;` implements `serializeForQueue()`/`fromQueueArgs()` for promoted constructor properties, including Eloquent models. See [Queued tasks](../usage/queued-tasks.md#serializing-the-task).
 
 ## Tenant and subject (protected)
@@ -48,10 +53,11 @@ See [Queued tasks](../usage/queued-tasks.md#retrying-an-unacceptable-result).
 | Method | Default | Description |
 |---|---|---|
 | `tenantId(): ?string` | `null` → `TenantResolver` | Tenant the run is billed to |
+| `userId(): ?string` | `null` → `auth()->id()` at dispatch | Who started the run (`ai_runs.user_id`) |
 | `subjectType(): ?string` | `null` | Type of the record the run concerns, e.g. `order` |
 | `subjectId(): ?string` | `null` | Its id |
 | `defaultMeta(): array` | `[]` | Goes to `context()->meta` — visible in the `AiTaskStarted` event, not stored in `ai_runs` (use `AiPayload::$meta` for that) |
 
-`context(): AiContext` returns the resolved tenant, name, subject and meta; it's computed once per instance.
+`context(): AiContext` returns the resolved tenant, user, name, subject and meta; it's computed once per instance.
 
 See [Budgets & tenants](../usage/budgets.md).

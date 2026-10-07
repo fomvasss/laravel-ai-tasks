@@ -15,6 +15,7 @@ use Fomvasss\AiTasks\Exceptions\BudgetExceededException;
 use Fomvasss\AiTasks\Models\AiRun;
 use Fomvasss\AiTasks\Support\Budget;
 use Fomvasss\AiTasks\Support\DriverHealth;
+use Fomvasss\AiTasks\Support\ExecutionContext;
 use Fomvasss\AiTasks\Support\Failover;
 use Fomvasss\AiTasks\Support\QueueDispatch;
 use Fomvasss\AiTasks\Tasks\AiTask;
@@ -88,6 +89,13 @@ class ProcessAiPayload implements ShouldQueue
             return;
         }
 
+        // The whole run — rebuilding the task, its hooks and the provider call with the tool loop —
+        // under the context captured at dispatch: the worker itself has no user, locale or request
+        ExecutionContext::run($this->taskClass, $run->executionContext(), fn () => $this->process($manager, $run));
+    }
+
+    private function process(AiManager $manager, AiRun $run): void
+    {
         $task = $this->resolveTask();
 
         if (! $task->shouldRun()) {
@@ -187,19 +195,23 @@ class ProcessAiPayload implements ShouldQueue
     {
         AiRun::markAsDead($this->runId, $e);
 
-        try {
-            $task = $this->resolveTask();
-        } catch (\Throwable $resolveError) {
-            Log::error('AiTask could not be rebuilt for onFailed()', [
-                'run_id' => $this->runId,
-                'task' => $this->taskClass,
-                'exception' => $resolveError->getMessage(),
-            ]);
+        $run = AiRun::find($this->runId);
 
-            return;
-        }
+        ExecutionContext::run($this->taskClass, $run?->executionContext() ?? [], function () use ($e, $run): void {
+            try {
+                $task = $this->resolveTask();
+            } catch (\Throwable $resolveError) {
+                Log::error('AiTask could not be rebuilt for onFailed()', [
+                    'run_id' => $this->runId,
+                    'task' => $this->taskClass,
+                    'exception' => $resolveError->getMessage(),
+                ]);
 
-        AI::failFinally($task, $e, AiRun::find($this->runId));
+                return;
+            }
+
+            AI::failFinally($task, $e, $run);
+        });
     }
 
     private function resolveTask(): AiTask
