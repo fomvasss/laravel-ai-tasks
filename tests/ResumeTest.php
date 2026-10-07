@@ -216,6 +216,20 @@ class ResumeTest extends TestCase
         $this->assertSame('Hello again.', $response->content);
     }
 
+    /** Клієнт відмовився чи написав інше — пауза закривається, а не висить відкритою */
+    public function test_a_dismissed_pause_is_closed_and_cannot_be_resumed(): void
+    {
+        $paused = $this->pause();
+
+        $this->assertTrue(AI::dismissPause($paused->id));
+        $this->assertFalse(AI::dismissPause($paused->id));
+        $this->assertSame('ok', $paused->fresh()->status);
+        $this->assertNotNull($paused->fresh()->response['resume']['dismissed_at']);
+
+        $this->expectException(ApprovalResumeException::class);
+        AI::resume(new ResumeTestTask('buy two'), $paused->id, ['fc_call_order' => true], 'openai');
+    }
+
     public function test_resume_with_another_task_class_is_refused(): void
     {
         $paused = $this->pause();

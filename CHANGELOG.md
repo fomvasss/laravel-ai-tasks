@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [3.37.0] — 2026-10-08
+
+### Added
+- `AI::dismissPause($runId)` / `AiRun::dismissPause()` close a pause the app won't continue (the user declined, wrote something else): status `ok`, `response.resume.dismissed_at`, no longer resumable. Before, such a run stayed `paused` and showed as open in the dashboard indefinitely.
+
 ## [3.36.1] — 2026-10-08
 
 ### Fixed

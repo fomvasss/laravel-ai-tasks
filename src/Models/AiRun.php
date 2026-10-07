@@ -242,14 +242,30 @@ class AiRun extends Model
      */
     public function expirePause(): void
     {
+        $this->closePause('expired_at');
+    }
+
+    /**
+     * Closes a pause the app won't resume — the user declined or moved on: status 'ok',
+     * response.resume.dismissed_at. False when it was no longer paused.
+     */
+    public function dismissPause(): bool
+    {
+        return $this->closePause('dismissed_at');
+    }
+
+    private function closePause(string $marker): bool
+    {
         if (static::query()->whereKey($this->getKey())->where('status', 'paused')->update(['status' => 'ok']) !== 1) {
-            return;
+            return false;
         }
 
         $response = $this->response ?? [];
-        $response['resume']['expired_at'] = now()->toIso8601String();
+        $response['resume'][$marker] = now()->toIso8601String();
 
         $this->forceFill(['status' => 'ok', 'response' => $response])->save();
+
+        return true;
     }
 
     public function markRunning(): void

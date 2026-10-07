@@ -71,6 +71,7 @@ stateDiagram-v2
 | `canRetry(): bool` | Whether the dashboard / `ai:retry` can re-dispatch it |
 | `isSuperseded(): bool` | A failed sync attempt whose fallback driver answered; `response.superseded_by` holds the id of that row |
 | `isPaused(): bool`, `pauseExpired(): bool` | Waiting for an approval decision; past `approvals.ttl_minutes` |
+| `dismissPause(): bool`, `expirePause()` | Close a pause the app won't continue / that ran out of time |
 | `isResume(): bool` | A continuation started by `AI::resume()`; never retried |
 | `executionContext(): array` | The context captured at dispatch, see [Acting as a user](../guides/tools-in-practice.md#acting-as-a-user) |
 | `markWaiting(array $extra = [])` | Park the run until a webhook; `$extra` goes to `response`, e.g. `provider_run_id` |

@@ -488,6 +488,16 @@ class AI
         return $this->resuming($task, $runId, $decisions, fn (AiPayload $payload, string $driver): AiResponse => $this->sendPayload($task, $payload, $driver), $drivers);
     }
 
+    /**
+     * Closes a pause the app won't continue (the user declined, wrote something else), so the run
+     * stops showing as open. False when it was not paused any more. A rejection that should reach
+     * the model goes through resume() with a `false` decision instead.
+     */
+    public function dismissPause(string $runId): bool
+    {
+        return AiRun::find($runId)?->dismissPause() ?? false;
+    }
+
     /** resume() through the queue; returns the new run id. */
     public function queueResume(AiTask $task, string $runId, Decisions|array $decisions, array|string $drivers = []): string
     {
@@ -509,6 +519,7 @@ class AI
             throw match (true) {
                 isset($paused->response['resume']['resumed_at']) => ApprovalResumeException::alreadyResolved($runId),
                 isset($paused->response['resume']['expired_at']) => ApprovalResumeException::expired($runId),
+                isset($paused->response['resume']['dismissed_at']) => ApprovalResumeException::notPaused($runId, 'dismissed'),
                 default => ApprovalResumeException::notPaused($runId, $paused->status),
             };
         }
