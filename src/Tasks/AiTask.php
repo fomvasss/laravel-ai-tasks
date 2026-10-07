@@ -131,6 +131,28 @@ abstract class AiTask
         return null;
     }
 
+    /**
+     * Step budget of the tool loop. null — laravel/ai's default: 1.5× the number of tools
+     * (at most 25), so a task with two or three tools is cut off after 3–4 steps. An
+     * explicit 'max_steps' in toPayload() options wins over this.
+     */
+    public function maxSteps(): ?int
+    {
+        return null;
+    }
+
+    /**
+     * How long a pause for tool approval stays resumable, in minutes. null — no limit.
+     * Defaults to approvals.ttl_minutes; override for a task whose answer comes later
+     * (a scheduled digest proposing actions) or must come sooner.
+     */
+    public function approvalTtlMinutes(): ?int
+    {
+        $ttl = config('ai-tasks.approvals.ttl_minutes');
+
+        return $ttl ? (int) $ttl : null;
+    }
+
     public function jobTimeout(): int
     {
         return 300;

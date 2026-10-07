@@ -284,13 +284,14 @@ class AiRun extends Model
         ]);
     }
 
-    public function finish(AiResponse $resp): void
+    public function finish(AiResponse $resp, ?AiTask $task = null): void
     {
         $ms = $this->started_at
             ? (int) now()->diffInMilliseconds($this->started_at, true)
             : null;
 
-        $ttl = config('ai-tasks.approvals.ttl_minutes');
+        // null from the task means no limit, so it doesn't fall back to the config
+        $ttl = $task ? $task->approvalTtlMinutes() : config('ai-tasks.approvals.ttl_minutes');
 
         $this->update($this->withoutMissingColumns([
             // 'paused' — the call itself finished fine, the run waits for a tool decision

@@ -129,7 +129,18 @@ Forgiving tool schemas help too — accept an id with or without a prefix, infer
 
 ## Step budget
 
-The tool loop stops after a fixed number of steps: `round(number of tools × 1.5)` (5 without tools). With one or two tools that's 2–3 steps, and a chain like "find, then read, then act" is cut off silently with whatever text the model has at that point. Give multi-step tasks enough tools, or check `finishReason` (`tool_calls` on the last step means it was cut).
+By default the tool loop stops after `round(number of tools × 1.5)` steps, at most 25 (5 without tools). With one or two tools that's 2–3 steps, and a chain like "find, then read, then act" is cut off silently with whatever text the model has at that point — `finishReason` `tool_calls` on the last step means it was cut.
+
+A task with a narrow tool set and a multi-step job sets the budget itself (since 3.38):
+
+```php
+public function maxSteps(): ?int
+{
+    return 8;
+}
+```
+
+`max_steps` in the `AiPayload` options does the same per call and wins over the method. Each step is a provider call, so the budget is also a cost ceiling.
 
 ## "Done!" without doing it
 

@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [3.38.0] — 2026-10-08
+
+### Added
+- `AiTask::maxSteps()` — the step budget of the tool loop, passed to `laravel/ai` (`TextGenerationOptions::$maxSteps`). Its default, 1.5× the number of tools (at most 25), cut a task with two or three tools off after 3–4 steps, silently, and there was no way to raise it through the package. `max_steps` in the `AiPayload` options does the same per call and wins over the method.
+- `AiTask::approvalTtlMinutes()` — how long this task's pause for tool approval stays resumable; defaults to `approvals.ttl_minutes`, `null` for no limit. One global TTL didn't fit both a chat confirmation (minutes) and a scheduled job whose proposal is answered hours later. On the queued path it's read from the task rebuilt in the worker.
+
+### Changed
+- `AiRun::finish()` takes the task as an optional second argument, for its TTL; without it the config value is used as before.
+
 ## [3.37.0] — 2026-10-08
 
 ### Added
