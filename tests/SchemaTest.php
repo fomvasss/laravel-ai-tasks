@@ -240,4 +240,30 @@ class SchemaTest extends TestCase
 
         $this->assertSame(['keywords' => ['a', 'b']], $task::$seen);
     }
+
+    public function test_queued_postprocess_receives_the_runs_usage(): void
+    {
+        $task = new class extends AiTask {
+            public static ?array $usage = null;
+            public function modality(): string { return 'text'; }
+            public function toPayload(): AiPayload { return new AiPayload('text', messages: [new UserMessage('hi')]); }
+            public function postprocess(AiResponse $resp): array
+            {
+                static::$usage = $resp->usage;
+
+                return ['ok' => true];
+            }
+        };
+
+        $run = AiRun::startAsQueue('driverA', $task->toPayload(), $task->context(), $task);
+        $run->markRunning();
+        $run->finish(new AiResponse(true, 'hi', ['driver' => 'driverA', 'model' => 'm-1', 'tokens_in' => 12, 'tokens_out' => 3, 'cost' => 0.0005]));
+
+        (new PostprocessAiResult($run->id, $task::class, $task->serializeForQueue(), attempt: 0))->handle();
+
+        $this->assertSame(12, $task::$usage['tokens_in'] ?? null);
+        $this->assertSame(3, $task::$usage['tokens_out'] ?? null);
+        $this->assertEqualsWithDelta(0.0005, $task::$usage['cost'] ?? null, 1e-9);
+        $this->assertSame('m-1', $task::$usage['model'] ?? null);
+    }
 }

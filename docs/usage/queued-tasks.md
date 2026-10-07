@@ -37,7 +37,7 @@ flowchart TD
 
 So the prompt reflects the data at dispatch time, while the hooks see fresh data — a model restored by `SerializesModelsAi` is re-read from the database. Tools are serialized with the payload: anonymous tool classes can't be queued, see [Tools in queued tasks](tools.md#tools-in-queued-tasks).
 
-`postprocess()` on the worker gets the response restored from `ai_runs.response`: `content`, `structured`, `toolCalls`, `finishReason`, `pendingApprovals`. `usage` is empty there — tokens and cost are in the run (`$event->run` in `AiTaskCompleted`).
+`postprocess()` on the worker gets the response restored from `ai_runs.response`: `content`, `structured`, `toolCalls`, `finishReason`, `pendingApprovals`. `usage` is rebuilt from the run's columns (since 3.32.1): `driver`, `model`, `tokens_in`, `tokens_out`, cache tokens, `cost`, `cost_rates`. Modality-specific extras the run doesn't store (`audio_seconds`, image counts) are absent; before 3.32.1 `usage` was empty there.
 
 ## Serializing the task
 
