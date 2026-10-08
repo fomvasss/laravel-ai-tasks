@@ -10,6 +10,11 @@ php artisan migrate
 php artisan about   # AI Tasks section
 ```
 
+## 3.39
+
+- `TenantResolver` no longer reads the `X-Tenant-Id` header unless `tenant_header` is configured. An app where that header is how the tenant arrives (set by a gateway, not by the client) adds `AI_TENANT_HEADER=X-Tenant-Id`; otherwise runs resolve to the authenticated user or `default_tenant`. Tasks that override `tenantId()` are unaffected.
+- New config key `tenant_header` (`php artisan about` lists it as missing in a published config).
+
 ## 3.35
 
 - A run that stops before a tool needing approval gets status `paused` instead of `ok`. Queries and reports filtering `status = 'ok'` miss these runs; `postprocess()`/`onCompleted()` still run for them.

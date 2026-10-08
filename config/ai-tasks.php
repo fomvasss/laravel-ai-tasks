@@ -14,6 +14,12 @@ return [
     // Tenant ID used when the request cannot be resolved to a specific tenant.
     'default_tenant' => env('AI_DEFAULT_TENANT', 'default'),
 
+    // Request header TenantResolver takes the tenant from, before the authenticated user.
+    // null — ignored. Set it ('X-Tenant-Id') only when the header comes from trusted
+    // infrastructure (a gateway, a service-to-service call): a client can put any value
+    // there and bill another tenant's budget or dodge its own.
+    'tenant_header' => env('AI_TENANT_HEADER'),
+
     // Database table used to store AI run records.
     'table' => env('AI_TASKS_TABLE', 'ai_runs'),
 
@@ -255,7 +261,7 @@ return [
     |
     | Per-tenant monthly spend limit in USD.
     | BudgetExceededException is thrown before and after each request.
-    | Tenant ID is resolved via TenantResolver (X-Tenant-Id header by default).
+    | Tenant ID is resolved via the task's tenantId(), then TenantResolver.
     */
     'budgets' => [
         // 'default'   => ['monthly_usd' => 100],
