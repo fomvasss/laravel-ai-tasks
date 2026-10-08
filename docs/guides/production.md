@@ -54,7 +54,7 @@ Lessons from running the package in several production applications. Each item i
 
 ## Tenants and billing
 
-- **Override `tenantId()` on every task.** A queued job has neither the `X-Tenant-Id` header nor an authenticated user, so the default resolver puts every queued run under `default`. Even sync calls can resolve wrongly: a manager calling the AI on behalf of a customer's organization is not the tenant. See [Budgets & tenants](../usage/budgets.md#per-task).
+- **Override `tenantId()` on every task.** A queued job has neither a request header nor an authenticated user, so the default resolver puts every queued run under `default`. Even sync calls can resolve wrongly: a manager calling the AI on behalf of a customer's organization is not the tenant. See [Budgets & tenants](../usage/budgets.md#per-task).
 - **Set `subjectType()` / `subjectId()`** — filtering `ai_runs` by the chat or record a run belongs to is the first thing needed when investigating a complaint.
 - **Charging your users per token**: listen to `AiRunFinished` and charge `tokens_in + cache_read_tokens + cache_write_tokens + tokens_out`. `tokens_in` excludes cached input, so charging only it would make the user's price depend on whether the provider cache hit. Use the run id as the idempotency key of the charge, and guard against non-tenant ids — `ai:request` without `--tenant` records `default`.
 

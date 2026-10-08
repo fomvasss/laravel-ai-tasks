@@ -32,7 +32,7 @@ The month is the calendar month in the app's timezone, by `ai_runs.created_at`.
 
 1. `tenantId()` on the task, if it returns non-null
 2. `TenantResolver`:
-   1. `X-Tenant-Id` request header
+   1. the request header named in `tenant_header` — only when it's set (off by default)
    2. authenticated user's `tenant_id`, `company_id` or `id`
    3. `default_tenant` from config (`default`)
 
@@ -57,8 +57,16 @@ $this->app->scoped(\Fomvasss\AiTasks\Support\TenantResolver::class, fn () => new
 
 A resolver only sees the current request/auth state, nothing task-specific — for that use `tenantId()` on the task.
 
+### Tenant from a header
+
+When the tenant comes from a gateway or a service-to-service call, name the header:
+
+```dotenv
+AI_TENANT_HEADER=X-Tenant-Id
+```
+
 > [!WARNING]
-> The default resolver trusts the client-supplied `X-Tenant-Id` header: any caller can bill another tenant's budget, or dodge their own, by setting it. If budgets matter and the header isn't set by trusted infrastructure only, bind a resolver that derives the tenant from the authenticated user.
+> Enable it only when the header is set by trusted infrastructure and stripped from client requests. Any caller can put any value there — billing another tenant's budget or dodging their own, and moving `ai_runs.tenant_id` with whatever is charged by it. Before 3.39 the resolver read `X-Tenant-Id` unconditionally.
 
 ## Subject
 

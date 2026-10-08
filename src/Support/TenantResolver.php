@@ -8,8 +8,11 @@ class TenantResolver
 {
     public function id(): string
     {
-        // 1) з запиту (X-Tenant-Id)
-        if ($id = request()->header('X-Tenant-Id')) {
+        // 1) із заголовка — лише якщо його явно ввімкнено: заголовок шле клієнт, і довіра
+        //    за замовчуванням дала б будь-кому списати витрати на чужий tenant
+        $header = config('ai-tasks.tenant_header');
+
+        if ($header && ($id = request()->header($header))) {
             return (string) $id;
         }
 

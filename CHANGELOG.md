@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [3.39.0] — 2026-10-08
+
+### Security
+- `TenantResolver` took the tenant from the client-supplied `X-Tenant-Id` header, ahead of the authenticated user: any caller of a web or API endpoint that runs an AI task could bill another tenant's budget, dodge their own, and move `ai_runs.tenant_id` — and whatever an app charges by it — to another tenant. The header is now ignored unless named in the new `tenant_header` config (`AI_TENANT_HEADER`). Apps where a trusted gateway sets it add `AI_TENANT_HEADER=X-Tenant-Id`; tasks that override `tenantId()` are unaffected. See [Upgrading](docs/upgrading.md#339).
+
 ## [3.38.1] — 2026-10-08
 
 ### Fixed

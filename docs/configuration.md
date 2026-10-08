@@ -8,6 +8,7 @@
 |---|---|---|---|
 | `default` | `AI_DEFAULT` | `openai` | Driver used when no routing rule matches and no driver is passed explicitly |
 | `default_tenant` | `AI_DEFAULT_TENANT` | `default` | Tenant ID when the request can't be resolved to a tenant, see [Budgets & tenants](usage/budgets.md) |
+| `tenant_header` | `AI_TENANT_HEADER` | `null` | Request header the tenant is taken from before the user; `null` — ignored. Only for a header set by trusted infrastructure, see [How the tenant is resolved](usage/budgets.md#how-the-tenant-is-resolved) |
 | `table` | `AI_TASKS_TABLE` | `ai_runs` | Table for run records |
 | `store_request` | `AI_STORE_REQUEST` | `false` | Store messages, system prompt and the task's constructor arguments in `ai_runs.request` |
 
