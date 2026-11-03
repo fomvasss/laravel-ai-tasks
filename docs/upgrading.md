@@ -10,6 +10,13 @@ php artisan migrate
 php artisan about   # AI Tasks section
 ```
 
+## 3.39.1
+
+- Requires `laravel/ai` ^1.3 (`composer update laravel/ai`).
+- A 429/503 with a `Retry-After` of up to 10 seconds is now retried once by `laravel/ai` before the driver chain moves on: the backup driver takes over less often, and one attempt can take up to 10 seconds longer, which counts against the queue job timeout.
+- Remote attachments (`AiImage::fromUrl()` and the like) over 100 MB throw `InvalidArgumentException`. Raise the limit with `ai.remote_files.max_size` (in KB) in `config/ai.php`.
+- A task with `schema()` whose run produced no payload (stopped before the first step, or faked with a string) gets `structured: []` instead of `null`.
+
 ## 3.39
 
 - `TenantResolver` no longer reads the `X-Tenant-Id` header unless `tenant_header` is configured. An app where that header is how the tenant arrives (set by a gateway, not by the client) adds `AI_TENANT_HEADER=X-Tenant-Id`; otherwise runs resolve to the authenticated user or `default_tenant`. Tasks that override `tenantId()` are unaffected.

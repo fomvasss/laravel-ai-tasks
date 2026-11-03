@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [3.39.1] — 2026-11-03
+
+### Changed
+- Requires `laravel/ai` ^1.3. What it changes for tasks (see [Upgrading](docs/upgrading.md#3391)):
+  - a 429/503 with `Retry-After` up to 10 s is retried once inside `laravel/ai` before it fails over, so the driver chain moves to the next driver less often and an attempt can take up to 10 s longer;
+  - remote attachments (`AiImage::fromUrl()` and the like) over 100 MB throw `InvalidArgumentException`; the limit is `ai.remote_files.max_size` (KB);
+  - a task with `schema()` whose run produced no payload (stopped before the first step, faked with a string) gets `structured: []` instead of `null`.
+
 ## [3.39.0] — 2026-10-08
 
 ### Security
