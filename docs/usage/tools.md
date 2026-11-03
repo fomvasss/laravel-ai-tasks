@@ -134,7 +134,7 @@ Mcp::registerClient('filesystem', fn () =>
 ```
 
 > [!NOTE]
-> The `laravel/mcp` client only accepts servers that negotiate protocol version `2025-11-25` or `2025-06-18`. A server on an older version (`2025-03-26`, `2024-11-05`) throws `Laravel\Mcp\Exceptions\ClientException` on connect. If a `Client::web()`/`Client::local()` call fails right after connecting, check the server's protocol version first.
+> The `laravel/mcp` client only accepts servers that negotiate protocol version `2026-07-28` (`server/discover`), `2025-11-25` or `2025-06-18` (`initialize`). A server on an older version (`2025-03-26`, `2024-11-05`) throws `Laravel\Mcp\Exceptions\ClientException` on connect. If a `Client::web()`/`Client::local()` call fails right after connecting, check the server's protocol version first.
 
 ### Task example
 
