@@ -26,6 +26,9 @@ $durStr = $dur === null ? '—' : ($dur < 1000 ? "{$dur}ms" : number_format($dur
     @if($run->isStuck())
         <span class="inline-flex px-1.5 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-400">stuck</span>
     @endif
+    @if($run->isPayloadPruned())
+        <span class="inline-flex px-1.5 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400" title="Prompt and output removed by ai:prune at {{ $run->request['payload_pruned_at'] }}">payload pruned</span>
+    @endif
     <span class="text-xs text-gray-400 dark:text-gray-500 font-mono">{{ $run->id }}</span>
     <div class="ml-auto">
         @include('ai-tasks::partials.actions', ['run' => $run, 'withView' => false])

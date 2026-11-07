@@ -12,7 +12,7 @@ AI task orchestrator for Laravel. Handles routing, queuing, audit logging, budge
 
 - **Routing with fallback** — a chain of drivers per task, the next one is tried when a provider is down
 - **Queues** — idempotency, delayed dispatch, retries of unusable results, `onCompleted()`/`onFailed()` hooks
-- **Audit log** — every run in `ai_runs`: driver, model, tokens, cost, duration, status
+- **Audit log** — every run in `ai_runs`: driver, model, tokens, cost, duration, status; prompts and output expire after N days with `ai:prune`
 - **Budgets and cost tracking** — per tenant, per driver and per model
 - **Dashboard** — runs, driver state, stuck runs, retry from the browser
 - **Text, image, embeddings, TTS, transcription**, tools & MCP, structured output, streaming

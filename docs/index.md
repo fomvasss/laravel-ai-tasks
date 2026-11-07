@@ -6,7 +6,7 @@ Every AI call is a task class: it builds the request, optionally shapes the resp
 
 - **Routing with fallback** — a chain of drivers per task; the next one is tried when a provider is down
 - **Queues** — `AI::queue()` with idempotency, delayed dispatch, retries of unusable results
-- **Audit log** — every run is stored in `ai_runs`: driver, model, tokens, cost, duration, status
+- **Audit log** — every run is stored in `ai_runs`: driver, model, tokens, cost, duration, status; prompts and output expire with `ai:prune`
 - **Budgets** — monthly spend limit per tenant
 - **Cost tracking** — per-driver and per-model rates, prompt-cache tokens, reasoning tokens
 - **Dashboard** — runs list, driver state, stuck runs, retry from the browser

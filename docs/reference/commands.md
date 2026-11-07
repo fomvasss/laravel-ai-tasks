@@ -6,6 +6,7 @@
 | [`ai:request`](#airequest) | Ad-hoc sync or queued request |
 | [`ai:runs`](#airuns) | List recent `ai_runs` |
 | [`ai:retry`](#airetry) | Re-dispatch failed and stuck runs |
+| [`ai:prune`](#aiprune) | Apply the retention settings to `ai_runs` |
 | [`ai:budget`](#aibudget) | Tenant's spend vs limit |
 | [`ai:models`](#aimodels) | Models available from a provider's API |
 
@@ -75,6 +76,31 @@ php artisan ai:retry --dry-run            # list only, change nothing
 Task constructor arguments are stored only with `AI_STORE_REQUEST=true` — runs recorded without them are listed as skipped. Tasks whose constructor has no required parameters can always be retried.
 
 A failed attempt of a sync call whose fallback driver then answered is not retried — the call already has its result (`response.superseded_by` points to the row that answered).
+
+A run whose payload `ai:prune` stripped is listed as skipped: its constructor arguments are gone.
+
+## ai:prune
+
+Applies [`retention`](../configuration.md#retention): deletes runs older than `days`, then strips the prompt and output from runs older than `payload_days`. Runs still `queued`, `running`, `waiting` or `paused` are left alone whatever their age. Does nothing while both settings are `null`.
+
+```bash
+php artisan ai:prune
+php artisan ai:prune --dry-run    # count only, change nothing
+```
+
+| Option | Description |
+|---|---|
+| `--chunk=500` | Rows per batch |
+| `--dry-run` | Only count rows to delete and payloads to strip |
+
+The package doesn't schedule it — add it to your scheduler:
+
+```php
+// routes/console.php
+Schedule::command('ai:prune')->dailyAt('03:55')->withoutOverlapping();
+```
+
+Rows are deleted with `MassPrunable`, so `php artisan model:prune --model="Fomvasss\AiTasks\Models\AiRun"` deletes them as well (without stripping payloads).
 
 ## ai:budget
 

@@ -29,6 +29,25 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Retention
+    |--------------------------------------------------------------------------
+    |
+    | Applied by `php artisan ai:prune` — schedule it yourself, the package doesn't.
+    | Runs still queued / running / waiting / paused are never touched, whatever their age.
+    |
+    | payload_days — strip the prompt (system, messages, task_args) and the output (content,
+    |                structured, tool_calls, pending approvals) from runs older than this.
+    |                The row stays, with tokens, cost, duration and status for analytics;
+    |                such a run can no longer be retried. null = keep forever.
+    | days         — delete runs older than this entirely. null = keep forever.
+    */
+    'retention' => [
+        'payload_days' => env('AI_PAYLOAD_DAYS'),
+        'days' => env('AI_RUNS_RETENTION_DAYS'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Tool approval
     |--------------------------------------------------------------------------
     |

@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [3.40.0] — 2026-11-07
+
+### Added
+- Retention for `ai_runs`: `retention.payload_days` (`AI_PAYLOAD_DAYS`) strips the prompt and the output (`request.system`, `messages`, `task_args`; `response.content`, `structured`, `tool_calls`, pending approvals and the paused conversation) from finished runs older than N days, keeping the row with tokens, cost, duration and status; `retention.days` (`AI_RUNS_RETENTION_DAYS`) deletes runs older than N days. Both default to `null` (keep forever) and are applied by the new `ai:prune` command, which the app schedules itself. Runs still queued, running, waiting or paused are never touched. See [Payload retention](docs/reference/ai-runs.md#payload-retention).
+- `AiRun::isPayloadPruned()`. A stripped run can't be retried: the dashboard shows "payload pruned", `ai:retry` skips it.
+
+To use it, add the `retention` section to a published `config/ai-tasks.php` — see [Configuration](docs/configuration.md#retention).
+
 ## [3.39.1] — 2026-11-03
 
 ### Changed

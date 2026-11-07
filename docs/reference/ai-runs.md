@@ -60,6 +60,19 @@ stateDiagram-v2
     dead --> queued: Retry
 ```
 
+## Payload retention
+
+With [`retention.payload_days`](../configuration.md#retention) set, [`ai:prune`](commands.md#aiprune) removes the text of finished runs older than that and keeps the row: tokens, cost, duration, status, task, tenant and timestamps stay for analytics.
+
+| Column | Removed | Kept |
+|---|---|---|
+| `request` | `system`, `messages`, `task_args`, `options.instructions` (TTS free text) | `modality`, `options` (model, temperature, limits), `meta`, `task_class`, `execution_context`, `dispatch_id`, `available_at` |
+| `response` | `content`, `structured`, `tool_calls`, `pending_approvals`, `resume.messages` | `finish_reason`, `provider_run_id`, `superseded_by`, `resume.expires_at` / `resumed_at` / `expired_at` / `dismissed_at` |
+
+A stripped row gets `request.payload_pruned_at` (ISO 8601) and `isPayloadPruned()` returns `true`. It can no longer be retried — its constructor arguments are gone — so `canRetry()` is `false`, the dashboard shows **payload pruned** and `ai:retry` skips it. Pick `payload_days` longer than the window you retry failures in.
+
+`meta` and `options` are kept: they carry what the task set in `defaultMeta()` and the payload options. Don't put personal data there if it must expire with the prompt.
+
 `stuck` is not a status but a condition: `queued`/`running` without progress for longer than `dashboard.stuck_after_minutes`.
 
 ## Model methods
@@ -72,6 +85,7 @@ stateDiagram-v2
 | `isSuperseded(): bool` | A failed sync attempt whose fallback driver answered; `response.superseded_by` holds the id of that row |
 | `isPaused(): bool`, `pauseExpired(): bool` | Waiting for an approval decision; past `approvals.ttl_minutes` |
 | `dismissPause(): bool`, `expirePause()` | Close a pause the app won't continue / that ran out of time |
+| `isPayloadPruned(): bool` | The prompt and output were stripped by `ai:prune`, see [Payload retention](#payload-retention) |
 | `isResume(): bool` | A continuation started by `AI::resume()`; never retried |
 | `executionContext(): array` | The context captured at dispatch, see [Acting as a user](../guides/tools-in-practice.md#acting-as-a-user) |
 | `markWaiting(array $extra = [])` | Park the run until a webhook; `$extra` goes to `response`, e.g. `provider_run_id` |

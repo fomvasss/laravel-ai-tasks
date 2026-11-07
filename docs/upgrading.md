@@ -10,6 +10,10 @@ php artisan migrate
 php artisan about   # AI Tasks section
 ```
 
+## 3.40.0
+
+- Nothing breaks: retention is off until configured. To clean up `ai_runs`, add the `retention` section to a published `config/ai-tasks.php` and schedule `ai:prune` — see [Retention](configuration.md#retention).
+
 ## 3.39.1
 
 - Requires `laravel/ai` ^1.3 (`composer update laravel/ai`).

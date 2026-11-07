@@ -14,6 +14,22 @@
 
 `store_request` is off by default because prompts may contain sensitive data. Without it a failed run can't be rebuilt: [`ai:retry`](reference/commands.md#airetry), the dashboard **Retry** button and [webhook completion](usage/webhooks.md) need the stored constructor arguments (tasks whose constructor has no required parameters are the exception).
 
+## Retention
+
+```php
+'retention' => [
+    'payload_days' => env('AI_PAYLOAD_DAYS'),
+    'days' => env('AI_RUNS_RETENTION_DAYS'),
+],
+```
+
+| Key | Env | Default | Description |
+|---|---|---|---|
+| `payload_days` | `AI_PAYLOAD_DAYS` | `null` | Strip the prompt and the output from runs older than this many days; the row and its metrics stay |
+| `days` | `AI_RUNS_RETENTION_DAYS` | `null` | Delete runs older than this many days entirely |
+
+`null` keeps everything forever. Both are applied by [`ai:prune`](reference/commands.md#aiprune), which you schedule yourself. What exactly is stripped — [Payload retention](reference/ai-runs.md#payload-retention).
+
 ## Dashboard
 
 ```php

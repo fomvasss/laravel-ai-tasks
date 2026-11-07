@@ -53,6 +53,11 @@ class AiRetryFailed extends Command
                 continue;
             }
 
+            if ($run->isPayloadPruned()) {
+                $rows[] = [$run->id, $run->task, $run->driver, 'skipped: payload pruned by ai:prune'];
+                continue;
+            }
+
             if (RunRetrier::reconstruct($run) === null) {
                 $rows[] = [$run->id, $run->task, $run->driver, 'skipped: task not reconstructable (no task_args stored — enable AI_STORE_REQUEST)'];
                 continue;

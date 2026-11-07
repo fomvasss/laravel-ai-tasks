@@ -173,6 +173,10 @@ class DashboardController extends Controller
     {
         $run = AiRun::findOrFail($id);
 
+        if ($run->isPayloadPruned()) {
+            return back()->with('ai-tasks-flash', ['error', 'Payload pruned by ai:prune — the task cannot be reconstructed.']);
+        }
+
         if (! $run->canRetry()) {
             return back()->with('ai-tasks-flash', ['error', "Run in status '{$run->status}' cannot be retried."]);
         }

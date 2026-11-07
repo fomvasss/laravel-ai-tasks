@@ -107,6 +107,7 @@ class AiServiceProvider extends ServiceProvider
             $this->commands([
                 Console\AiMakeTaskCommand::class,
                 Console\AiModelsCommand::class,
+                Console\AiPruneCommand::class,
                 Console\AiRetryFailed::class,
                 Console\AiRunsList::class,
                 Console\AiBudgetCommand::class,

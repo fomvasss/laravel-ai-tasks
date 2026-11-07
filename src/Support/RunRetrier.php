@@ -17,9 +17,17 @@ use Fomvasss\AiTasks\Tasks\AiTask;
  */
 final class RunRetrier
 {
-    /** Null when the run predates (or was recorded without) store_request — no ctor args to revive. */
+    /**
+     * Null when the run predates (or was recorded without) store_request — no ctor args to revive —
+     * or when ai:prune stripped them.
+     */
     public static function reconstruct(AiRun $run): ?AiTask
     {
+        // Without its task_args a task with optional parameters would be rebuilt from defaults
+        if ($run->isPayloadPruned()) {
+            return null;
+        }
+
         $class = $run->request['task_class'] ?? null;
         $args  = $run->request['task_args'] ?? null;
 

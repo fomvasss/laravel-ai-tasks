@@ -12,6 +12,7 @@ use Fomvasss\AiTasks\Events\AiRunFinished;
 use Fomvasss\AiTasks\Tasks\AiTask;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\MassPrunable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
@@ -20,6 +21,20 @@ use Illuminate\Support\Str;
 class AiRun extends Model
 {
     use HasUuids;
+    use MassPrunable;
+
+    /** A run in one of these is not finished yet — retention never touches it, whatever its age. */
+    public const IN_FLIGHT_STATUSES = ['queued', 'running', 'waiting', 'paused'];
+
+    /**
+     * Text a finished run no longer needs: the prompt and the task's constructor arguments
+     * (request), the model's output and the tool arguments it chose (response). Everything else
+     * stays — ids and markers the package still reads after the run (provider_run_id,
+     * superseded_by, resume.*_at, meta.resumed_from, execution_context, dispatch_id).
+     */
+    private const PAYLOAD_REQUEST_KEYS = ['system', 'messages', 'task_args'];
+
+    private const PAYLOAD_RESPONSE_KEYS = ['content', 'structured', 'tool_calls', 'pending_approvals'];
 
     public $incrementing = false;
 
@@ -158,6 +173,11 @@ class AiRun extends Model
             return false;
         }
 
+        // Its task_args are gone — rebuilt from defaults it would run a different task
+        if ($this->isPayloadPruned()) {
+            return false;
+        }
+
         return match ($this->status) {
             'error' => ! $this->isSuperseded(),
             'dead' => true,
@@ -204,6 +224,96 @@ class AiRun extends Model
     public function isResume(): bool
     {
         return isset($this->request['meta']['resumed_from']);
+    }
+
+    /**
+     * Rows past `retention.days`, deleted by `ai:prune` (or `model:prune --model=...`) together
+     * with their metrics. Nothing while the setting is null.
+     */
+    public function prunable(): Builder
+    {
+        $days = static::retentionDays('days');
+
+        if ($days === null) {
+            return static::query()->whereRaw('1 = 0');
+        }
+
+        return static::query()
+            ->where('created_at', '<', now()->subDays($days))
+            ->whereNotIn('status', self::IN_FLIGHT_STATUSES);
+    }
+
+    /** Finished runs past `retention.payload_days` whose payload is still there. Nothing while the setting is null. */
+    public function scopePayloadExpired(Builder $query): Builder
+    {
+        $days = static::retentionDays('payload_days');
+
+        if ($days === null) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        return $query->where('created_at', '<', now()->subDays($days))
+            ->whereNotIn('status', self::IN_FLIGHT_STATUSES)
+            ->whereNull('request->payload_pruned_at');
+    }
+
+    /** A positive number of days from `ai-tasks.retention.{$key}`; null — keep forever. */
+    public static function retentionDays(string $key): ?int
+    {
+        $days = config("ai-tasks.retention.{$key}");
+
+        return is_numeric($days) && (int) $days > 0 ? (int) $days : null;
+    }
+
+    /**
+     * Removes the text payload and marks the row with request.payload_pruned_at; metrics, status
+     * and the keys listed at PAYLOAD_*_KEYS stay. False when the run is in flight — including one
+     * a retry re-queued after it was loaded, whose fresh dispatch_id must not be overwritten.
+     */
+    public function prunePayload(): bool
+    {
+        $request = $this->request ?? [];
+        $response = $this->response ?? [];
+
+        foreach (self::PAYLOAD_REQUEST_KEYS as $key) {
+            unset($request[$key]);
+        }
+
+        // TTS instructions are free text, unlike the rest of the options (model, temperature, ...)
+        unset($request['options']['instructions']);
+
+        foreach (self::PAYLOAD_RESPONSE_KEYS as $key) {
+            unset($response[$key]);
+        }
+
+        // The conversation kept for a resume; resumed_at / expired_at / dismissed_at stay, so a
+        // late AI::resume() still gets the precise refusal
+        unset($response['resume']['messages']);
+
+        $request['payload_pruned_at'] = now()->toIso8601String();
+
+        $columns = [
+            'request' => json_encode($request),
+            'response' => $response === [] ? null : json_encode($response),
+        ];
+
+        $updated = static::query()
+            ->whereKey($this->getKey())
+            ->whereNotIn('status', self::IN_FLIGHT_STATUSES)
+            ->toBase()
+            ->update($columns) === 1;
+
+        if ($updated) {
+            $this->setRawAttributes([...$this->getAttributes(), ...$columns], true);
+        }
+
+        return $updated;
+    }
+
+    /** The prompt and output were removed by `ai:prune`; the run can't be retried any more. */
+    public function isPayloadPruned(): bool
+    {
+        return isset($this->request['payload_pruned_at']);
     }
 
     public function isPaused(): bool
